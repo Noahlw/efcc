@@ -1,7 +1,7 @@
 # EFCC repo-wide organization — implementation plan and agent handoff
 
-**Status:** Implementation in progress; single-workspace, prototype retirement, Auth PIN-import retirement, local D1 baseline, and the bounded Drizzle stop/adopt trial are complete; remaining Programs parity, clean-candidate local verification, and external governance gates remain open<br>
-**Plan branch:** refactor/repo-wide-organization<br>
+**Status:** Programs parity is proven and the superseded suites are retired; the full local `pnpm verify` and independent review remain, along with external GitHub governance, Cloudflare target identity, and deferred Auth work<br>
+**Plan branch:** refactor/repo-wide-organization-implementation<br>
 **Audited base:** main at b18828d42b6e152f2d29ed1f63df9c1681e59046, 2026-09-23<br>
 **Goal:** reduce maintained code, coding-agent context, and rework while preserving church user journeys, permission results, audit outcomes, and explicit security requirements.
 
@@ -17,7 +17,7 @@ Accepted decisions:
 - Development/test D1 targets may be rebuilt, including shared/manual targets, after the target inventory and clean schema baseline are verified. There is no production D1 data. Do not reset any database as part of writing this plan.
 - The external Apps Script scanner flow and Google Sheets Users/PIN import and forced-upgrade path are retired; there are no legacy accounts to migrate. Keep the current Worker scanner and ZXing fallback.
 - Keep /prototype available only through internal design-preview material; exclude it from the production static export.
-- Retire redundant tests only after behavior parity. The old Programs browser suite stays until its still-valid cases have executable replacement evidence.
+- Retire redundant tests only after behavior parity. The old Programs and Home-origin browser suites were retired after all 63 Programs and five Home scenarios had executable replacement evidence and the clean finite promotion gate passed.
 - Trial Drizzle only for the published-announcement read, and adopt it only if measured net maintenance cost falls and type safety improves. Keep Wrangler as the D1 migration ledger.
 - Auth provider/library migration is deferred to the open [#639 Auth Backend and Session Authority map](https://github.com/Noahlw/efcc/issues/639). Keep authentication/session separate from the editable scoped Role Definition/Grant product model; Q16 remains deferred and the current editable role model stays.
 - Optimize first for maintained code and coding-agent context. Do not claim a performance or token reduction without a comparable measurement.
@@ -39,7 +39,7 @@ Current source evidence: web/lib/auth/sessions.ts:121-162, 349-360; web/lib/auth
 
 ## Current implementation branch
 
-The implementation branch is `refactor/repo-wide-organization-implementation`, based directly on `origin/main` at `b18828d42b6e152f2d29ed1f63df9c1681e59046`; the current checkout HEAD before this turn's edits is `8beec645e316fd95e96d2f7f599a23919abb17ac`. Local implementation remains in progress; no changes have been pushed, merged, deployed, or made to a remote D1 or ruleset.
+The implementation branch is `refactor/repo-wide-organization-implementation`, based directly on `origin/main` at `b18828d42b6e152f2d29ed1f63df9c1681e59046`; `origin/main` was rechecked on 2026-09-25 and is unchanged. The local implementation HEAD is `8c4ab84fc6f54239c9af31993522648c3922531d`. No changes have been pushed, merged, deployed, or made to a remote D1 or ruleset.
 
 Completed slices include the single pnpm workspace and lockfile, local-only D1 baseline/reset path, retired prototype/scanner and Google Users/PIN runtime, Home-origin Browser source, removal of the old credential-upgrade Storybook fixture, module ownership cleanup, current documentation/ADR updates, and the bounded Drizzle trial (not adopted). The current production build excludes /prototype while preserving /scanner; frozen root install passed. The full Storybook interaction suite passed 95/95, the ProgramWorkspace component suite passed 86/86, and the new Member Program PATCH regression passed against local Worker/D1. These are dirty-candidate results, not clean-candidate qualification.
 
@@ -146,7 +146,7 @@ Acceptance:
 
 Remove the duplicated pre-commit invocation of the Programs contract suite only after its canonical owner remains in pnpm verify. For the seven pure suites (49 tests) currently selected by both jsdom and Worker/Node projects, retain the environment owner that proves the required behavior and remove only duplicate selection. Confirm test discovery counts after the change.
 
-Keep the 68 old browser cases until every still-required behavior has executable replacement evidence: 63 programs-d1 cases plus five PUI-05 Home-origin cases. The 68-case CSV is a static mapping aid, not runtime acceptance. A non-empty ledger row or a Storybook story cannot prove parity.
+The retired source set contained 63 Programs cases plus five PUI-05 Home-origin cases. Its 68-case CSV is a static mapping aid, not runtime acceptance. A non-empty ledger row or a Storybook story cannot prove parity.
 
 Add the five Home cases described in the audit packet:
 1. Home announcement and detail long-copy geometry.
@@ -161,11 +161,13 @@ Implemented: `tests/e2e/programs-home-acceptance.test.ts` and its config provide
 
 Replace legacy account-import fixtures before removing that importer. After every old case is either covered by a named executable check or explicitly proven obsolete against current product authority, run the complete local aggregate against a clean candidate. Only then remove the programs-d1 suite/config and obsolete duplicate test inputs.
 
+**Parity complete (2026-09-25):** clean candidate `1cdc15e26bd57eb931a63c29ca4df18c3194486a` passed `pnpm verify:programs` with 26 participant + 37 management mappings and all five Home mappings. Browser 70/70, Home 5/5, Responsive 21/21, Feed 7/7, Worker Contract and non-browser precommit passed with zero skips, unexpected, flaky, or retried results. The old test files/config and their sole event-window helper were retired in `8c4ab84f`; a full `pnpm verify` on the post-retirement candidate remains required.
+
 Acceptance:
 - Each old valid case maps one-to-one to a named current test or a documented removed product requirement.
 - The aggregate cannot pass if the five Home tests or a mapping is absent.
 - The five named Home scenarios pass against local Worker/D1 and browser routes at zero retries; presentation-only evidence stays separately labeled.
-- The historical suite is deleted only after candidate-bound parity evidence is recorded.
+- **Complete:** historical suites were deleted only after candidate-bound parity evidence was recorded in `test-results/programs-promotion/20260924t192734164z/promotion.json`.
 
 ### 6. Remove dead dependency weight and correct module ownership
 
@@ -268,9 +270,9 @@ After the Home case 66 locator correction, `pnpm test:programs:home` passed on t
 
 ## Manual prerequisites and blockers
 
-- Cloudflare API GET on 2026-09-24 returned zero D1 databases and zero Worker scripts in its connected account; Wrangler `whoami` reported that the local token had expired. This does not establish that EFCC has no resources under another account. Worker, route, D1, and rate-limit identities remain unverified; no deployment identity was changed and no remote D1 was touched.
+- Cloudflare API GET on 2026-09-25 succeeded and returned zero D1 databases and zero Worker scripts in the connected account. This does not establish that EFCC has no resources under another account or zone. Worker, route, D1, and rate-limit identities remain unverified; no deployment identity was changed and no remote D1 was touched.
 - The current worktree's Wrangler-local D1 was empty, was rebuilt from `0000_baseline.sql`, and was seeded successfully. No shared or manual development/test target was inventoried or reset. Verify each exact target before a remote reset.
-- GitHub ruleset `20586715` remains active and requires `Fast CI`. Current `gh auth status` is valid and repository permission lookup reports `push=true`, `admin=false`, and `maintain=false`; this account cannot change the ruleset. The workflow/ruleset removal remains blocked until a repository administrator can remove the required check in the same change window. `.github/CI-SECRETS.md` is a retirement notice because the still-present manual workflow referenced the deleted credential runbook; it contains no target or secret values. Do not delete workflows or claim the main-branch gate has been removed before that synchronized change.
+- GitHub ruleset `20586715` was re-read on 2026-09-25; it remains active and requires `Fast CI`. Repository permissions report `push=true`, `admin=false`, and `maintain=false`; this account cannot change the ruleset. The workflow/ruleset removal remains blocked until a repository administrator can remove the required check in the same change window. `.github/CI-SECRETS.md` is a retirement notice because the still-present manual workflow referenced the deleted credential runbook; it contains no target or secret values. Do not delete workflows or claim the main-branch gate has been removed before that synchronized change.
 - **Runtime URL/error-tag search completed (2026-09-24):** no Apps Script `/exec` URL or `APPS_SCRIPT_EXEC_URL` remains under `web/`, `tests/`, or `scripts/`; the Worker and current API handlers still emit `tag:apps-script/efcc/errors#…` as the RFC 9457 `type`. Keep that response identifier stable in this cleanup and consider a rename only as a separately reviewed API-contract change. Historical ADR/spec references remain historical evidence.
 - Auth emergency-revocation and password-login brute-force/rate-limit policy remain pre-production blockers for the deferred #639 work; neither is closed by a library comparison or decision map.
 - Historical note (2026-09-23): three missing triage labels were created and read back through the authenticated GitHub web UI. The CLI was reauthenticated on 2026-09-24; the current blocker is repository permission (`admin=false`, `maintain=false`) for the required-check ruleset, not CLI authentication.
@@ -321,10 +323,16 @@ Firecrawl, official docs:
 - [Vitest 4 migration guide](https://v4.vitest.dev/guide/migration) and [Vitest 3 migration guide](https://v3.vitest.dev/guide/migration) — official versioned guides used for the root/web test-runner alignment.
 - [Node.js v22.18.0 `net` API](https://nodejs.org/download/release/v22.18.0/docs/api/net.html#serverlistenport-host-backlog-callback) — Firecrawl checked ephemeral-port assignment and `server.address()` behavior on 2026-09-24.
 
+### Recheck on 2026-09-25
+
+Context7 returned its monthly quota limit, so Firecrawl read the [official Next.js Link documentation](https://nextjs.org/docs/app/api-reference/components/link), last updated 2026-08-25. It confirms `Link` provides client-side navigation and accepts `scroll={false}`; the project pins Next.js 16.2.12. The `programs-d1 #63` parity test now stabilizes the target row after setting the inner scroller before clicking, and verifies real browser Back scroll restoration.
+
+The Cloudflare Docs connector was used for [Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/) and the [Next.js on Workers guide](https://developers.cloudflare.com/workers/framework-guides/web-apps/nextjs/). Static asset routing serves a matching asset before Worker fallback; the local failure traces showed the Worker serving the Next route-tree asset successfully. That ruled out a Wrangler startup or D1 setup failure for the observed browser issue. EFCC remains a static Next.js export plus Worker API/D1 architecture, so the guide's Next.js runtime migration paths were not adopted as part of this repair.
+
 ## Agent handoff
 
-The approved local implementation is active on `refactor/repo-wide-organization-implementation`. The single workspace, local D1 baseline, retired prototype/import paths, Home Browser slice, docs, and selected test reductions are implemented. The Drizzle trial was rejected under the agreed stop rule, so raw SQL and Wrangler migrations remain. The historical `programs-d1` suite is still retained pending clean-candidate parity proof. On the dirty implementation worktree, the previously failing Browser cases #29, #43, #47, and #63 passed together, followed by a 70/70 Browser run with zero retries. Fixes use the current settings validation copy, keep archive-with-events at 409 while relying on disposable D1 cleanup, create and remove the schedule exception through the same-origin API, and restore approval-queue scroll through the persistent AppShell scroller on real browser Back. These results are diagnostic until `pnpm verify:programs` passes on a clean candidate. Do not remove `programs-d1` until the 63 old cases plus five Home-origin cases have candidate-bound replacement evidence.
+The approved local implementation is active on `refactor/repo-wide-organization-implementation` at `8c4ab84fc6f54239c9af31993522648c3922531d`. The single workspace, local D1 baseline, retired prototype/import paths, Home/Feed Browser slices, docs, selected test reductions, and Drizzle stop decision are implemented; raw SQL and Wrangler migrations remain. The old Programs and PUI-05 Home-origin suites/config and their unused event-window helper were retired after clean-candidate parity passed. `pnpm verify:programs` passed on predecessor candidate `1cdc15e26bd57eb931a63c29ca4df18c3194486a`; the full repository `pnpm verify` on post-retirement HEAD `8c4ab84f` is the remaining local gate.
 
-Frozen install, root/e2e typecheck, formatting, and the 15-test Programs promotion unit suite passed earlier. The static production build omitted /prototype; Storybook 95/95, ProgramWorkspace 86/86, and focused Worker/D1 PATCH evidence also passed on the dirty candidate. Next, commit the scoped work, run `pnpm verify:programs`, and retire the historical suite only if exact case parity passes. Then run `pnpm verify` on the final clean candidate and obtain independent review. Keep Auth library/provider work deferred and do not claim production readiness while emergency revocation or password-login rate limiting remains open.
+The #63 browser test now scrolls the shell first, waits for the detail row to settle in the viewport, then clicks; three repeated targeted Worker/D1 runs passed. The Home Feed fixture marks existing notices read before creating three unique notices, then asserts each row's timestamp/unread state and mark-all-read persistence. No runtime API/schema changed in these test repairs. Independent review is still required. Keep Auth provider work deferred and do not claim production readiness while emergency revocation or password-login rate limiting remains open.
 
-No push, merge, deployment, remote D1 mutation, or GitHub ruleset write has occurred. The connected Cloudflare account still returned no D1/Worker resources, and main still requires Fast CI; do not delete the three workflows or change remote resource identity until those exact external prerequisites are available.
+No push, merge, deployment, remote D1 mutation, or GitHub ruleset write has occurred. The connected Cloudflare account has no visible D1/Worker resources, and `main` still requires Fast CI; do not delete the three workflows or change remote resource identity until those exact external prerequisites are available.
