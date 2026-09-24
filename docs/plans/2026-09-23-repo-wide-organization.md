@@ -239,6 +239,12 @@ The full aggregate on `b4d80ec98b975945f1e948740a50dd67e3998054` stopped in the 
 
 The assertion now waits for the same `<main>` element to become active, retaining the focus requirement while allowing the effect to settle. The focused test passes; rerun the full aggregate on the committed candidate.
 
+### Browser access-load interruption (2026-09-24)
+
+The full aggregate on `a83be70d462fddb0190f51d4cbb29dbe02ef4491` passed the Worker Contract stage, then the 48-item Browser stage reported 47/48: #26 failed at phone-360 while the page remained at “checking management access.” The trace shows the `GET /api/v1/programs/access` request had no response before Playwright closed the failed context; #26 passed at phone-390 and phone-402. This is an unresolved local runtime/test-stage interruption, not evidence that the program projection returned an incorrect row.
+
+The repository's official `pnpm test:programs:browser` runner was rerun on the same SHA with a fresh disposable local Worker/D1 harness: **48/48 passed**, zero skips/retries/flakes; #26 passed at 360, 390, and 402px. No product or test assertion was changed. The failure is not yet reproduced; rerun the full aggregate on the clean candidate and retain the failure trace if it recurs.
+
 ## Manual prerequisites and blockers
 
 - Cloudflare API GET on 2026-09-24 returned zero D1 databases and zero Worker scripts in its connected account; Wrangler `whoami` reported that the local token had expired. This does not establish that EFCC has no resources under another account. Worker, route, D1, and rate-limit identities remain unverified; no deployment identity was changed and no remote D1 was touched.
