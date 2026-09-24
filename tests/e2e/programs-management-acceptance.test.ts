@@ -1963,9 +1963,23 @@ test.describe("Programs parity replacements 29-30", () => {
       await page.goto(
         `/programs?mode=management&program=${encodeURIComponent(programId)}&task=participants`
       );
+      const participantSection = page.getByRole("region", {
+        name: COPY.workspaceTaskParticipants,
+      });
+      await expect(participantSection).toHaveAttribute("aria-busy", "false");
+      const refreshedSnapshot = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return (
+          response.request().method() === "GET" &&
+          url.pathname ===
+            `/api/v1/programs/${encodeURIComponent(programId)}/enrollment-snapshot`
+        );
+      });
       await page
         .getByRole("button", { name: COPY.workspaceParticipantsRefresh })
         .click();
+      expect((await refreshedSnapshot).status()).toBe(200);
+      await expect(participantSection).toHaveAttribute("aria-busy", "false");
       const pendingAfterRefresh = page.getByRole("tab", {
         name: new RegExp(`${COPY.tabsPending} \\(1\\)`, "u"),
       });
