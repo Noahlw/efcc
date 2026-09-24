@@ -250,9 +250,9 @@ The repository's official `pnpm test:programs:browser` runner was rerun on the s
 
 The full aggregate on `6614fcac37d7f80f5c3a9df0d4a0d1f3154e7c9e` passed its earlier stages and then timed out waiting for the shell-responsive server on port 4173, which was owned by another workspace. A module-level random-port attempt was also invalid: the web-server report selected 61876 while Playwright tests navigated to 63139 because the config was loaded in separate processes.
 
-The canonical command now runs `scripts/run-shell-responsive.mjs`, which selects one OS-assigned localhost port per invocation and passes it as `RESPONSIVE_TEST_PORT` to the Playwright process tree. The config uses that same value for `baseURL`, metadata, server readiness, and the static server's `PORT`; the server does not reuse an unrelated process. Context7 returned the official Playwright configuration example for `/microsoft/playwright.dev` on 2026-09-24, showing environment-backed `use.baseURL` and explicit `webServer.port`. A follow-up query about dynamic port allocation was blocked by the monthly quota.
+The canonical command now runs `scripts/run-shell-responsive.mjs`. It builds the static export first, asks Node's `node:net` server for one OS-assigned port, then passes the port as `RESPONSIVE_TEST_PORT` to Playwright. The config uses that same value for `baseURL`, metadata, server readiness, and the static server's `PORT`; the server does not reuse an unrelated process. Context7 returned the official configuration example for `/microsoft/playwright.dev` on 2026-09-24, showing environment-backed `use.baseURL` and separately configured `webServer.port`. Its follow-up about dynamic allocation was blocked by the monthly quota. Firecrawl then checked the pinned official Node.js v22.18.0 `net` docs on 2026-09-24: `listen(0)` requests an OS-assigned unused port and `server.address().port` is available after listening.
 
-On the dirty candidate with HEAD `6614fcac`, `pnpm test:shell-responsive` passed **92 tests**, with the existing mobile-only profile case skipped in the desktop project; zero failures, 28.7 seconds. Playwright's JSON report records the shared URL as `http://127.0.0.1:63716`, and that port was no longer listening after the run. This focused pass does not replace the final clean-candidate `pnpm verify`.
+With HEAD `4dd1d258426086eb4fb3487e10d44e0d1c865ac9` and the runner/config changes in the working tree, `pnpm test:shell-responsive` passed **92 tests**, with the existing mobile-only profile case skipped in the desktop project; zero failures, 18.7 seconds in Playwright. The JSON report records shared URL `http://127.0.0.1:50759`; a post-run listener check found no process on that port. This focused pass does not replace the final clean-candidate `pnpm verify`.
 
 ## Manual prerequisites and blockers
 
@@ -273,6 +273,7 @@ Context7 (library resolution for Vitest was blocked by the monthly quota on 2026
 - /drizzle-team/drizzle-orm-docs — Cloudflare D1 driver import, `sqliteTable` schema, and typed `.select().from(...).all()` query.
 - /llmstxt/developers_cloudflare_workers_llms-full_txt — Wrangler D1 migrations use explicit `--local` or `--remote`; local persistence options are available only with `--local`.
 - /vercel/turborepo — target-package pruning creates a partial monorepo; Docker is a common use rather than the only use.
+- /microsoft/playwright.dev — Playwright Test configuration example uses an environment variable for `use.baseURL` and configures `webServer.port`; Context7 query on 2026-09-24.
 
 Firecrawl, official docs:
 - [pnpm Workspaces](https://pnpm.io/workspaces)
@@ -283,6 +284,7 @@ Firecrawl, official docs:
 - [GitHub ruleset rules](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)
 - [Dependabot options reference](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference) — `directory`/`directories` select manifest locations; the reference does not specify pnpm workspace discovery. EFCC now has one root pnpm lockfile and workspace manifest, so Dependabot keeps one root npm-ecosystem entry.
 - [Vitest 4 migration guide](https://v4.vitest.dev/guide/migration) and [Vitest 3 migration guide](https://v3.vitest.dev/guide/migration) — official versioned guides used for the root/web test-runner alignment.
+- [Node.js v22.18.0 `net` API](https://nodejs.org/download/release/v22.18.0/docs/api/net.html#serverlistenport-host-backlog-callback) — Firecrawl checked ephemeral-port assignment and `server.address()` behavior on 2026-09-24.
 
 ## Agent handoff
 

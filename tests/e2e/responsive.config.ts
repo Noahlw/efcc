@@ -44,7 +44,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm --dir ../../web build && pnpm exec tsx serve-static.ts",
+    command: "pnpm exec tsx serve-static.ts",
     url: responsiveUrl,
     env: { PORT: responsivePort },
     reuseExistingServer: false,

@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,19 +29,28 @@ function findAvailablePort() {
   });
 }
 
-const port = String(await findAvailablePort());
-const child = spawn(
-  "pnpm",
-  ["exec", "playwright", "test", "--config=tests/e2e/responsive.config.ts"],
-  {
-    cwd: REPO_ROOT,
-    env: { ...process.env, RESPONSIVE_TEST_PORT: port },
-    stdio: "inherit",
-  }
-);
-
-const exitCode = await new Promise((resolve, reject) => {
-  child.once("error", reject);
-  child.once("exit", (code) => resolve(code ?? 1));
+const build = spawnSync("pnpm", ["--dir", "web", "build"], {
+  cwd: REPO_ROOT,
+  stdio: "inherit",
 });
-process.exitCode = exitCode;
+if (build.error) throw build.error;
+if (build.status !== 0) {
+  process.exitCode = build.status ?? 1;
+} else {
+  const port = String(await findAvailablePort());
+  const child = spawn(
+    "pnpm",
+    ["exec", "playwright", "test", "--config=tests/e2e/responsive.config.ts"],
+    {
+      cwd: REPO_ROOT,
+      env: { ...process.env, RESPONSIVE_TEST_PORT: port },
+      stdio: "inherit",
+    }
+  );
+
+  const exitCode = await new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code) => resolve(code ?? 1));
+  });
+  process.exitCode = exitCode;
+}
