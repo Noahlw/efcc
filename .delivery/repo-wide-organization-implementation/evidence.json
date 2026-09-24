@@ -1,0 +1,120 @@
+{
+  "version": 2,
+  "candidate": "commit:0a5112c3f91f67a724e001fa6c37469089ac3ee0",
+  "repositoryRoot": "/Users/noah.wong/Desktop/code/efcc/.worktrees/repo-wide-organization-implementation",
+  "acceptanceProfile": "complex",
+  "reviewRisk": {
+    "level": "high",
+    "reason": "This change retires tests and legacy runtime paths and alters real Worker/D1/browser verification and navigation behavior."
+  },
+  "delegationAvailable": true,
+  "requirements": ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9"],
+  "review": {
+    "mode": "independent",
+    "candidate": "commit:0a5112c3f91f67a724e001fa6c37469089ac3ee0",
+    "reviewer": "/root/final_candidate_independent_review (source review at code-identical 4ecc9dd; tracked-document follow-up at 0a5112c3)"
+  },
+  "criteria": [
+    {
+      "id": "R1",
+      "status": "verified",
+      "expected": "A single root pnpm workspace supports frozen installation and the intended static-export routes.",
+      "actual": "Root pnpm install --frozen-lockfile completed for both workspace projects. pnpm build succeeded, includes /scanner, and omits /prototype.",
+      "level": "clean-install-and-production-build",
+      "candidate": "commit:0a5112c3f91f67a724e001fa6c37469089ac3ee0",
+      "evidence": [
+        "/tmp/efcc-repo-wide-organization-0a5112c3-install.log",
+        "/tmp/efcc-repo-wide-organization-0a5112c3-build.log"
+      ]
+    },
+    {
+      "id": "R2",
+      "status": "verified",
+      "expected": "The canonical local readiness aggregate and required Programs parity stages pass on a clean candidate.",
+      "actual": "pnpm verify exited 0 on this SHA. It passed 659 Worker tests, 1,184 component tests, 427-file governance audit with zero active violations, Worker Contract, 70 Browser, five Home, 21 Responsive, seven Feed, and non-browser precommit stages; shell-responsive passed 92 with one configured skip, shell geometry 35, and role-hierarchy geometry 49.",
+      "level": "local-worker-d1-browser-and-component",
+      "candidate": "commit:0a5112c3f91f67a724e001fa6c37469089ac3ee0",
+      "evidence": [
+        "/tmp/efcc-repo-wide-organization-0a5112c3-verify.log:126-127",
+        "/tmp/efcc-repo-wide-organization-0a5112c3-verify.log:178-179",
+        "/tmp/efcc-repo-wide-organization-0a5112c3-verify.log:221-233",
+        "/tmp/efcc-repo-wide-organization-0a5112c3-verify.log:381",
+        "/tmp/efcc-repo-wide-organization-0a5112c3-verify.log:472",
+        "/tmp/efcc-repo-wide-organization-0a5112c3-verify.log:576",
+        "docs/plans/2026-09-23-repo-wide-organization.md#Agent-handoff"
+      ]
+    },
+    {
+      "id": "R3",
+      "status": "verified",
+      "expected": "Current Storybook documentation and generated index exclude the retired credential-upgrade Story.",
+      "actual": "Tracked docs were corrected. After an independent review found the ignored generated index was stale, Storybook was rebuilt; the index check passed with 95 Stories and 36 obligations, and the retired credential-upgrade ID is absent.",
+      "level": "generated-storybook-index-and-source",
+      "candidate": "commit:0a5112c3f91f67a724e001fa6c37469089ac3ee0",
+      "evidence": [
+        "/tmp/efcc-repo-wide-organization-0a5112c3-storybook-build.log",
+        "/tmp/efcc-repo-wide-organization-0a5112c3-storybook-index.log",
+        "web/.storybook/README.md:42",
+        "web/COMPONENT_INVENTORY.md:96,100",
+        "web/.storybook/presentation-catalog.test.ts:67-115"
+      ]
+    },
+    {
+      "id": "R4",
+      "status": "verified",
+      "expected": "The bounded Drizzle trial is not adopted when its measured maintenance surface does not improve.",
+      "actual": "No Drizzle dependency or adapter remains; the published-announcement read uses native D1 SQL, and the plan records the trial's stop result.",
+      "level": "source-and-dependency-inspection",
+      "candidate": "commit:0a5112c3f91f67a724e001fa6c37469089ac3ee0",
+      "evidence": [
+        "package.json",
+        "web/package.json",
+        "web/lib/home-handlers.ts",
+        "docs/plans/2026-09-23-repo-wide-organization.md#8-Run-a-bounded-Drizzle-on-D1-trial-only-after-Phase-1"
+      ]
+    },
+    {
+      "id": "R5",
+      "status": "unverified",
+      "expected": "A fresh independent reviewer exercises the current candidate's real Worker/D1/browser boundary and returns an acceptance disposition.",
+      "actual": "Independent source review covered the code-identical 4ecc9dd tree and a 0a5112c documentation follow-up, but the reviewer did not run Worker/D1/browser commands. Builder-run local aggregate is green; independent runtime acceptance remains open.",
+      "candidate": "commit:0a5112c3f91f67a724e001fa6c37469089ac3ee0"
+    },
+    {
+      "id": "R6",
+      "status": "unverified",
+      "expected": "Remove the three GitHub Actions workflows and the Fast CI required status in one admin-authorized change window.",
+      "actual": "The main protection ruleset is active and still requires Fast CI. The connected GitHub identity has WRITE permission only, so the workflows remain until a repository administrator can remove the required check in the same window.",
+      "candidate": "commit:0a5112c3f91f67a724e001fa6c37469089ac3ee0"
+    },
+    {
+      "id": "R7",
+      "status": "unverified",
+      "expected": "Confirm the exact Cloudflare Worker, route, D1, and rate-limit identities before changing deployment configuration.",
+      "actual": "The connected Cloudflare account returned zero Workers and zero D1 databases; EFCC's target may be under another account or zone. No deployment identity or remote resource was changed.",
+      "candidate": "commit:0a5112c3f91f67a724e001fa6c37469089ac3ee0"
+    },
+    {
+      "id": "R8",
+      "status": "unverified",
+      "expected": "Close deferred Auth/revocation/password-login protection, B-003 runtime canary, and comparable agent-context measurement before claiming those outcomes.",
+      "actual": "Auth and emergency revocation/password brute-force protection remain deferred pre-production work; the five-minute B-003 canary and four-task before/after agent-context benchmark were not run. No token reduction is claimed.",
+      "candidate": "commit:0a5112c3f91f67a724e001fa6c37469089ac3ee0"
+    },
+    {
+      "id": "R9",
+      "status": "unverified",
+      "expected": "Keep owner approval, device review, deployment, and release evidence distinct from local verification.",
+      "actual": "No owner sign-off, real-device review, deployment, or release was performed.",
+      "candidate": "commit:0a5112c3f91f67a724e001fa6c37469089ac3ee0"
+    }
+  ],
+  "limitations": [
+    "The full local pnpm verify, frozen install, production build, and final Storybook build/index check ran locally; they do not prove a Cloudflare deployment or real-device behavior.",
+    "A repository administrator must remove the active Fast CI required check in the same window as workflow deletion; the current GitHub identity lacks admin permission.",
+    "The connected Cloudflare account contains no visible EFCC Worker or D1 resources; target identity remains unknown.",
+    "The independent source reviewer did not run Worker/D1/browser commands. The final high-risk runtime acceptance is therefore not independently reviewed.",
+    "Auth library migration, emergency session revocation, password-login brute-force protection, B-003 canary, and the four-task agent-context benchmark remain open. No quantified token savings are claimed.",
+    "Owner, device, deployment, and release gates remain separate and unperformed."
+  ]
+}
