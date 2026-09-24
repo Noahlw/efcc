@@ -2857,10 +2857,11 @@ test.describe("Programs parity replacements 39-63", () => {
     ).toBeVisible();
     const feed = page.getByRole("region", { name: COPY.notificationsTitle });
     const feedBody = (await feedResponse.json()) as {
-      data?: { items?: unknown[] };
+      data?: { items?: { program_name: string }[] };
     };
     expect(Array.isArray(feedBody.data?.items)).toBe(true);
-    if ((feedBody.data?.items?.length ?? 0) === 0) {
+    const firstItem = feedBody.data?.items?.[0];
+    if (!firstItem) {
       await expect(
         feed
           .getByRole("status")
@@ -2868,9 +2869,10 @@ test.describe("Programs parity replacements 39-63", () => {
       ).toBeVisible();
     } else {
       await expect(
-        feed.getByRole("list", {
-          name: APP_COPY.programs.notificationsListLabel,
-        })
+        feed
+          .getByRole("link")
+          .filter({ hasText: firstItem.program_name })
+          .first()
       ).toBeVisible();
     }
 
