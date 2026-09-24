@@ -3851,13 +3851,13 @@ test.describe("Programs parity replacements 39-63", () => {
     const detailHref = await detailLink.getAttribute("href");
     expect(detailHref).toBeTruthy();
     const detailUrl = new URL(detailHref ?? "", page.url()).toString();
-    await detailLink.scrollIntoViewIfNeeded();
     const before = await page.evaluate(() => {
       const scroller = document.querySelector<HTMLElement>("#shell-content");
       scroller?.scrollTo(0, scroller.scrollHeight);
       return scroller?.scrollTop ?? 0;
     });
     expect(before).toBeGreaterThan(0);
+    await detailLink.scrollIntoViewIfNeeded();
     await detailLink.click();
     await expect(page).toHaveURL(detailUrl, { timeout: 15_000 });
     await expect(

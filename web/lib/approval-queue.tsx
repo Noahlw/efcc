@@ -294,7 +294,7 @@ export const ApprovalQueue = () => {
           rowLink.focus({ preventScroll: true });
           approvalFocusRequestId = null;
         } else {
-          resultHeadingRef.current?.focus();
+          resultHeadingRef.current?.focus({ preventScroll: true });
         }
       };
       let scrollTop: number | null = null;
