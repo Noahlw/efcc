@@ -245,6 +245,15 @@ The full aggregate on `a83be70d462fddb0190f51d4cbb29dbe02ef4491` passed the Work
 
 The repository's official `pnpm test:programs:browser` runner was rerun on the same SHA with a fresh disposable local Worker/D1 harness: **48/48 passed**, zero skips/retries/flakes; #26 passed at 360, 390, and 402px. No product or test assertion was changed. The failure is not yet reproduced; rerun the full aggregate on the clean candidate and retain the failure trace if it recurs.
 
+
+### Shell-responsive server port diagnosis (2026-09-24)
+
+The full aggregate on `6614fcac37d7f80f5c3a9df0d4a0d1f3154e7c9e` passed its earlier stages and then timed out waiting for the shell-responsive server on port 4173, which was owned by another workspace. A module-level random-port attempt was also invalid: the web-server report selected 61876 while Playwright tests navigated to 63139 because the config was loaded in separate processes.
+
+The canonical command now runs `scripts/run-shell-responsive.mjs`, which selects one OS-assigned localhost port per invocation and passes it as `RESPONSIVE_TEST_PORT` to the Playwright process tree. The config uses that same value for `baseURL`, metadata, server readiness, and the static server's `PORT`; the server does not reuse an unrelated process. Context7 returned the official Playwright configuration example for `/microsoft/playwright.dev` on 2026-09-24, showing environment-backed `use.baseURL` and explicit `webServer.port`. A follow-up query about dynamic port allocation was blocked by the monthly quota.
+
+On the dirty candidate with HEAD `6614fcac`, `pnpm test:shell-responsive` passed **92 tests**, with the existing mobile-only profile case skipped in the desktop project; zero failures, 28.7 seconds. Playwright's JSON report records the shared URL as `http://127.0.0.1:63716`, and that port was no longer listening after the run. This focused pass does not replace the final clean-candidate `pnpm verify`.
+
 ## Manual prerequisites and blockers
 
 - Cloudflare API GET on 2026-09-24 returned zero D1 databases and zero Worker scripts in its connected account; Wrangler `whoami` reported that the local token had expired. This does not establish that EFCC has no resources under another account. Worker, route, D1, and rate-limit identities remain unverified; no deployment identity was changed and no remote D1 was touched.
