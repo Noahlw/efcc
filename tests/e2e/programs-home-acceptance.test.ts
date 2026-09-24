@@ -14,6 +14,7 @@ const MEMBER = {
   username: process.env.PROGRAMS_MEMBER_USERNAME ?? DEV_MEMBER.username,
   credential: process.env.PROGRAMS_MEMBER_CREDENTIAL ?? DEV_MEMBER.credential,
 };
+const SEED_FEED_NOTICES = process.env.PROGRAMS_FEED_RESULTS_FILE !== undefined;
 
 const LONG_TITLE = "超長課程名稱：門徒訓練與社區同行計劃";
 const LONG_COPY =
@@ -411,7 +412,7 @@ test.beforeAll(async () => {
   const announcementId = `E2E_PUI05_HOME_${suffix}`;
   const eventNoticeTitle = `E2E PUI-05 Event ${suffix}`;
   const programNoticeTitle = `E2E PUI-05 Program ${suffix}`;
-  const accountNoticeTitle = `E2E PUI-05 Account ${suffix}`;
+  const accountNoticeTitle = LONG_TITLE;
   const draftData = await responseData<{ version: number }>(
     await adminApi.post("/api/v1/home/draft", {
       headers: { "Idempotency-Key": `pui05-home-draft-${suffix}` },
@@ -453,31 +454,33 @@ test.beforeAll(async () => {
     }),
     201
   );
-  for (const notice of [
-    {
-      kind: "event",
-      title: eventNoticeTitle,
-      program_id: programId,
-      event_id: eventId,
-    },
-    { kind: "program", title: programNoticeTitle, program_id: programId },
-  ]) {
-    await responseData(
-      await adminApi.post("/api/v1/programs/notices", {
-        headers: {
-          "Idempotency-Key": `pui05-home-notice-${notice.kind}-${suffix}`,
-        },
-        data: {
-          member_user_id: memberData.user.userId,
-          kind: notice.kind,
-          title: notice.title,
-          body: LONG_FEED_COPY,
-          program_id: notice.program_id,
-          ...(notice.kind === "event" ? { event_id: notice.event_id } : {}),
-        },
-      }),
-      201
-    );
+  if (SEED_FEED_NOTICES) {
+    for (const notice of [
+      {
+        kind: "event",
+        title: eventNoticeTitle,
+        program_id: programId,
+        event_id: eventId,
+      },
+      { kind: "program", title: programNoticeTitle, program_id: programId },
+    ]) {
+      await responseData(
+        await adminApi.post("/api/v1/programs/notices", {
+          headers: {
+            "Idempotency-Key": `pui05-home-notice-${notice.kind}-${suffix}`,
+          },
+          data: {
+            member_user_id: memberData.user.userId,
+            kind: notice.kind,
+            title: notice.title,
+            body: LONG_FEED_COPY,
+            program_id: notice.program_id,
+            ...(notice.kind === "event" ? { event_id: notice.event_id } : {}),
+          },
+        }),
+        201
+      );
+    }
   }
 
   const homeData = await responseData<{
