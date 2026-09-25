@@ -1,4 +1,11 @@
-import { act, cleanup, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -249,7 +256,8 @@ describe("Authenticated Shell (TK-04/TK-05/TK-06/TK-07/TK-08)", () => {
     renderShell();
     await screen.findByRole("button", { name: COPY.error.retry });
     // Focus moved into the recovery surface (the focusable main region).
-    expect(document.activeElement).toBe(screen.getByRole("main"));
+    const recovery = screen.getByRole("main");
+    await waitFor(() => expect(document.activeElement).toBe(recovery));
     // Session state preserved: presence hint still set, no redirect.
     expect(localStorage.getItem("efcc_auth_active")).toBe("1");
     expect(mocks.replaceMock).not.toHaveBeenCalled();

@@ -10,6 +10,8 @@ import { useEffect } from "react";
 
 import { AppShell } from "@/lib/app-shell";
 import { clearAllEventCreateDrafts } from "@/lib/programs/event-create-draft";
+import { clearAllGenerationRecoveries } from "@/lib/programs/generation-recovery";
+import { clearAllWorkspaceMutationRecovery } from "@/lib/programs/mutation-recovery";
 import {
   clearAccessCache,
   clearCatalogCache,
@@ -31,12 +33,16 @@ export const withProgramsFixtureIsolation: Decorator = (Story) => {
   clearAccessCache();
   clearCatalogCache();
   clearAllEventCreateDrafts();
+  clearAllGenerationRecoveries();
+  clearAllWorkspaceMutationRecovery();
 
   useEffect(
     () => () => {
       clearAccessCache();
       clearCatalogCache();
       clearAllEventCreateDrafts();
+      clearAllGenerationRecoveries();
+      clearAllWorkspaceMutationRecovery();
     },
     []
   );

@@ -40,9 +40,9 @@ import {
   updateRoleDefinitionGrants,
 } from "@/lib/identity/role-hierarchy-api";
 import { announce } from "@/lib/live-region";
-import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { RouteHeader } from "@/lib/route-header";
 import { rememberDeepLink } from "@/lib/session";
+import { useAsyncResource } from "@/lib/use-async-resource";
 import { cn } from "@/lib/utils";
 
 import {

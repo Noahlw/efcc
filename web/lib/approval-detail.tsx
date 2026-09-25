@@ -120,7 +120,6 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
-  const returningToQueue = useRef(false);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const closeConfirmation = useCallback(() => {
     setConfirmKind(null);
@@ -163,14 +162,14 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
   useEffect(() => {
     mounted.current = true;
     void load();
-    const onPopState = () => {
-      returningToQueue.current = true;
-    };
-    window.addEventListener("popstate", onPopState);
     return () => {
       mounted.current = false;
-      window.removeEventListener("popstate", onPopState);
-      if (!returningToQueue.current) {
+      const currentUrl = new URL(window.location.href);
+      const returnedToQueue =
+        currentUrl.pathname === "/management" &&
+        currentUrl.searchParams.get("module") === "approvals" &&
+        !currentUrl.searchParams.has("request");
+      if (!returnedToQueue) {
         clearApprovalSelection();
       }
     };
@@ -288,9 +287,6 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
           title={COPY.approvals.approvalDetailTitle}
           headingId="approval-detail-title"
           headingRef={headingRef}
-          onBack={() => {
-            returningToQueue.current = true;
-          }}
         />
         <p
           role="alert"
@@ -317,9 +313,6 @@ export function ApprovalDetail({ requestId }: { requestId: string }) {
         title={COPY.approvals.approvalDetailTitle}
         headingId="approval-detail-title"
         headingRef={headingRef}
-        onBack={() => {
-          returningToQueue.current = true;
-        }}
       />
 
       <p

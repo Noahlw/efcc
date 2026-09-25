@@ -1,5 +1,10 @@
 # Legacy-Credential Upgrade Acceptance Plan
 
+> Historical specification, retired 2026-09-24: EFCC has no legacy accounts to
+> migrate. The Google Sheets Users/PIN importer, forced-upgrade route, UI, and
+> legacy-PIN lockout were removed by the approved repo-wide cleanup plan. Keep
+> this document as design history; it is not a current acceptance requirement.
+
 **Feature:** Forced legacy-credential upgrade in the signed-out login surface
 **Authority:** AUTH-01 (#159), AUTH-04 (#162), ADR-0020, Spec 074, Spec 076 (landing-page baseline)
 **Date:** 2026-08-05

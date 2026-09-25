@@ -11,14 +11,15 @@
  *   - register: `{ requestId, data: { status: "pending" } }`, Idempotency-Key
  *     required, validation errors, and no duplicate request on a taken
  *     username (409).
- *   - login: `{ requestId, data: { userId, name, role, status,
- *     mustSetNewCredential } }`; sets the two locked httpOnly Secure
- *     SameSite=Strict cookies; NOT idempotent. Legacy accounts present the
- *     legacy PIN and get `mustSetNewCredential: true` with NO session.
+ *   - login: `{ requestId, data: { userId, name, status } }`; sets the two
+ *     locked httpOnly Secure SameSite=Strict cookies; NOT idempotent.
  *   - refresh: rotates the opaque value (the old value is rejected
  *     immediately) and sets a fresh access cookie.
  *   - logout: clears both cookies (Max-Age=0) and revokes the refresh
  *     session server-side.
+ *   - protected requests verify the access signature and live D1 session;
+ *     session revocation denies the next request without affecting another
+ *     device, and all-session revocation denies every device.
  *   - registrations/:id/approve and /:id/reject: `{ requestId, data:
  *     { accountStatus } }`, Idempotency-Key required, Admin/Staff-only,
  *     idempotent replay, and conflict/404 handling.
@@ -31,24 +32,23 @@ import { env } from "cloudflare:workers";
 import { beforeAll, describe, test } from "vitest";
 /* oxlint-disable vitest/require-top-level-describe -- shared workerd/D1 fixture spans all contract suites. */
 
-import { importLegacyUsers } from "./lib/auth/accounts";
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from "./lib/auth/cookies";
 import { handleLogout } from "./lib/auth/handlers";
-import { applyMigrations, testDb } from "./lib/auth/test-bootstrap";
-import { completeCredentialUpgrade } from "./lib/auth/upgrade";
+import {
+  issueSession,
+  revokeAllUserSessions,
+  revokeSession,
+} from "./lib/auth/sessions";
+import {
+  applyMigrations,
+  seedTestAccount,
+  testDb,
+} from "./lib/auth/test-bootstrap";
 import { CAPABILITY_CATALOG } from "./lib/identity/capability-catalog";
 import worker from "./worker";
 import type { Env } from "./worker";
 
 const SECRET = "test-access-token-secret";
-const HEADER = [
-  "User_ID",
-  "Name",
-  "Username",
-  "PIN_Code",
-  "System_Role",
-  "Status",
-];
 const HOST = "https://efcc.example";
 
 function testEnv(overrides: Partial<Env> = {}): Env {
@@ -220,7 +220,7 @@ async function registrationIdFor(username: string): Promise<string> {
   return row.request_id;
 }
 
-/** Log in as an upgraded account and return the raw access cookie value. */
+/** Log in as a password account and return the raw access cookie value. */
 async function accessCookieFor(
   username: string,
   password: string
@@ -234,6 +234,16 @@ async function accessCookieFor(
   );
   assert.strictEqual(res.status, 200, "login must succeed for fixture");
   return cookieValueFrom(readAuthCookiesFromResponse(res).access);
+}
+
+function meWithAccessToken(accessToken: string): Promise<Response> {
+  return worker.fetch(
+    authRequest("/api/v1/auth/me", {
+      method: "GET",
+      headers: { Cookie: `${ACCESS_COOKIE_NAME}=${accessToken}` },
+    }),
+    testEnv()
+  );
 }
 async function assignSystemIdentity(
   stableKey: string,
@@ -308,33 +318,117 @@ async function assignSystemIdentity(
 
 beforeAll(async () => {
   await applyMigrations();
-  await importLegacyUsers(testDb(), [
-    HEADER,
-    ["U001", "Alice Chan", "alice", "1234", "Admin", "Active"],
-    ["U002", "Bob Lee", "bob", "5678", "Member", "Active"],
-    // U003 stays legacy-imported (requires_upgrade=1) for the forced-upgrade
-    // login + upgrade tests.
-    ["U003", "Carol Wong", "carol", "0000", "Member", "Active"],
-    // U005 is a Staff member — the canonical elevated role (ADR-0025).
-    ["U005", "Eve Staff", "eve", "9999", "Staff", "Active"],
-  ]);
-  await completeCredentialUpgrade(testDb(), {
-    userId: "U001",
-    legacyPin: "1234",
-    newCredential: "alice-secret",
-  });
-  await completeCredentialUpgrade(testDb(), {
-    userId: "U002",
-    legacyPin: "5678",
-    newCredential: "bob-secret",
-  });
-  await completeCredentialUpgrade(testDb(), {
-    userId: "U005",
-    legacyPin: "9999",
-    newCredential: "eve-secret",
-  });
+  await Promise.all(
+    [
+      ["U001", "Alice Chan", "alice", "alice-secret"],
+      ["U002", "Bob Lee", "bob", "bob-secret"],
+      ["U005", "Eve Staff", "eve", "eve-secret"],
+      ["U006", "Session Test", "session-test", "session-secret"],
+      ["U007", "Revoke Test", "revoke-test", "revoke-secret"],
+    ].map(([userId, name, username, password]) =>
+      seedTestAccount({ userId, name, username, password })
+    )
+  );
   await assignSystemIdentity("admin", "U001");
   await assignSystemIdentity("staff", "U005");
+});
+
+describe("AUTH-02: protected request session validation", () => {
+  test("requires a valid access signature and a live D1 session", async () => {
+    const session = await issueSession(testDb(), {
+      userId: "U006",
+      accessTokenSecret: SECRET,
+    });
+    const idleExpired = await issueSession(testDb(), {
+      userId: "U006",
+      accessTokenSecret: SECRET,
+      expiresAt: Date.now() - 1,
+    });
+    try {
+      assert.strictEqual(
+        (await meWithAccessToken(session.accessToken)).status,
+        200
+      );
+      assert.strictEqual(
+        (await meWithAccessToken(`${session.accessToken}x`)).status,
+        401
+      );
+      assert.strictEqual(
+        (await meWithAccessToken(idleExpired.accessToken)).status,
+        401
+      );
+    } finally {
+      await revokeAllUserSessions(testDb(), "U006");
+    }
+  });
+
+  test("a revoked device is denied on the next request while another stays valid", async () => {
+    const phone = await issueSession(testDb(), {
+      userId: "U006",
+      accessTokenSecret: SECRET,
+      deviceFingerprint: "phone",
+    });
+    const tablet = await issueSession(testDb(), {
+      userId: "U006",
+      accessTokenSecret: SECRET,
+      deviceFingerprint: "tablet",
+    });
+    try {
+      assert.strictEqual(
+        (await meWithAccessToken(phone.accessToken)).status,
+        200
+      );
+      assert.strictEqual(
+        (await meWithAccessToken(tablet.accessToken)).status,
+        200
+      );
+      await revokeSession(testDb(), phone.sessionId);
+      assert.strictEqual(
+        (await meWithAccessToken(phone.accessToken)).status,
+        401
+      );
+      assert.strictEqual(
+        (await meWithAccessToken(tablet.accessToken)).status,
+        200
+      );
+    } finally {
+      await revokeAllUserSessions(testDb(), "U006");
+    }
+  });
+
+  test("all-session revocation denies both devices on their next request", async () => {
+    const phone = await issueSession(testDb(), {
+      userId: "U007",
+      accessTokenSecret: SECRET,
+      deviceFingerprint: "phone",
+    });
+    const tablet = await issueSession(testDb(), {
+      userId: "U007",
+      accessTokenSecret: SECRET,
+      deviceFingerprint: "tablet",
+    });
+    try {
+      assert.strictEqual(
+        (await meWithAccessToken(phone.accessToken)).status,
+        200
+      );
+      assert.strictEqual(
+        (await meWithAccessToken(tablet.accessToken)).status,
+        200
+      );
+      await revokeAllUserSessions(testDb(), "U007");
+      assert.strictEqual(
+        (await meWithAccessToken(phone.accessToken)).status,
+        401
+      );
+      assert.strictEqual(
+        (await meWithAccessToken(tablet.accessToken)).status,
+        401
+      );
+    } finally {
+      await revokeAllUserSessions(testDb(), "U007");
+    }
+  });
 });
 
 describe("AUTH-06: auth surface has no CORS / OPTIONS", () => {
@@ -369,7 +463,7 @@ describe("AUTH-06: auth surface has no CORS / OPTIONS", () => {
   });
 });
 
-describe("AUTH-06: legacy header transports rejected on auth surface", () => {
+describe("AUTH-06: forbidden header transports rejected on auth surface", () => {
   test("Authorization header is rejected fail-closed (403)", async () => {
     const res = await worker.fetch(
       authRequest("/api/v1/auth/login", {
@@ -557,13 +651,11 @@ describe("AUTH-06: login", () => {
         userId: string;
         name: string;
         status: string;
-        mustSetNewCredential: boolean;
       };
     };
     assert.strictEqual(body.data.userId, "U001");
     assert.strictEqual(body.data.name, "Alice Chan");
     assert.strictEqual(body.data.status, "Active");
-    assert.strictEqual(body.data.mustSetNewCredential, false);
     assertBodyHasNoTokenKeys(body);
     const { access, refresh } = readAuthCookiesFromResponse(res);
     assertLockedCookie(access, ACCESS_COOKIE_NAME);
@@ -680,42 +772,6 @@ describe("AUTH-06: login", () => {
       r2,
       "each login must mint a distinct refresh session"
     );
-  });
-
-  test("legacy account login verifies the legacy PIN and returns mustSetNewCredential with NO session", async () => {
-    const res = await worker.fetch(
-      authRequest("/api/v1/auth/login", {
-        headers: { Origin: HOST, "Content-Type": "application/json" },
-        body: { username: "carol", password: "0000" },
-      }),
-      testEnv()
-    );
-    assert.strictEqual(res.status, 200);
-    const body = (await assertCorrelated(res)) as {
-      data: { userId: string; mustSetNewCredential: boolean };
-    };
-    assert.strictEqual(body.data.userId, "U003");
-    assert.strictEqual(body.data.mustSetNewCredential, true);
-    // No session is issued before the credential is set.
-    assert.strictEqual(
-      res.headers.getSetCookie().length,
-      0,
-      "no cookies before upgrade"
-    );
-    assertBodyHasNoTokenKeys(body);
-  });
-
-  test("legacy account login with the wrong PIN is rejected (401)", async () => {
-    const res = await worker.fetch(
-      authRequest("/api/v1/auth/login", {
-        headers: { Origin: HOST },
-        body: { username: "carol", password: "9999" },
-      }),
-      testEnv()
-    );
-    assert.strictEqual(res.status, 401);
-    const body = await problemOf(res);
-    assert.strictEqual(body.code, "AUTH_REQUIRED");
   });
 
   test("login with an unknown user is rejected (401)", async () => {
@@ -885,28 +941,6 @@ describe("AUTH-06: logout", () => {
       assert.ok(raw.startsWith(`${name}=`));
       assert.match(raw, /Max-Age=0|Expires=/iu);
     }
-  });
-});
-
-describe("AUTH-06: legacy upgrade (preserved forced-upgrade)", () => {
-  test("upgrade verifies the legacy PIN, issues a session, and the body omits token keys", async () => {
-    const res = await worker.fetch(
-      authRequest("/api/v1/auth/upgrade", {
-        headers: { Origin: HOST, "Content-Type": "application/json" },
-        body: {
-          username: "carol",
-          legacyPin: "0000",
-          newCredential: "carol-new-secret",
-        },
-      }),
-      testEnv()
-    );
-    assert.strictEqual(res.status, 200);
-    const body = await assertCorrelated(res);
-    assertBodyHasNoTokenKeys(body);
-    const { access, refresh } = readAuthCookiesFromResponse(res);
-    assertLockedCookie(access, ACCESS_COOKIE_NAME);
-    assertLockedCookie(refresh, REFRESH_COOKIE_NAME);
   });
 });
 
@@ -1555,7 +1589,7 @@ describe("AUTH-05: registration queue listing", () => {
     assertBodyHasNoTokenKeys(body);
     const text = JSON.stringify(body);
     assert.ok(
-      !/credential|password|pin|user_id|requires_upgrade/iu.test(text),
+      !/credential|password|pin|user_id/iu.test(text),
       `queue listing must not expose credential/identity material, got: ${text}`
     );
     assertNoCors(res);

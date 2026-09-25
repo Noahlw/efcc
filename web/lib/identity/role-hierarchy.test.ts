@@ -24,8 +24,11 @@
 import { env } from "cloudflare:workers";
 import { beforeAll, describe, expect, test } from "vitest";
 
-import { importLegacyUsers } from "../auth/accounts";
-import { applyMigrations, testDb } from "../auth/test-bootstrap";
+import {
+  applyMigrations,
+  seedTestAccount,
+  testDb,
+} from "../auth/test-bootstrap";
 import {
   applyRoleMutation,
   loadRoleHierarchy,
@@ -434,12 +437,10 @@ describe("#478 role hierarchy and rename contract", () => {
         .prepare(
           `INSERT OR IGNORE INTO accounts
              (user_id, name, username, username_normalized, credential_hash,
-              credential_kind, credential_version, account_status, phone,
-              qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
-              failed_attempts, locked_until, lock_since, created_at, updated_at)
+              account_status, phone,
+              qr_code_string, created_at, updated_at)
            VALUES (?, 'Comma Account', 'comma-account', 'comma-account', NULL,
-                   'password', 2, 'Active', NULL, NULL, NULL, 0, 0,
-                   0, NULL, NULL, ?, ?)`
+                   'Active', NULL, NULL, ?, ?)`
         )
         .bind(commaAccount, Date.parse(NOW), Date.parse(NOW)),
       testDb()
@@ -533,11 +534,10 @@ describe("#478 role hierarchy and rename contract", () => {
         .prepare(
           `INSERT OR IGNORE INTO accounts
              (user_id, name, username, username_normalized, credential_hash,
-              credential_kind, credential_version, account_status, phone,
-              qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
-              failed_attempts, locked_until, lock_since, created_at, updated_at)
-           VALUES (?, 'Role-read-only', ?, ?, NULL, 'password', 2, 'Active',
-                   NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
+              account_status, phone,
+              qr_code_string, created_at, updated_at)
+           VALUES (?, 'Role-read-only', ?, ?, NULL, 'Active',
+                   NULL, NULL, ?, ?)`
         )
         .bind(
           actor,
@@ -1180,21 +1180,13 @@ describe("#478 role hierarchy and rename contract", () => {
     const actor = "E2E_DISPOSABLE_HIGHEST";
     const actorRoleId = "018f3b8a-0000-7000-8000-1000000000d1";
     const higherRoleId = "018f3b8a-0000-7000-8000-1000000000d2";
-    await importLegacyUsers(
-      testDb(),
-      [
-        ["User_ID", "Name", "Username", "PIN_Code", "System_Role", "Status"],
-        [
-          actor,
-          "Highest Test Actor",
-          "highest_test_actor",
-          "0000",
-          "Staff",
-          "Active",
-        ],
-      ],
-      Date.parse(NOW)
-    );
+    await seedTestAccount({
+      userId: actor,
+      name: "Highest Test Actor",
+      username: "highest_test_actor",
+      password: "highest-test-password",
+      now: Date.parse(NOW),
+    });
     const base = await readRevision();
     await applyRoleMutation(testDb(), {
       idempotency_key: "h-09-create",
@@ -1338,21 +1330,13 @@ describe("#478 role hierarchy and rename contract", () => {
     const base = await readRevision();
     const scopedRoleId = "018f3b8a-0000-7000-8000-1000000000e2";
     const scopedAccount = "E2E_DISPOSABLE_SCOPED_PL";
-    await importLegacyUsers(
-      testDb(),
-      [
-        ["User_ID", "Name", "Username", "PIN_Code", "System_Role", "Status"],
-        [
-          scopedAccount,
-          "Disposable Scoped PL",
-          "E2E_disposable_scoped_pl",
-          "0000",
-          "Staff",
-          "Active",
-        ],
-      ],
-      Date.parse(NOW)
-    );
+    await seedTestAccount({
+      userId: scopedAccount,
+      name: "Disposable Scoped PL",
+      username: "E2E_disposable_scoped_pl",
+      password: "scoped-pl-password",
+      now: Date.parse(NOW),
+    });
     await applyRoleMutation(testDb(), {
       idempotency_key: "h-10-create",
       request_fingerprint: "fp-h-10-create",
@@ -2714,11 +2698,10 @@ describe("#479 role definition creation, scoped authority, and sibling order", (
         .prepare(
           `INSERT OR IGNORE INTO accounts
              (user_id, name, username, username_normalized, credential_hash,
-              credential_kind, credential_version, account_status, phone,
-              qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
-              failed_attempts, locked_until, lock_since, created_at, updated_at)
-           VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active',
-                   NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
+              account_status, phone,
+              qr_code_string, created_at, updated_at)
+           VALUES (?, ?, ?, ?, NULL, 'Active',
+                   NULL, NULL, ?, ?)`
         )
         .bind(
           actor,

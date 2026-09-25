@@ -1,10 +1,10 @@
 # T05.5 Management Programs Migration Ledger
 
 **Owner:** T05.5 / [#555](https://github.com/Noahlw/efcc/issues/555)
-**Historical source:** `tests/e2e/programs-d1.test.ts`
+**Historical source:** retired `tests/e2e/programs-d1.test.ts` (removed after parity qualification on 2026-09-25; Git history preserves the source)
 **Current Browser Acceptance:** `tests/e2e/programs-management-acceptance.test.ts` at `phone-390`, `retries: 0`
 
-This ledger assigns management-facing logical behavior to the narrowest useful seam. The historical three-project Programs suite remains available during migration; its repeated viewport execution is not the authority for domain coverage.
+This ledger assigns management-facing logical behavior to the narrowest useful seam. The historical three-project Programs suite has been retired after parity qualification; its repeated viewport execution was not the authority for domain coverage.
 
 ## Executable mapping
 
@@ -62,4 +62,4 @@ The focused suite signs an admin in through the browser, creates a unique `E2E_T
 
 Permission, capability, D1 mutation, audit, conflict, notification, and idempotency variants remain in `web/lib/programs/*.test.ts` Worker Contract coverage. Responsive intent for workspace, settings, attention, and task geometry is explicitly reserved for T05.6.
 
-The independent T05.6 matrix uses the same deterministic `E2E_T05R_` fixture to measure the management workspace, task navigation, settings composition, attention popover, participants task, and events task at exactly 320, 390, and 1280 CSS pixels. It uses reads only after fixture setup and does not replay management mutations.
+The independent T05.6 matrix contains 21 responsive items and uses the deterministic `E2E_T05R_` fixture for the management workspace, task navigation, settings composition, attention popover, Participants task, and Events task. Its configured viewport projects cover 320, 360, 390, 402, 600, 799, 800, 1024, and 1440 CSS pixels; attendance-roster interactions use separate 360, 390, and 402 pixel projects. It reads after fixture setup and does not replay management mutations.

@@ -3,6 +3,10 @@
 Status: Implemented in Prompt 3 integration branch  
 Scope: Programs management surface only
 
+> Current schema note (2026-09-24): `web/migrations/0000_baseline.sql` is the
+> current rebuildable local schema. The migration name below records the
+> original introduction of this table; it is not an active migration path.
+
 ## Purpose
 
 The management landing page exposes a compact notification bell. Its badge and
@@ -31,7 +35,7 @@ new unread item while older read-state rows remain as audit state.
 
 ## Persistence
 
-Migration `0009_program_notification_reads.sql` creates:
+The original `0009_program_notification_reads.sql` migration created:
 
 - `user_id`
 - `source_key`

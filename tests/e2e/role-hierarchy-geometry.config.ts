@@ -27,6 +27,7 @@ export default defineConfig({
       },
     ],
   ],
+  outputDir: "test-results/phase-f/role-hierarchy-geometry/artifacts",
   use: {
     baseURL: "http://127.0.0.1:4173",
     trace: "off",

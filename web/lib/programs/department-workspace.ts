@@ -1617,6 +1617,27 @@ export class DepartmentWorkspace {
   async getManagementAccess(
     ctx: AuthorizationContext
   ): Promise<ManagementAccessView> {
+    // Unscoped resolution unions active grants; reject no-scope actors before
+    // scanning every Department and Program in the workspace.
+    const hasAnyManagementCapability = (
+      await Promise.all([
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGE, {}),
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_PUBLISH, {}),
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MODULE_CONFIGURE, {}),
+        this.authorizer.can(ctx, CAPABILITY.DEPARTMENT_MANAGER_ASSIGN, {}),
+        this.authorizer.can(ctx, CAPABILITY.PROGRAM_MANAGE, {}),
+        this.authorizer.can(ctx, CAPABILITY.PROGRAM_PUBLISH, {}),
+        this.authorizer.can(ctx, CAPABILITY.PROGRAM_LEADER_ASSIGN, {}),
+      ])
+    ).some(Boolean);
+    if (!hasAnyManagementCapability) {
+      return {
+        hasManagementCapability: false,
+        departmentScopes: 0,
+        programScopes: 0,
+      };
+    }
+
     const departments = await this.listDepartments(ctx);
     const departmentScopes = departments.filter(
       hasDepartmentManagementScope

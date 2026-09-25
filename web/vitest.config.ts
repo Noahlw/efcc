@@ -41,19 +41,13 @@ export default defineProject(async () => {
     test: {
       testTimeout: 30000,
       hookTimeout: 30000,
-      // Worker tests live next to the worker (`worker.test.ts`) and run
-      // in the pool-workers environment declared inline at the top of
-      // each file via `// @vitest-environment workers`. Client contract
-      // tests (`lib/*.test.ts`) run in the default node environment. The
-      // auth/session D1 tests (`lib/auth/*.test.ts`) run in the workers
-      // pool and call applyD1Migrations(env.DB, env.TEST_MIGRATIONS) at
-      // module scope (it only applies unapplied migrations, so it is safe
+      // `cloudflareTest()` supplies the Worker pool environment. Client
+      // contract tests (`lib/*.test.ts`) run in Node; auth/session D1 tests
+      // run in Workerd and call applyD1Migrations(env.DB, env.TEST_MIGRATIONS)
+      // at module scope (it only applies unapplied migrations, so it is safe
       // to call per file).
       include: ["worker.test.ts", "worker.auth.test.ts", "lib/**/*.test.ts"],
-      exclude: [
-        "lib/governance/**",
-        "lib/programs/programs-scroll.test.ts",
-      ],
+      exclude: ["lib/governance/**", "lib/programs/programs-scroll.test.ts"],
       // No secrets in output - the ticket's verification requirement.
       // Reporter stays the default (consolidated pass/fail counts).
     },

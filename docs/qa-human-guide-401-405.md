@@ -1,5 +1,7 @@
 # Human QA Guide — S2 Participant Stack (401→405) on Phase 391 baseline
 
+> Historical record for the 2026-08 S2 stack and its disposable local environment. The `programs-d1` suite/config and legacy-account examples below are retired; current local verification uses `pnpm verify` and `pnpm verify:programs`.
+
 > Stack head: `feat/405-s2-integration-gate` @ `d234b54b` → `feat/404` `be884f2f` → `feat/403` `8207ba89` → `feat/402` `51732027` → `feat/401` `cf04d951` → `feat/389-s2-05-program-detail` @ `88b96afa`
 > PRs: #406, #407, #409, #410, #411 — all **Ready for review**, required remote checks green.
 > No merge / auto-merge performed. This guide covers the disposable **local D1** surface only.
@@ -129,7 +131,7 @@ Quick human pass:
 3. **Recovery + wrapping** — see §4 ERR-01/ERR-02 + WRAP checks; verify at 320 and 1440 widths.
 4. **Home wrapping + skeleton** — see §5 checks; verify announcement detail overflow/focus.
 
-Non-promoted: a full `programs-d1.test.ts` phone-320 stress run is intentionally **62/66** due to 4 unrelated stateful management/permissions assertions outside the promoted gate — ignore for human QA, re-run the promoted grep if in doubt:
+Historical non-promoted result: the former full `programs-d1.test.ts` phone-320 stress run was **62/66** due to four stateful management/permissions assertions outside the promoted gate. The command below records how that historical run was selected; it is no longer a current test entry point.
 
 ```bash
 export PATH="/Users/noah.wong/.local/share/fnm/node-versions/v22.18.0/installation/bin:$PATH"

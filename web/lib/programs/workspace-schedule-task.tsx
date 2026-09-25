@@ -2,6 +2,9 @@
 
 import { useCallback, useRef, useState } from "react";
 
+import { COPY } from "@/lib/copy";
+import { ScreenHeader } from "@/lib/screen-foundations";
+
 import type { ScheduleException, ScheduleRule } from "./program-api";
 import { ProgramSettings } from "./program-settings";
 import { buildProgramsHref } from "./programs-intent";
@@ -190,9 +193,59 @@ export const ScheduleTask = () => {
   const eventsEnabled = modules.some(
     ({ module_key, enabled }) => module_key === "events" && enabled === 1
   );
+  const focusedSettingsTitle =
+    scheduleSettingsSection === "basics"
+      ? COPY.programs.settingsBasics
+      : scheduleSettingsSection === "publishing"
+        ? COPY.programs.settingsPublishing
+        : scheduleSettingsSection === "enrollment"
+          ? COPY.programs.settingsEnrollment
+          : scheduleSettingsSection === "attendance"
+            ? COPY.programs.settingsAttendance
+            : COPY.programs.schedulePageTitle;
+  const focusedSettingsLead =
+    scheduleSettingsSection === "basics"
+      ? COPY.programs.settingsBasicsLead
+      : scheduleSettingsSection === "publishing"
+        ? COPY.programs.settingsPublishingLead
+        : scheduleSettingsSection === "enrollment"
+          ? COPY.programs.settingsEnrollmentLead
+          : scheduleSettingsSection === "attendance"
+            ? COPY.programs.settingsAttendanceLead
+            : COPY.programs.schedulePageLead;
 
   return (
     <div className="grid min-w-0 gap-3" data-programs-schedule-task>
+      {scheduleOrigin === "settings" && settingsFocused && (
+        <ScreenHeader
+          level="child"
+          title={focusedSettingsTitle}
+          lead={focusedSettingsLead}
+          headingId="program-settings-focused-title"
+          backHref={buildProgramsHref({
+            mode: "management",
+            programId: program.program_id,
+            departmentId,
+            task: "settings",
+            hash,
+          })}
+          backLabel={COPY.programs.settingsBackToHub}
+          onBack={(event) => {
+            if (
+              event.defaultPrevented ||
+              event.button !== 0 ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey
+            ) {
+              return;
+            }
+            event.preventDefault();
+            onTaskChange("settings");
+          }}
+        />
+      )}
       <ProgramSettings
         program={program}
         section={scheduleSettingsSection ?? "schedule"}

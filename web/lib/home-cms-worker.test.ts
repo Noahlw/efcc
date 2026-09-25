@@ -5,10 +5,12 @@ import { beforeAll, describe, test } from "vitest";
 
 import worker from "../worker";
 import type { Env } from "../worker";
-import { importLegacyUsers } from "./auth/accounts";
 import { ACCESS_COOKIE_NAME } from "./auth/cookies";
-import { applyMigrations, testDb } from "./auth/test-bootstrap";
-import { completeCredentialUpgrade } from "./auth/upgrade";
+import {
+  applyMigrations,
+  seedTestAccount,
+  testDb,
+} from "./auth/test-bootstrap";
 
 const HOST = "https://efcc.example";
 const SECRET = "test-access-token-secret";
@@ -106,22 +108,19 @@ describe("Home Content CMS Worker routes", () => {
 
   beforeAll(async () => {
     await applyMigrations();
-    await importLegacyUsers(testDb(), [
-      ["User_ID", "Name", "Username", "PIN_Code", "System_Role", "Status"],
-      ["CMS-ADMIN", "CMS Admin", "cms-admin", "1234", "Admin", "Active"],
-      ["CMS-STAFF", "CMS Staff", "cms-staff", "1234", "Staff", "Active"],
-    ]);
-    await ensureAdminIdentity();
-    await completeCredentialUpgrade(testDb(), {
+    await seedTestAccount({
       userId: "CMS-ADMIN",
-      legacyPin: "1234",
-      newCredential: "cms-admin-password",
+      name: "CMS Admin",
+      username: "cms-admin",
+      password: "cms-admin-password",
     });
-    await completeCredentialUpgrade(testDb(), {
+    await seedTestAccount({
       userId: "CMS-STAFF",
-      legacyPin: "1234",
-      newCredential: "cms-staff-password",
+      name: "CMS Staff",
+      username: "cms-staff",
+      password: "cms-staff-password",
     });
+    await ensureAdminIdentity();
     adminCookie = await accessCookie();
   });
 

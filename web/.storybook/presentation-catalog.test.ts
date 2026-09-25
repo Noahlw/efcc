@@ -64,10 +64,10 @@ describe("T07 Screen Catalog foundation", () => {
     });
   });
 
-  test("catalogs every T07.2 baseline screen and its route", () => {
+  test("catalogs every current T07.2 screen and its route", () => {
     expect(
       PUBLIC_AUTH_MEMBER_COMMUNICATIONS_PRESENTATION_DECLARATIONS
-    ).toHaveLength(9);
+    ).toHaveLength(8);
     expect([
       ["auth-sign-in", psnsFor("auth-sign-in")],
       ["auth-register", psnsFor("auth-register")],
@@ -78,10 +78,7 @@ describe("T07 Screen Catalog foundation", () => {
       ["communications-messages", psnsFor("communications-messages")],
       ["public-not-found", psnsFor("public-not-found")],
     ]).toStrictEqual([
-      [
-        "auth-sign-in",
-        ["PSN-AUTH-SIGN-IN-DEFAULT", "PSN-AUTH-SIGN-IN-CREDENTIAL-UPGRADE"],
-      ],
+      ["auth-sign-in", ["PSN-AUTH-SIGN-IN-DEFAULT"]],
       ["auth-register", ["PSN-AUTH-REGISTER-DEFAULT"]],
       ["member-home", ["PSN-MEMBER-HOME-DEFAULT"]],
       ["member-profile", ["PSN-MEMBER-PROFILE-DEFAULT"]],
@@ -98,10 +95,10 @@ describe("T07 Screen Catalog foundation", () => {
       intent: null,
       primaryBaselinePsn: "PSN-AUTH-SIGN-IN-DEFAULT",
     });
-    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(41);
+    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(40);
   });
 
-  test("classifies the credential/PIN upgrade as a transient sign-in state", () => {
+  test("keeps the retired credential upgrade out of the current screen catalog", () => {
     const signIn = SCREEN_CATALOG.find(
       (entry) => entry.screenId === "auth-sign-in"
     );
@@ -359,7 +356,7 @@ describe("T07 Screen Catalog foundation", () => {
       primaryBaselinePsn: "PSN-ATTENDANCE-ASSISTED-CHECK-IN",
     });
     expect(SCREEN_CATALOG).toHaveLength(36);
-    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(41);
+    expect(SCREEN_PRESENTATION_DECLARATIONS).toHaveLength(40);
   });
 
   test("keeps Notifications Story metadata and navigation parser-backed", () => {

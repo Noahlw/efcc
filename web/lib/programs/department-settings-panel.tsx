@@ -243,6 +243,13 @@ export const DepartmentSettingsPanel = ({
     if (busy || mutationRecoveryRequired) {
       return;
     }
+    if (navigator.onLine === false) {
+      const message = COPY.programs.offlineError;
+      setActionError(message);
+      setNotice(null);
+      announce(message);
+      return;
+    }
     setBusy(true);
     setActionError(null);
     setNotice(null);

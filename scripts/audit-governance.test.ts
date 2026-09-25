@@ -427,32 +427,6 @@ describe("Governance CLI", () => {
       );
     });
 
-    it("enforces zero waivers for newly changed UI in affected mode while full mode respects waivers", () => {
-      // In affected mode, target file with historical debt fails because no waivers are applied
-      const affectedResult = runGovernanceAudit({
-        mode: "affected",
-        targetFiles: ["web/app/prototype/page.tsx"],
-        now: "2026-09-03T00:00:00Z",
-      });
-      expect(affectedResult.success).toBe(false);
-      expect(affectedResult.auditResult?.passed).toBe(false);
-      expect(affectedResult.auditResult?.violations.length).toBeGreaterThan(0);
-      expect(affectedResult.auditResult?.waivedViolations).toHaveLength(0);
-
-      // In full mode, the same target file applies historical waivers and passes cleanly
-      const fullResult = runGovernanceAudit({
-        mode: "full",
-        targetFiles: ["web/app/prototype/page.tsx"],
-        now: "2026-09-03T00:00:00Z",
-      });
-      expect(fullResult.success).toBe(true);
-      expect(fullResult.auditResult?.passed).toBe(true);
-      expect(fullResult.auditResult?.violations).toHaveLength(0);
-      expect(fullResult.auditResult?.waivedViolations.length).toBeGreaterThan(
-        0
-      );
-    });
-
     it("applies an exact historical waiver only when the same finding exists in the fixed base", () => {
       const tempRoot = fs.mkdtempSync(
         path.join("/tmp", "efcc-governance-baseline-waiver-")

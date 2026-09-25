@@ -1,15 +1,23 @@
-import { execFile } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { execFile, spawn } from "node:child_process";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer as createNetServer } from "node:net";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-
-import { createTestHarness } from "wrangler";
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../.."
+);
+const WEB_ROOT = path.join(REPO_ROOT, "web");
+const WRANGLER_BIN = path.join(
+  WEB_ROOT,
+  "node_modules",
+  "wrangler",
+  "bin",
+  "wrangler.js"
 );
 const CANARY_ARTIFACT_ROOT = path.join(
   REPO_ROOT,
@@ -117,35 +125,6 @@ export async function currentRevision() {
   }
 }
 
-function splitSqlStatements(sql) {
-  const statements = [];
-  let start = 0;
-  let quote = null;
-  for (let index = 0; index < sql.length; index += 1) {
-    const character = sql[index];
-    if (quote !== null) {
-      if (character === quote && sql[index + 1] === quote) {
-        index += 1;
-      } else if (character === quote) {
-        quote = null;
-      }
-    } else if (character === "'" || character === '"') {
-      quote = character;
-    } else if (character === ";") {
-      const statement = sql.slice(start, index).trim();
-      if (statement) {
-        statements.push(statement);
-      }
-      start = index + 1;
-    }
-  }
-  const finalStatement = sql.slice(start).trim();
-  if (finalStatement) {
-    statements.push(finalStatement);
-  }
-  return statements;
-}
-
 async function generatedFixtureSql() {
   try {
     const result = await execFileAsync(
@@ -163,6 +142,194 @@ async function generatedFixtureSql() {
   }
 }
 
+function availablePort() {
+  return new Promise((resolve, reject) => {
+    const server = createNetServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      server.close((error) => {
+        if (error) {
+          reject(error);
+        } else if (!address || typeof address === "string") {
+          reject(new Error("Could not determine an available Worker port"));
+        } else {
+          resolve(address.port);
+        }
+      });
+    });
+  });
+}
+
+function localWorkerServer(persistDirectory, port) {
+  const origin = `http://127.0.0.1:${port}`;
+  const child = spawn(
+    process.execPath,
+    [
+      WRANGLER_BIN,
+      "dev",
+      "--local",
+      "--ip",
+      "127.0.0.1",
+      "--port",
+      String(port),
+      "--persist-to",
+      persistDirectory,
+    ],
+    {
+      cwd: WEB_ROOT,
+      detached: process.platform !== "win32",
+      stdio: ["ignore", "pipe", "pipe"],
+    }
+  );
+  let logText = "";
+  let spawnError = null;
+  let closePromise = null;
+  let exitResult = null;
+  const exited = new Promise((resolve) => {
+    child.once("close", (code, signal) => {
+      exitResult = { code, signal };
+      resolve(exitResult);
+    });
+  });
+  const capture = (chunk) => {
+    logText = `${logText}${chunk}`.slice(-256_000);
+  };
+  child.stdout.setEncoding("utf8").on("data", capture);
+  child.stderr.setEncoding("utf8").on("data", capture);
+  child.once("error", (error) => {
+    spawnError = error;
+  });
+
+  const close = async () => {
+    if (closePromise !== null) return closePromise;
+    closePromise = (async () => {
+      process.off("SIGINT", onInterrupt);
+      process.off("SIGTERM", onTerminate);
+      if (exitResult === null) {
+        const signal = (name) => {
+          try {
+            if (process.platform === "win32" || child.pid === undefined) {
+              child.kill(name);
+            } else {
+              process.kill(-child.pid, name);
+            }
+          } catch (error) {
+            if (error?.code !== "ESRCH") throw error;
+          }
+        };
+        signal("SIGTERM");
+        let timeoutId;
+        try {
+          const timeout = new Promise((resolve) => {
+            timeoutId = setTimeout(() => resolve(null), 5_000);
+          });
+          if ((await Promise.race([exited, timeout])) === null) {
+            signal("SIGKILL");
+            await exited;
+          }
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      }
+      await rm(persistDirectory, { recursive: true, force: true });
+    })();
+    return closePromise;
+  };
+  const forwardSignal = (signal, exitCode) => {
+    void close()
+      .catch((error) => {
+        process.stderr.write(
+          `Local Worker cleanup failed: ${error instanceof Error ? error.message : String(error)}\n`
+        );
+      })
+      .finally(() => {
+        process.exitCode = exitCode;
+        process.kill(process.pid, signal);
+      });
+  };
+  const onInterrupt = () => forwardSignal("SIGINT", 130);
+  const onTerminate = () => forwardSignal("SIGTERM", 143);
+  process.once("SIGINT", onInterrupt);
+  process.once("SIGTERM", onTerminate);
+
+  return {
+    origin,
+    getLogs() {
+      return logText.split(/\r?\n/u).filter(Boolean);
+    },
+    debug() {
+      if (logText) process.stderr.write(logText);
+    },
+    async waitUntilReady() {
+      const deadline = Date.now() + 30_000;
+      let lastError = null;
+      while (Date.now() < deadline) {
+        if (spawnError) throw spawnError;
+        if (exitResult !== null) {
+          throw new Error(
+            `Local Wrangler Worker exited before readiness (${exitResult.code ?? exitResult.signal})`
+          );
+        }
+        try {
+          const response = await fetch(`${origin}/api/v1/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+            signal: AbortSignal.timeout(1_000),
+          });
+          if (response.status < 500) return;
+          lastError = new Error(
+            `Worker readiness returned HTTP ${response.status}`
+          );
+        } catch (error) {
+          lastError = error;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      throw new Error(
+        "Local Wrangler Worker did not become ready within 30 seconds",
+        {
+          cause: lastError,
+        }
+      );
+    },
+    close,
+  };
+}
+
+async function executeLocalSqlFile(
+  name,
+  persistDirectory,
+  sql,
+  artifactDirectory
+) {
+  const filename = path.join(persistDirectory, `${name}.sql`);
+  await writeFile(filename, `${sql.trim()}\n`, "utf8");
+  try {
+    await runCommand(
+      name,
+      [
+        "--filter",
+        "web",
+        "exec",
+        "wrangler",
+        "d1",
+        "execute",
+        "efcc-identity",
+        "--local",
+        "--persist-to",
+        persistDirectory,
+        "--file",
+        filename,
+      ],
+      artifactDirectory
+    );
+  } finally {
+    await rm(filename, { force: true });
+  }
+}
+
 async function assertLocalSecret() {
   const filename = path.join(REPO_ROOT, "web", ".dev.vars");
   let contents;
@@ -170,7 +337,7 @@ async function assertLocalSecret() {
     contents = await readFile(filename, "utf8");
   } catch (cause) {
     throw new CanaryFailure(
-      "web/.dev.vars is required for the local Harness canary",
+      "web/.dev.vars is required for the local Worker canary",
       { category: "fixture/setup", phase: "fixture/setup", cause }
     );
   }
@@ -189,36 +356,50 @@ async function assertLocalSecret() {
   }
 }
 
-async function seedWorkerDatabase(worker, artifactDirectory) {
+async function seedWorkerDatabase(persistDirectory, artifactDirectory) {
   try {
-    await worker.applyD1Migrations("DB");
-    const workerEnv = await worker.getEnv();
-    if (!workerEnv?.DB) {
-      throw new Error("Harness Worker did not expose the DB binding");
-    }
-    const statements = splitSqlStatements(
-      (await generatedFixtureSql()).replace(/^\s*--.*$/gim, "")
+    await runCommand(
+      "migrations",
+      [
+        "--filter",
+        "web",
+        "exec",
+        "wrangler",
+        "d1",
+        "migrations",
+        "apply",
+        "efcc-identity",
+        "--local",
+        "--persist-to",
+        persistDirectory,
+      ],
+      artifactDirectory
     );
-    const progress = [];
-    for (const [index, statement] of statements.entries()) {
-      progress.push({ statement: index + 1, status: "started" });
-      await workerEnv.DB.prepare(statement).run();
-      progress[progress.length - 1].status = "passed";
-    }
+    const seedSql = (await generatedFixtureSql())
+      .replace(/^\s*--.*$/gim, "")
+      .trim();
+    await executeLocalSqlFile(
+      "fixture-seed",
+      persistDirectory,
+      seedSql,
+      artifactDirectory
+    );
     await writeJson(path.join(artifactDirectory, "fixture-seed.json"), {
-      statements: progress.length,
-      progress,
-      storage: "createTestHarness Worker DB binding",
+      identitySeed: "applied to fresh local D1",
+      storage: "Wrangler local persistence directory",
     });
-    return workerEnv.DB;
+    return { persistDirectory };
   } catch (cause) {
     throw cause instanceof CanaryFailure
       ? cause
-      : new CanaryFailure("Harness D1 migration or fixture setup failed", {
-          category: "fixture/setup",
-          phase: "fixture/setup",
-          cause,
-        });
+      : new CanaryFailure(
+          "Local Wrangler D1 migration or fixture setup failed",
+          {
+            category: "fixture/setup",
+            phase: "fixture/setup",
+            cause,
+          }
+        );
   }
 }
 
@@ -503,17 +684,30 @@ async function createFixture(target, adminCookie) {
 }
 
 async function cleanupScenario(db, programId) {
-  await db.batch([
-    db.prepare("DELETE FROM enrollments WHERE program_id = ?").bind(programId),
-    db
-      .prepare("DELETE FROM enrollment_requests WHERE program_id = ?")
-      .bind(programId),
-    db
-      .prepare(
-        "DELETE FROM sessions WHERE user_id IN ('U-E2E-ADMIN', 'U-E2E-MEMBER')"
-      )
-      .bind(),
-  ]);
+  const safeProgramId = `'${String(programId).replaceAll("'", "''")}'`;
+  const sql = [
+    `DELETE FROM enrollments WHERE program_id = ${safeProgramId}`,
+    `DELETE FROM enrollment_requests WHERE program_id = ${safeProgramId}`,
+    "DELETE FROM sessions WHERE user_id IN ('U-E2E-ADMIN', 'U-E2E-MEMBER')",
+  ].join("; ");
+  await execFileAsync(
+    "pnpm",
+    [
+      "--filter",
+      "web",
+      "exec",
+      "wrangler",
+      "d1",
+      "execute",
+      "efcc-identity",
+      "--local",
+      "--persist-to",
+      db.persistDirectory,
+      "--command",
+      sql,
+    ],
+    { cwd: REPO_ROOT, maxBuffer: 4 * 1024 * 1024 }
+  );
 }
 
 async function runScenario(target, db, programId, scenarioIndex, deadlineAt) {
@@ -712,10 +906,11 @@ async function runScenario(target, db, programId, scenarioIndex, deadlineAt) {
   }
 }
 
-async function runCommand(name, args, artifactDirectory) {
+async function runCommand(name, args, artifactDirectory, env = process.env) {
   try {
     const result = await execFileAsync("pnpm", args, {
       cwd: REPO_ROOT,
+      env,
       maxBuffer: 8 * 1024 * 1024,
     });
     await writeFile(
@@ -743,36 +938,24 @@ export async function prepareProgramsHarness(
   { withFixture = true } = {}
 ) {
   let server = null;
+  let persistDirectory = null;
   try {
     await assertLocalSecret();
     await runCommand("build", ["--dir", "web", "build"], artifactDirectory);
+    persistDirectory = await mkdtemp(path.join(tmpdir(), "efcc-programs-d1-"));
+    const db = await seedWorkerDatabase(persistDirectory, artifactDirectory);
+    server = localWorkerServer(persistDirectory, await availablePort());
+    await server.waitUntilReady();
+    const target = new URL(server.origin);
+    const adminCookie = await login(target, ADMIN);
     await runCommand(
-      "bundle",
-      [
-        "--dir",
-        "web",
-        "exec",
-        "wrangler",
-        "deploy",
-        "--dry-run",
-        "--outdir",
-        ".wrangler/local-bundle",
-      ],
-      artifactDirectory
+      "demo-seed",
+      ["--silent", "exec", "tsx", "tests/e2e/seed-demo.ts"],
+      artifactDirectory,
+      { ...process.env, DEMO_TARGET_URL: target.origin }
     );
-    server = createTestHarness({
-      root: REPO_ROOT,
-      workers: [
-        {
-          configPath: "./web/wrangler.jsonc",
-          prebuiltWorkerDir: "./web/.wrangler/local-bundle",
-        },
-      ],
-    });
-    const target = (await server.listen()).url;
-    const db = await seedWorkerDatabase(server.getWorker(), artifactDirectory);
     const fixture = withFixture
-      ? await createFixture(target, await login(target, ADMIN))
+      ? await createFixture(target, adminCookie)
       : null;
     return { server, target, db, fixture };
   } catch (error) {
@@ -791,6 +974,7 @@ export async function prepareProgramsHarness(
         category: error?.category ?? "fixture/setup",
         phase: error?.phase ?? "fixture/setup",
         message: error instanceof Error ? error.message : String(error),
+        cause: error?.cause instanceof Error ? error.cause.message : undefined,
         revision: await currentRevision(),
         layer: "harness-setup",
         logicalScenario: null,
@@ -800,9 +984,12 @@ export async function prepareProgramsHarness(
         firstCausalRuntimeSignal: firstCausalRuntimeSignal(runtimeLogs),
         downstreamSymptoms: [],
       }).catch(() => undefined);
-      await server.close().catch(() => undefined);
+      await server.close();
     }
     if (server === null) {
+      if (persistDirectory !== null) {
+        await rm(persistDirectory, { recursive: true, force: true });
+      }
       await writeJson(
         path.join(artifactDirectory, "runtime-logs.json"),
         []
@@ -811,6 +998,7 @@ export async function prepareProgramsHarness(
         category: error?.category ?? "fixture/setup",
         phase: error?.phase ?? "fixture/setup",
         message: error instanceof Error ? error.message : String(error),
+        cause: error?.cause instanceof Error ? error.cause.message : undefined,
         revision: await currentRevision(),
         layer: "harness-setup",
         logicalScenario: null,
@@ -833,7 +1021,7 @@ async function main() {
   const setupStartedAt = Date.now();
   const manifest = {
     schemaVersion: 1,
-    runtime: "createTestHarness",
+    runtime: "wrangler-dev-local",
     config: "web/wrangler.jsonc",
     retries: CANARY_RETRIES,
     windowMs: CANARY_DURATION_MS,

@@ -10,9 +10,9 @@ import { COPY, errorCopyFor } from "@/lib/copy";
 import { announce } from "@/lib/live-region";
 import { searchManagementMembers } from "@/lib/programs/program-api";
 import type { MemberDirectoryMember } from "@/lib/programs/program-api";
-import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { RouteHeader } from "@/lib/route-header";
 import { rememberDeepLink } from "@/lib/session";
+import { useAsyncResource } from "@/lib/use-async-resource";
 
 import { DirectoryFrame } from "./directory-frame";
 import type { DirectoryFrameState } from "./directory-frame";

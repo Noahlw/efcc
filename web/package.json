@@ -8,9 +8,8 @@
     "dev:local": "next build && pnpm db:migrate:local && wrangler dev",
     "db:migrate:local": "wrangler d1 migrations apply efcc-identity --local",
     "build": "next build",
-    "start": "next start",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.worker.json",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=2",
     "test:components": "vitest run --config vitest.components.config.ts",
     "storybook": "node scripts/storybook-worktree.mjs",
     "storybook:build": "storybook build",
@@ -52,13 +51,6 @@
     "@vitejs/plugin-react": "^6.0.5",
     "@vitest/browser": "4.1.10",
     "@vitest/browser-playwright": "4.1.10",
-    "@vitest/expect": "4.1.10",
-    "@vitest/mocker": "4.1.10",
-    "@vitest/pretty-format": "4.1.10",
-    "@vitest/runner": "4.1.10",
-    "@vitest/snapshot": "4.1.10",
-    "@vitest/spy": "4.1.10",
-    "@vitest/utils": "4.1.10",
     "jsdom": "^30.0.1",
     "msw": "^2.15.0",
     "msw-storybook-addon": "3.0.0",
@@ -67,10 +59,5 @@
     "typescript": "^5",
     "vitest": "^4.1.10",
     "wrangler": "4.131.2"
-  },
-  "msw": {
-    "workerDirectory": [
-      ".storybook/public"
-    ]
   }
 }

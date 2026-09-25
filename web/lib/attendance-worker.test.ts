@@ -7,10 +7,12 @@ import { beforeAll, describe, test, vi } from "vitest";
 import worker from "../worker";
 import type { Env } from "../worker";
 import { handleMaterializeAttendance } from "./attendance";
-import { importLegacyUsers } from "./auth/accounts";
 import { ACCESS_COOKIE_NAME } from "./auth/cookies";
-import { applyMigrations, testDb } from "./auth/test-bootstrap";
-import { completeCredentialUpgrade } from "./auth/upgrade";
+import {
+  applyMigrations,
+  seedTestAccount,
+  testDb,
+} from "./auth/test-bootstrap";
 
 const HOST = "https://efcc.example";
 const SECRET = "test-access-token-secret";
@@ -126,37 +128,26 @@ function assertNoGuestLeakage(body: Record<string, unknown>): void {
 describe("attendance Worker routes", () => {
   beforeAll(async () => {
     await applyMigrations();
-    await importLegacyUsers(testDb(), [
-      ["User_ID", "Name", "Username", "PIN_Code", "System_Role", "Status"],
-      ["ATT-ADMIN", "Attendance Admin", "att-admin", "1234", "Admin", "Active"],
-      [
-        "ATT-MEMBER",
-        "Attendance Member",
-        "att-member",
-        "5678",
-        "Member",
-        "Active",
-      ],
-      [
-        "ATT-INACTIVE",
-        "Inactive Member",
-        "att-inactive",
-        "9999",
-        "Member",
-        "Deactivated",
-      ],
-    ]);
-    await ensureAdminIdentity();
-    await completeCredentialUpgrade(testDb(), {
+    await seedTestAccount({
       userId: "ATT-ADMIN",
-      legacyPin: "1234",
-      newCredential: "att-admin-password",
+      name: "Attendance Admin",
+      username: "att-admin",
+      password: "att-admin-password",
     });
-    await completeCredentialUpgrade(testDb(), {
+    await seedTestAccount({
       userId: "ATT-MEMBER",
-      legacyPin: "5678",
-      newCredential: "att-member-password",
+      name: "Attendance Member",
+      username: "att-member",
+      password: "att-member-password",
     });
+    await seedTestAccount({
+      userId: "ATT-INACTIVE",
+      name: "Inactive Member",
+      username: "att-inactive",
+      password: "att-inactive-password",
+      accountStatus: "Deactivated",
+    });
+    await ensureAdminIdentity();
     await testDb()
       .prepare(`UPDATE accounts SET qr_code_string = ? WHERE user_id = ?`)
       .bind("ATT-MEMBER-QR", "ATT-MEMBER")

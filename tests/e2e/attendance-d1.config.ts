@@ -1,7 +1,7 @@
 // ATT-04 (#216) — local/deployed D1 QR-attendance end-to-end proof.
 //
-// Mirrors programs-d1.config.ts: local Worker/D1 by default, with an
-// explicit PROGRAMS_TARGET_URL override for an isolated remote smoke and
+// Mirrors the Programs acceptance target validation: local Worker/D1 by
+// default, with an explicit PROGRAMS_TARGET_URL override for an isolated smoke and
 // the same six PROGRAMS_* role fixtures and fail-closed host validation.
 // The test list is attendance-only; runs use phone-375x667 and
 // desktop-1280x720 viewport projects like live-ui.
@@ -9,10 +9,9 @@
 
 import { defineConfig } from "@playwright/test";
 
-// Local-first default (see AGENTS.md): `wrangler dev` serves the Worker +
-// local D1 on this origin. Override PROGRAMS_TARGET_URL for the shared
-// dev-testing worker (see .github/CI-SECRETS.md) or another
-// efcc-auth-*/efcc-dev-*.efcc-ggc.workers.dev acceptance host.
+// Local-first diagnostic (see AGENTS.md): `wrangler dev` serves the Worker +
+// local D1 on this origin. Use a remote override only after the exact Worker
+// and D1 are confirmed disposable in the target inventory.
 const DEFAULT_TARGET_URL = "http://127.0.0.1:8787";
 
 const targetUrl = process.env.PROGRAMS_TARGET_URL ?? DEFAULT_TARGET_URL;

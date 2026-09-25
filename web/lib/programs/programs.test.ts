@@ -18,10 +18,12 @@ import { afterAll, beforeAll, describe, test } from "vitest";
 
 import worker from "../../worker";
 import type { Env } from "../../worker";
-import { importLegacyUsers } from "../auth/accounts";
 import { ACCESS_COOKIE_NAME } from "../auth/cookies";
-import { applyMigrations, testDb } from "../auth/test-bootstrap";
-import { completeCredentialUpgrade } from "../auth/upgrade";
+import {
+  applyMigrations,
+  seedTestAccount,
+  testDb,
+} from "../auth/test-bootstrap";
 import { CAPABILITY_CATALOG } from "../identity/capability-catalog";
 import { applyAuthoritativeRevision } from "./authoritative-revision";
 import { D1CapabilityAuthorizer } from "./capability-authorizer";
@@ -39,14 +41,6 @@ import {
 } from "./recurrence";
 
 const SECRET = "test-access-token-secret";
-const HEADER = [
-  "User_ID",
-  "Name",
-  "Username",
-  "PIN_Code",
-  "System_Role",
-  "Status",
-];
 const HOST = "https://efcc.example";
 
 function testEnv(overrides: Partial<Env> = {}): Env {
@@ -384,28 +378,35 @@ async function assignSystemIdentity(
 }
 beforeAll(async () => {
   await applyMigrations();
-  await importLegacyUsers(testDb(), [
-    HEADER,
-    ["U001", "Alice Chan", "alice", "1234", "Admin", "Active"],
-    ["U002", "Bob Lee", "bob", "5678", "Member", "Active"],
-    ["U004", "Dana Pending", "dana", "9999", "Member", "Pending"],
-    ["U005", "Staff User", "staff", "2468", "Staff", "Active"],
-  ]);
-  await completeCredentialUpgrade(testDb(), {
-    userId: "U001",
-    legacyPin: "1234",
-    newCredential: "alice-secret",
-  });
-  await completeCredentialUpgrade(testDb(), {
-    userId: "U002",
-    legacyPin: "5678",
-    newCredential: "bob-secret",
-  });
-  await completeCredentialUpgrade(testDb(), {
-    userId: "U005",
-    legacyPin: "2468",
-    newCredential: "staff-secret",
-  });
+  await Promise.all(
+    [
+      {
+        userId: "U001",
+        name: "Alice Chan",
+        username: "alice",
+        password: "alice-secret",
+      },
+      {
+        userId: "U002",
+        name: "Bob Lee",
+        username: "bob",
+        password: "bob-secret",
+      },
+      {
+        userId: "U004",
+        name: "Dana Pending",
+        username: "dana",
+        password: "dana-secret",
+        accountStatus: "Pending" as const,
+      },
+      {
+        userId: "U005",
+        name: "Staff User",
+        username: "staff",
+        password: "staff-secret",
+      },
+    ].map((account) => seedTestAccount(account))
+  );
   await assignSystemIdentity("admin", "U001");
   await assignSystemIdentity("member", "U002");
   await assignSystemIdentity("staff", "U005");
@@ -418,17 +419,12 @@ describe("R44: durable Enrollment Approval Runs", () => {
   const fixtureProgramIds = new Set<string>();
 
   beforeAll(async () => {
-    await importLegacyUsers(testDb(), [
-      HEADER,
-      [
-        "R44-U003",
-        "R44 Member 003",
-        "r44-member-003",
-        "9033",
-        "Member",
-        "Active",
-      ],
-    ]);
+    await seedTestAccount({
+      userId: "R44-U003",
+      name: "R44 Member 003",
+      username: "r44-member-003",
+      password: "r44-member-003-secret",
+    });
     adminAccess = await accessCookieFor("alice", "alice-secret");
     memberAccess = await accessCookieFor("bob", "bob-secret");
     const department = await createDepartment(adminAccess, {
@@ -1132,7 +1128,16 @@ describe("R44: durable Enrollment Approval Runs", () => {
         "Active",
       ];
     });
-    await importLegacyUsers(testDb(), [HEADER, ...members]);
+    await Promise.all(
+      members.map(([userId, name, username]) =>
+        seedTestAccount({
+          userId,
+          name,
+          username,
+          password: `${username}-secret`,
+        })
+      )
+    );
     const programId = await newProgram("R44 mixed thirty");
     const memberIds = members.map(([userId]) => userId);
     const requestIds = await pendingRequests(programId, memberIds);
@@ -2077,14 +2082,11 @@ describe("MUI-01: capability-aware management reads", () => {
   });
 
   test("cockpit projection reauthorizes scope, selects next event, and counts live attendance/roster", async () => {
-    await importLegacyUsers(testDb(), [
-      HEADER,
-      ["U999", "Tester Carol", "carol_tester", "9012", "Member", "Active"],
-    ]);
-    await completeCredentialUpgrade(testDb(), {
+    await seedTestAccount({
       userId: "U999",
-      legacyPin: "9012",
-      newCredential: "carol-tester-secret",
+      name: "Tester Carol",
+      username: "carol_tester",
+      password: "carol-tester-secret",
     });
     const adminAccess = await accessCookieFor("alice", "alice-secret");
     const leaderAccess = await accessCookieFor("bob", "bob-secret");
@@ -3290,6 +3292,30 @@ describe("PRG-01: programs", () => {
       lifecycle: "Draft",
       discoverability: "Listed",
       enrollment_mode: "MemberRequest",
+    });
+
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const memberUpdate = await worker.fetch(
+      programsRequest(`/api/v1/programs/${program.program_id}`, {
+        method: "PATCH",
+        headers: {
+          Origin: HOST,
+          Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { name: "Member changed this Program" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(memberUpdate.status, 403);
+    assert.strictEqual((await problemOf(memberUpdate)).code, "FORBIDDEN");
+    const unchanged = await testDb()
+      .prepare("SELECT name, lifecycle FROM programs WHERE program_id = ?")
+      .bind(program.program_id)
+      .first<{ name: string; lifecycle: string }>();
+    assert.deepStrictEqual(unchanged, {
+      name: "Lifecycle Program",
+      lifecycle: "Draft",
     });
 
     const invalid = await worker.fetch(
@@ -7516,9 +7542,7 @@ describe("PRG-02: events", () => {
     assert.strictEqual(res.status, 200);
     const text = await res.text();
     assert.ok(
-      !/password|credential_hash|legacy_pin_hash|access_token|session_token/iu.test(
-        text
-      )
+      !/password|credential_hash|access_token|session_token/iu.test(text)
     );
 
     const listed = await worker.fetch(
@@ -7532,9 +7556,7 @@ describe("PRG-02: events", () => {
     );
     const listedText = await listed.text();
     assert.ok(
-      !/password|credential_hash|legacy_pin_hash|access_token|session_token/iu.test(
-        listedText
-      )
+      !/password|credential_hash|access_token|session_token/iu.test(listedText)
     );
   });
 });
@@ -8573,6 +8595,17 @@ describe("EVT-01: event operations (#251)", () => {
         data: { event: { availability: string } };
       };
       assert.strictEqual(result.data.event.availability, "Inactive");
+      const enrollment = await testDb()
+        .prepare(
+          "SELECT status FROM enrollments WHERE program_id = ? AND member_user_id = 'U002' ORDER BY created_at DESC LIMIT 1"
+        )
+        .bind(programId)
+        .first<{ status: string }>();
+      assert.strictEqual(
+        enrollment?.status,
+        "Active",
+        "event deactivation must leave the unrelated Program enrollment Active"
+      );
       const audit = await testDb()
         .prepare(
           "SELECT outcome FROM audit_events WHERE entity_id = ? AND action = 'EVENT_AVAILABILITY' ORDER BY inserted_at DESC LIMIT 1"
@@ -8892,14 +8925,11 @@ describe("PRG-03: enrollment requests", () => {
   let managerOnlyId = "";
 
   beforeAll(async () => {
-    await importLegacyUsers(testDb(), [
-      HEADER,
-      ["U003", "Carol Wong", "carol", "9012", "Member", "Active"],
-    ]);
-    await completeCredentialUpgrade(testDb(), {
+    await seedTestAccount({
       userId: "U003",
-      legacyPin: "9012",
-      newCredential: "carol-secret",
+      name: "Carol Wong",
+      username: "carol",
+      password: "carol-secret",
     });
     adminAccess = await accessCookieFor("alice", "alice-secret");
     memberAccess = await accessCookieFor("bob", "bob-secret");
@@ -9462,9 +9492,7 @@ describe("PRG-03: enrollment requests", () => {
     );
     const text = await res.text();
     assert.ok(
-      !/password|credential_hash|legacy_pin_hash|access_token|session_token/iu.test(
-        text
-      )
+      !/password|credential_hash|access_token|session_token/iu.test(text)
     );
   });
 
@@ -9967,9 +9995,7 @@ describe("PRG-03: enrollments", () => {
     );
     const text = await res.text();
     assert.ok(
-      !/password|credential_hash|legacy_pin_hash|access_token|session_token/iu.test(
-        text
-      )
+      !/password|credential_hash|access_token|session_token/iu.test(text)
     );
   });
 
@@ -11802,14 +11828,11 @@ describe("PUI-04: participant Enrollment lifecycle", () => {
 describe("NTF-01: management notification read state (#256)", () => {
   test("projects scoped sources, reads them idempotently, and reopens a revised source", async () => {
     const adminAccess = await accessCookieFor("alice", "alice-secret");
-    await importLegacyUsers(testDb(), [
-      HEADER,
-      ["U006", "Eve Member", "eve", "3456", "Member", "Active"],
-    ]);
-    await completeCredentialUpgrade(testDb(), {
+    await seedTestAccount({
       userId: "U006",
-      legacyPin: "3456",
-      newCredential: "eve-secret",
+      name: "Eve Member",
+      username: "eve",
+      password: "eve-secret",
     });
     const memberAccess = await accessCookieFor("eve", "eve-secret");
     const department = await createDepartment(adminAccess, {

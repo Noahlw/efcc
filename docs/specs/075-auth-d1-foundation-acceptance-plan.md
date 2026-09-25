@@ -1,5 +1,7 @@
 # AUTH-01 / AUTH-02 Acceptance Plan
 
+> Historical acceptance record. EFCC has no legacy accounts to import; the Google Users/PIN importer, forced credential-upgrade flow, and PIN-only lockout criteria below were retired in the repo-wide organization cleanup. New username/password authentication, registration approval, and the cookie-only Worker contract remain current. The old deployed-workflow and `workflow_dispatch` instructions are obsolete after [ADR-0056](../adr/0056-local-only-verification.md); current local verification lives in [TESTING.md](../../TESTING.md). [ADR-0058](../adr/0058-protected-request-session-validation.md) now requires a live session check on protected requests; Auth-provider replacement and password-login abuse protection remain deferred to [#639](https://github.com/Noahlw/efcc/issues/639).
+
 **Tickets:** AUTH-01 (#159), AUTH-02 (#160)
 **Spec authority:** ADR-0020 (locked legacy-PIN-hash migration path, D1 identity boundary)
 **Date:** 2026-08-05

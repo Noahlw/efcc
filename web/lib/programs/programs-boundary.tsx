@@ -29,6 +29,7 @@ import {
   rememberProgramsNavigationContext,
 } from "@/lib/session";
 
+import { useAsyncResource } from "../use-async-resource";
 import { ManagementDirectory } from "./management-directory";
 import {
   ParticipantDirectory,
@@ -55,7 +56,6 @@ import type {
 import { ProgramsNotifications } from "./programs-notifications";
 import type { ManagementNotificationState } from "./programs-notifications";
 import { readProgramsScrollY } from "./programs-scroll";
-import { useAsyncResource } from "./use-async-resource";
 import {
   clearAuthenticatedProgramsRecovery,
   WorkspaceRouteProvider,
@@ -278,6 +278,7 @@ const ManagementPanel = ({
   onSettingsSectionChange,
   onScheduleEditorChange,
   onDepartmentSettingsChange,
+  onNavigateHref,
   restoredNavigationContext,
 }: {
   projection: ProgramsManagementAccess;
@@ -309,6 +310,7 @@ const ManagementPanel = ({
     ruleId?: string | null
   ) => void;
   onDepartmentSettingsChange: (departmentId: string | null) => void;
+  onNavigateHref: (href: string) => void;
   restoredNavigationContext: ReturnType<
     typeof consumeProgramsNavigationContext
   >;
@@ -425,6 +427,7 @@ const ManagementPanel = ({
       onRetry={retryNotifications}
       onOpen={refreshNotifications}
       onMarkRead={markNotificationsRead}
+      onNavigateItem={onNavigateHref}
       departmentId={intent.departmentId}
       hash={intent.hash}
       full={intent.task === "notifications"}
@@ -587,6 +590,7 @@ const ProgramsBoundaryBody = ({
   onSettingsSectionChange,
   onScheduleEditorChange,
   onDepartmentSettingsChange,
+  onNavigateHref,
   restoredNavigationContext,
   participantCatalogQuery,
   participantCatalogFilter,
@@ -636,6 +640,7 @@ const ProgramsBoundaryBody = ({
     ruleId?: string | null
   ) => void;
   onDepartmentSettingsChange: (departmentId: string | null) => void;
+  onNavigateHref: (href: string) => void;
   restoredNavigationContext: ReturnType<
     typeof consumeProgramsNavigationContext
   >;
@@ -671,6 +676,7 @@ const ProgramsBoundaryBody = ({
         onSettingsSectionChange={onSettingsSectionChange}
         onScheduleEditorChange={onScheduleEditorChange}
         onDepartmentSettingsChange={onDepartmentSettingsChange}
+        onNavigateHref={onNavigateHref}
         restoredNavigationContext={restoredNavigationContext}
         onBackDirectory={() =>
           navigateMode(
@@ -1374,6 +1380,9 @@ export const ProgramsBoundary = () => {
         onSettingsSectionChange={updateManagementSettingsSection}
         onScheduleEditorChange={updateManagementScheduleEditor}
         onDepartmentSettingsChange={updateManagementDepartmentSettings}
+        onNavigateHref={(href) =>
+          applyProgramsNavigation(router, setSearch, href)
+        }
         restoredNavigationContext={navigationContext}
         onCatalogQueryChange={updateCatalogQuery}
         onCatalogFilterChange={updateCatalogFilter}

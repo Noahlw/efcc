@@ -3,7 +3,7 @@
 //
 // Failure-path resilience of the deployed Programs vertical, self-contained
 // per repo convention (own COPY object + own fixture helpers, no shared
-// module — same shape as programs-d1.test.ts / programs-vertical-proof.test.ts):
+// test module):
 // - T1: enrollment-request network failure -> graceful error + retry -> success
 // - T2: scanner check-in goes offline mid-flow -> graceful failure -> recovery
 // - T3: viewport change mid-flow preserves partially entered guest data
@@ -225,10 +225,8 @@ async function postJson(
 }
 
 /**
- * Page-driven login (pattern from tests/e2e/programs-d1.test.ts `loginAs`).
- * Deliberately stops right after the post-login navigation (no forced
- * /programs detour) so the deep-link restoration exercised by T4's re-login
- * stays observable.
+ * Page-driven login stops after post-login navigation (no forced /programs
+ * detour) so T4's deep-link restoration stays observable.
  */
 async function loginAs(
   page: Page,

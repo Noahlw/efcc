@@ -1,140 +1,105 @@
 # Contributing to EFCC
 
-This document is the entry point for a developer working from a fresh clone. It covers the canonical setup, the two install boundaries, local verification, and the safety and deployment rules that keep the repository reproducible.
+This is a local-first Cloudflare Worker + D1 project. Keep the repository easy to install, easy to verify, and easy for the next agent to navigate.
 
-## Requirements
+## Requirements and fresh clone
 
-- **Git**
-- **Node.js 22.18.0** — pinned in [`.node-version`](.node-version) and used by CI. Select it with `fnm use`, `mise install`, or `asdf install` from the repo root. The pre-commit hook refuses to run on older Node (the checked-in TypeScript Oxfmt config requires ≥ 22.18.0).
-- **pnpm 11.7.0** — pinned in the root `packageManager` field. `corepack enable` makes the pinned version available.
-- **Chromium** — installed automatically for Playwright by `pnpm run bootstrap`.
-
-## Fresh clone
+- Git
+- Node.js 22.18.0 from [`.node-version`](.node-version)
+- pnpm 11.7.0 from the root `packageManager` field
+- Chromium for Playwright
 
 ```sh
 git clone <repo-url> efcc
 cd efcc
 corepack enable
-fnm use            # or: mise install / asdf install
-pnpm run bootstrap
-pnpm run verify
+fnm use                 # or mise/asdf using .node-version
+pnpm bootstrap
+pnpm install:browsers
+pnpm verify
 ```
 
-- `pnpm run bootstrap` — the single canonical fresh-clone dependency command. Installs the root dependencies and then the `web/` dependencies using their frozen lockfiles, and installs the Playwright Chromium browser through the root install lifecycle. (It is named `bootstrap`, not `setup`, to avoid colliding with pnpm's built-in `pnpm setup`.) Run it once in the clone; run it again after lockfile changes.
-- `pnpm run verify` — the full local gate: pre-commit checks plus the browser shell/geometry suites (see [Verification](#verification)).
+The repository has one pnpm workspace (`pnpm-workspace.yaml`) and one lockfile (`pnpm-lock.yaml`). Keep `web/` as the application package, but run contributor commands from the root so the command and dependency boundary stays obvious. Use `pnpm --filter web <script>` only when a web package script is the explicit owner of the task.
 
-## Branching and worktrees
+`pnpm bootstrap` runs the frozen workspace install. Playwright browser binaries are installed only by the explicit `pnpm install:browsers` command; dependency installation must not silently download them.
 
-- Create a feature branch per change. Use a short descriptor that names the effort, e.g. `feat/<area>-<summary>` or `chore/<summary>`.
-- Do not commit directly to `main`. Open a pull request against `main` and let the deterministic checks gate it.
-- To keep long-running work isolated, use a git worktree rather than switching branches in your working tree:
+## Branches and worktrees
 
-  ```sh
-  git worktree add ../efcc-<branch> -b <branch>
-  cd ../efcc-<branch>
-  pnpm run bootstrap
-  ```
+Create one branch per coherent change and keep unrelated cleanup out of it. Use a worktree for long-running or parallel work:
 
-  Each worktree is a fresh checkout on its branch, so re-run `pnpm run bootstrap` there before working.
+```sh
+git worktree add ../efcc-<branch> -b <branch>
+cd ../efcc-<branch>
+pnpm bootstrap
+pnpm install:browsers
+```
 
-## The two install boundaries and lockfiles
+Read the active plan and the relevant ADR before changing architecture, schema, test ownership, or deployment configuration. Preserve unrelated dirty work. Do not push, merge, deploy, or change a remote ruleset unless the owner authorizes that separate action.
 
-The repository has two independent pnpm install boundaries with separate lockfiles and separate `node_modules`:
+## Development loop
 
-| Workspace | Lockfile | What it installs | Work here with |
-| --- | --- | --- | --- |
-| Root | `pnpm-lock.yaml` | GAS/prototype tooling, TypeScript, Playwright, husky | `pnpm <script>` |
-| `web/` | `web/pnpm-lock.yaml` | Next.js, Cloudflare Wrangler/D1, Vitest, jsdom | `pnpm --dir web <script>` |
+1. Read [`CONTEXT.md`](CONTEXT.md), the relevant domain code, and the current plan/ADR.
+2. Write the acceptance trace before a web behavior change; mechanical documentation changes are exempt.
+3. Reuse an existing domain module, platform API, or installed dependency before adding an abstraction or package.
+4. Run the smallest affected command while iterating.
+5. Run `pnpm verify` on the clean candidate before calling the implementation ready.
 
-- Install everything fresh: `pnpm run bootstrap`.
-- Install only the root tree: `pnpm install --frozen-lockfile`.
-- Install only the web tree: `pnpm --dir web install --frozen-lockfile`.
-- When you change a dependency in one tree, update that tree's lockfile and commit it. The two lockfiles change independently.
-- Keep lockfiles in sync with their manifests — CI installs with `--frozen-lockfile` and fails if they drift.
+Useful commands are listed in [`README.md`](README.md) and owned in the root `package.json`. The local aggregate is `pnpm verify`; the fast pre-commit gate is `pnpm verify:precommit`.
 
-## Verification
+## Local Worker and D1
 
-### Fast CI — the single automatic gate
+```sh
+pnpm dev:local
+pnpm db:seed:local
+pnpm db:seed:demo
+```
 
-The only automatic workflow is **Fast CI** (`.github/workflows/fast-ci.yml`): it runs the affected-scope regression, runs the cheap Storybook/catalog foundation check for frontend-capable or uncertain changes, and then runs `pnpm verify:fast` — root and `web/` typechecks. It is the single required status check on `main`; backend-only changes may skip the catalog check, while uncertain shared changes fail closed and run it.
+The local run builds the static export, applies Wrangler migrations to local D1, and serves the Worker on loopback. Playwright suites that need an already-running Worker use `PROGRAMS_TARGET_URL=http://127.0.0.1:8787` or their config default. Stop processes started by your worktree and leave parent-owned processes alone.
 
-All other deterministic, credential-free checks run locally before commits through the pre-commit hook and `pnpm verify:precommit`:
+Only local or inventory-approved disposable development/test D1 targets may be reset. A reset must name the target explicitly and happen after the baseline has passed against an empty local D1. Production and unknown targets are outside the development workflow. Do not run remote Wrangler commands until the Worker account, route, D1 ID, environment, and rate-limit namespace are verified from authoritative account evidence; the checked-in placeholder configuration is not that evidence.
 
-1. Root typecheck (`pnpm typecheck`)
-2. `web/` typecheck (`pnpm --dir web typecheck`)
-3. Root GAS/prototype tests (`pnpm test`)
-4. Identity tests (`pnpm verify:identity`)
-5. `web/` workerd tests (`pnpm test:workerd` — includes all normalized Worker files; T04 / #509 restored the four previously excluded files)
-6. `web/` component tests (`pnpm --dir web test:components`)
+The D1 schema ledger is `web/migrations/`. Keep it as the single migration history. The project has no production data, but a development reset still requires a verified target and a reproducible seed.
 
-`pnpm run verify` additionally runs the browser shell/geometry Playwright suites (`pnpm test:shell-responsive`, `pnpm test:shell-geometry`, `pnpm test:role-hierarchy-geometry`). None of these deploy anything or require secrets. Prefer `pnpm run verify` before opening a PR; `pnpm run verify:precommit` is the faster non-browser gate the hook runs.
+## Verification and pre-commit
 
-`pnpm check` (Ultracite repository-wide lint) is **deferred** — the existing syntax backlog is tracked on issue #498 and will be repaired after Phase F; it is not part of Fast CI or the pre-commit gate.
+The accepted machine gate is local `pnpm verify`, described in [`TESTING.md`](TESTING.md) and [ADR-0056](docs/adr/0056-local-only-verification.md). It does not replace code review, independent review, owner approval, human/device checks, or deployment evidence. GitHub Actions is not a development dependency or a source of readiness claims.
 
-### Test selection
+The Husky pre-commit hook runs:
 
-Run only the relevant suite when iterating locally:
+1. Node version guard.
+2. `pnpm exec ultracite doctor`.
+3. `pnpm exec lint-staged --config package.json` for formatting.
+4. `pnpm verify:precommit` for the fast type/static gate.
 
-- **Prototype/scanner code:** `pnpm test:prototype`
-- **Worker/auth/programs/attendance and client contract (`web/`):** `pnpm --dir web test`
-- **Web components (`web/`):** `pnpm --dir web test:components`
-- **Responsive/accessibility shell:** `pnpm test:shell-responsive`
-- **Static/lint checks (optional, not part of the CI gate):** `pnpm check`
+`pnpm check` is an opt-in repository-wide Ultracite lint scan while its existing syntax backlog is being reduced. A failed optional scan must be reported accurately and must not be hidden by changing the required local gate.
 
-### Local-first implementation gate vs optional deployment smoke
+Keep one primary test owner for each behavior. Do not duplicate a Worker/Node test in the component project merely to increase a count. Retire an old browser or fixture suite only after a named replacement proves each still-valid behavior; see the repo-wide plan for the parity rule.
 
-The required `READY` evidence is deterministic checks plus the relevant Playwright suite against local `wrangler dev` and local D1 at `http://127.0.0.1:8787`. This exercises the Worker, static assets, cookies, and database without touching a Cloudflare account.
+## Product and data boundaries
 
-- Start the stack with `pnpm dev:local`.
-- Seed disposable accounts with `pnpm db:seed:local`.
-- Seed the walkthrough dataset with `pnpm db:seed:demo`.
-- Run the suite named by the changed capability under `tests/e2e/`.
+- Keep the current Worker scanner and ZXing fallback. The external Apps Script camera flow and public `/prototype` route are retired; internal presentation review belongs in Storybook.
+- Do not reintroduce Google Sheets, Apps Script, the old RPC bridge, or a Users/PIN import path. New accounts use the current registration and approval flow.
+- Keep authentication/session authority separate from the editable scoped Role Definition, Grant, hierarchy, and audit model. Auth provider/library migration is deferred to [#639](https://github.com/Noahlw/efcc/issues/639).
+- Never commit credentials, PINs, tokens, cookies, storage state, or `.dev.vars` values.
 
-Cloudflare deployment is optional/manual production-promotion evidence. If an operator runs it, use a fresh reserved `efcc-auth-*`/`efcc-dev-*` host and disposable `E2E_` fixtures; the workflow remains fail-closed. A deployed result never replaces the local gate and a missing manual run does not block repository `READY`.
+## Review and deployment
 
-## Local environment and secrets
+Every change should state the candidate revision, commands run, results, and known limitations. A Storybook story, unit test, geometry check, or local Worker test proves only its own boundary. Keep these evidence layers distinct:
 
-- The Worker reads local variables from `web/.dev.vars` (gitignored). A safe template lives at `web/.dev.vars.example`:
+- local machine verification;
+- independent review;
+- owner approval and product judgment;
+- real device or assistive-technology review;
+- Cloudflare configuration and deployment/promotion evidence.
 
-  ```sh
-  cp web/.dev.vars.example web/.dev.vars
-  ```
+Routine development does not deploy. When deployment work is explicitly authorized, verify the target identity first and use a disposable development/acceptance resource. Never treat the stale `efcc-prototype-129` name or placeholder IDs in `web/wrangler.jsonc` as a valid target.
 
-- `web/.dev.vars` is a copy/reference with placeholder values only — never put production credentials, PINs, cookies, or tokens in it, and never commit real values. Prefer `wrangler secret put` for anything beyond a throwaway prototype.
-- `.env`, `web/.dev.vars`, `.wrangler/`, `.auth/`, and test artifacts are gitignored and must stay that way. Do not loosen secret ignores.
+## Documentation routing
 
-## Pre-commit
+- [`CONTEXT.md`](CONTEXT.md) is the single domain glossary and invariant source.
+- [`docs/adr/`](docs/adr/) stores durable decisions; add a new ADR for a new durable decision and preserve old records.
+- [`docs/plans/`](docs/plans/) stores current implementation plans and handoffs.
+- [`docs/agents/`](docs/agents/) stores issue, triage, and domain routing.
+- [`TESTING.md`](TESTING.md) owns testing-layer boundaries and canonical commands.
 
-The repository uses [husky](https://typicode.github.io/husky/) with a pre-commit hook (`.husky/pre-commit`) that runs, in order:
-
-1. **Node version guard** — fails fast with `EFCC pre-commit requires Node >=22.18.0; run fnm use` when the runtime is too old (the checked-in TypeScript Oxfmt config cannot load on older Node).
-2. `ultracite doctor` — proves the installed Ultracite/Oxlint/Oxfmt configuration (6 passed, 0 warnings, 0 failed).
-3. `lint-staged` — formats staged JS/TS/JSON/Markdown files via the Ultracite-owned Oxfmt backend (`oxfmt --write --no-error-on-unmatched-pattern`).
-4. `verify:precommit` — the full non-browser gate (root/web typechecks, prototype, identity, workerd, components).
-
-The hook is auto-installed by `pnpm run bootstrap` (via the root `prepare` script). If it fails, fix the reported formatting or type errors and re-stage; the commit is blocked until it passes. The full repository-wide Ultracite lint (`pnpm check`) is intentionally not part of the hook — its backlog is tracked on #498.
-
-## Apps Script retirement note
-
-Apps Script / Google Sheets is **retired**. `src/gas/`, `tests/gas/`, the clasp configuration, and the Worker's transitional `/api/v1/rpc` proxy were removed once every capability had a Worker/D1 replacement and no live caller remained. Do not reintroduce Apps Script or Sheets deployment paths; the platform is Cloudflare Worker + D1.
-
-- Agents never modify the production Google Sheet; the operator performs sheet changes manually.
-- The legacy deployment and its `/exec` Playwright suite are deleted; deterministic coverage lives in `web/` (workerd) and `tests/prototype/`.
-
-When changing `web/`, read [`web/AGENTS.md`](web/AGENTS.md) first. This repository pins a breaking Next.js version; the relevant version-specific guide under `web/node_modules/next/dist/docs/` is required reading before editing framework code.
-
-## Pull requests and deployments
-
-- **PR scope:** describe the change, the acceptance evidence, the exact test commands run, and a confirmation that no secrets or data were exposed.
-- **Do not deploy** to production Cloudflare resources or Google Sheets from this repository. Deployments target isolated acceptance resources only.
-- Branch protection, required checks, Actions secrets/variables, teams, and deployment ownership are repository-administrator concerns and are not managed by contributors.
-
-### Administrator handoff
-
-Configure these in GitHub repository settings; committed files cannot enable them:
-
--- Protect `main`: require pull requests, conversation resolution, and the single required status check **Fast CI**; prevent force-pushes and branch deletion. The D1 auth acceptance contract and deployed smoke are manual `workflow_dispatch` jobs and are not required checks.
-
-- Grant the next developer access through the appropriate GitHub team or repository role. Never share personal access tokens.
-- Configure `AUTH_TARGET_URL` and the five `AUTH_*` values as Actions inputs only if the optional deployed D1 smoke is needed. The workflow accepts only the reserved `efcc-auth-*.efcc-ggc.workers.dev` namespace, but the operator must still verify that the Worker/D1 target and accounts are disposable before dispatch.
-- Keep Cloudflare deployment ownership separate from repository write access. Dispatch the optional deployed D1 smoke only after rotating the isolated target and acceptance fixtures; retain its Playwright artifact as operational evidence, not as the local `READY` gate.
+When a library or platform API is unfamiliar, read the current official documentation through Context7 or Firecrawl before coding and record the decision in the active plan when it changes architecture or maintenance cost.

@@ -6,10 +6,8 @@ import { beforeAll, describe, test } from "vitest";
 
 import worker from "../../worker";
 import type { Env } from "../../worker";
-import { importLegacyUsers } from "./accounts";
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from "./cookies";
-import { applyMigrations, testDb } from "./test-bootstrap";
-import { completeCredentialUpgrade } from "./upgrade";
+import { applyMigrations, seedTestAccount, testDb } from "./test-bootstrap";
 
 const SECRET = "test-batch-access-token-secret";
 const HOST = "https://efcc.example";
@@ -106,14 +104,11 @@ let adminAccess = "";
 
 beforeAll(async () => {
   await applyMigrations();
-  await importLegacyUsers(testDb(), [
-    ["User_ID", "Name", "Username", "PIN_Code", "System_Role", "Status"],
-    ["BATCH-ADMIN", "Batch Admin", "batch-admin", "8888", "Admin", "Active"],
-  ]);
-  await completeCredentialUpgrade(testDb(), {
+  await seedTestAccount({
     userId: "BATCH-ADMIN",
-    legacyPin: "8888",
-    newCredential: "batch-admin-secret",
+    name: "Batch Admin",
+    username: "batch-admin",
+    password: "batch-admin-secret",
   });
   const db = testDb();
   const now = new Date().toISOString();

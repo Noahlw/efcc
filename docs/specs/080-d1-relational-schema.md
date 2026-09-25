@@ -2,8 +2,10 @@
 
 **Status:** Approved (Spec #190 grilling, 2026-08-06)
 **Parent:** [Spec #190](https://github.com/Noahlw/efcc/issues/190) · [Master Spec #187](https://github.com/Noahlw/efcc/issues/187) · [Decision #184](https://github.com/Noahlw/efcc/issues/184)
-**Authority:** This document is the authoritative D1 relational schema. It supersedes the identity-tables portion of `web/migrations/0000_init.sql` going forward and is the source PRG-01 (#197) turns into the next D1 migration (`web/migrations/0001_*.sql`).
+**Original authority:** At creation, this document superseded the identity-tables portion of `web/migrations/0000_init.sql` and informed PRG-01 (#197). The current schema source is identified below.
 **Related:** [ADR-0020](docs/adr/0020-cloudflare-d1-identity-session-and-auth-boundary.md) (identity authority) · [ADR-0023](docs/adr/0023-single-lock-mutation-and-audit-contract.md) (audit vocabulary, superseded in shape here) · [ADR-0024](docs/adr/0024-d1-platform-restart-relationship-to-apps-script.md) (D1 restart) · Research #188 (forms) · Research #189 (history) · Deferred #206 (history/archive layer)
+
+> **Current implementation note (2026-09-24):** This is the original Spec #190 design record, not the current migration sequence or role schema. The live database uses the normalized editable Role Definition/Grant model and rebuildable local baseline in [`web/migrations/0000_baseline.sql`](../../web/migrations/0000_baseline.sql); old migration names below are historical provenance. See [ADR-0057](../adr/0057-rebuildable-development-d1.md) for the development/test rebuild boundary. Never reset production or an unknown target.
 
 ---
 

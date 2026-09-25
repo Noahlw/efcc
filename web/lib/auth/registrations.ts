@@ -16,7 +16,7 @@
  *                 approving a rejected request is a conflict.
  *   * reject    — rejecting an already-rejected request is a no-op success;
  *                 rejecting an approved request is a conflict.
- * No cleartext PIN, password, or credential is ever stored, logged, or
+ * No cleartext password or credential is ever stored, logged, or
  * returned.
  */
 
@@ -37,7 +37,6 @@ export interface RegistrationRequestRow {
   name: string;
   phone: string | null;
   credential_hash: string;
-  credential_kind: string;
   account_status: string;
   submitted_at: number;
   reviewed_by: string | null;
@@ -64,7 +63,7 @@ export class RegistrationConflictError extends Error {
 }
 
 const REQUEST_COLUMNS = `request_id, user_id, username, username_normalized,
-  name, phone, credential_hash, credential_kind, account_status,
+  name, phone, credential_hash, account_status,
   submitted_at, reviewed_by, reviewed_at, review_decision, rejection_note`;
 
 /** Look up a registration request by its opaque request_id, or null. */
@@ -150,9 +149,9 @@ export async function createRegistrationRequest(
       .prepare(
         `INSERT INTO registration_requests (
            request_id, user_id, username, username_normalized, name, phone,
-           credential_hash, credential_kind, account_status, submitted_at
+           credential_hash, account_status, submitted_at
          )
-         SELECT ?, ?, ?, ?, ?, ?, ?, 'password', 'Pending', ?
+         SELECT ?, ?, ?, ?, ?, ?, ?, 'Pending', ?
           WHERE NOT EXISTS (
             SELECT 1 FROM accounts WHERE username_normalized = ?
           )
@@ -196,7 +195,6 @@ export async function createRegistrationRequest(
     name: options.name,
     phone: options.phone ?? null,
     credential_hash: options.credentialHash,
-    credential_kind: "password",
     account_status: "Pending",
     submitted_at: now,
     reviewed_by: null,
@@ -262,12 +260,12 @@ export async function approveRegistration(
       db
         .prepare(
           `INSERT INTO accounts (
-             user_id, name, username, username_normalized,
-             credential_hash, credential_kind, credential_version,
+           user_id, name, username, username_normalized,
+             credential_hash,
              account_status, phone, created_at, updated_at
            )
            SELECT user_id, name, username, username_normalized,
-                  credential_hash, credential_kind, 1, 'Active',
+                  credential_hash, 'Active',
                   phone, ?, ?
              FROM registration_requests
             WHERE request_id = ? AND account_status = 'Pending'`
@@ -407,7 +405,7 @@ export async function rejectRegistration(
 
 /**
  * Safe metadata columns for the Staff/Admin approval queue (AUTH-05
- * #163). Deliberately excludes `credential_hash`, `credential_kind`, and
+ * #163). Deliberately excludes `credential_hash` and
  * `user_id` — the queue must never expose credential material or the
  * immutable identity key to the browser.
  */
@@ -562,11 +560,11 @@ export async function approveRegistrationsBatch(
       .prepare(
         `INSERT INTO accounts (
            user_id, name, username, username_normalized,
-           credential_hash, credential_kind, credential_version,
+           credential_hash,
            account_status, phone, created_at, updated_at
          )
          SELECT user_id, name, username, username_normalized,
-                credential_hash, credential_kind, 1, 'Active',
+                credential_hash, 'Active',
                 phone, ?, ?
            FROM registration_requests
           WHERE request_id IN (${idPlaceholders})

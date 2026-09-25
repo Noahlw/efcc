@@ -5,7 +5,13 @@
 **Design Authority:** `DESIGN.md` & `.impeccable/design.json` (Variant A: Official Civic Minimal)  
 **Spec Authority:** Spec 000 (product truth), Spec 074 (shell responsive/accessibility baseline), Spec 071 (accessibility criteria), ADR-0017 (static export), ADR-0018 (HTTP boundary), ADR-0020 (D1 identity split)  
 **Date:** 2026-08-06  
-**Status:** **IN REVIEW** — Variant A is selected; the contract remains open on Issue #179 while the grilling session confirms the full domain vocabulary and acceptance boundary.  
+**Status:** **Accepted** — Issue #179 is closed; follow-on domain decisions are owned by Spec #187.
+
+> Historical contract note (2026-09-25): Issue #179 accepted this design contract,
+> but its S2 PIN Upgrade surface predates the decision that no legacy accounts
+> need migration. Treat S2 as retired design history, not current UI or API
+> acceptance. Validate the other design surfaces against current source and
+> Spec #187 before using them as implementation criteria.
 
 ---
 
@@ -65,7 +71,7 @@
 | # | Surface / State | Domain Category | Visitor Mode | Primary Task | Required DOM Elements & States | Responsive Behavior (375px vs 1280px) | Accessibility Proof | Implementation Owner Ticket |
 |---|---|---|---|---|---|---|---|---|
 | **S1** | **Login (登入)** | Auth Surface | Operate / Read | Direct sign-in | Header title `中國基督教播道會顯恩堂`, `SealSlot`, username & password inputs with programmatically associated `<label htmlFor="...">`, submit `登入` | **Desktop (≥800px):** 2-column layout (copy left, form right). **Phone (<800px):** Form stacked FIRST at top of screen; max 400px width. | `getByLabelText("用戶名稱")`, `getByLabelText("密碼")`, min-height ≥44px, `:focus-visible` ring | [CF0-08 / Issue #164](https://github.com/Noahlw/efcc/issues/164) |
-| **S2** | **PIN Upgrade (設定新密碼)** | Auth Surface | Operate | Forced credential upgrade | Legacy member username (disabled input), legacy PIN input (`#prototype-upgrade-pin`), new password input (`#prototype-upgrade-new`), submit `設定新密碼並登入`, alert notice | Single centered card (max 440px), no-scroll on 667px height phone frame | `role="alert"` for upgrade notice, inputs properly labeled, `autoComplete` attributes set | [AUTH-01 / Issue #159](https://github.com/Noahlw/efcc/issues/159) |
+| **S2** | **PIN Upgrade (retired; retained as history)** | Auth Surface | Historical only | ~~Forced credential upgrade~~ Retired 2026-09-24; no legacy accounts need migration | Historical legacy-PIN form design; no current route or UI is expected | Not applicable to current implementation | Historical accessibility notes only; no active acceptance | [AUTH-01 / Issue #159](https://github.com/Noahlw/efcc/issues/159) |
 | **S3** | **Registration (註冊帳戶)** | Auth Surface | Operate | Self-service account application | Chinese name, username, phone, and password inputs; submit `提交註冊申請` | Single centered card, fits within phone screen height without overflow | All inputs have `htmlFor`/`id` matching, inputs ≥44px height | [AUTH-05 / Issue #163](https://github.com/Noahlw/efcc/issues/163) |
 | **S4** | **Approval Queue (審核隊列)** | Auth Surface | Operate | Admin/Staff registration review | Header with badge count (`N 筆待審核`), structural data rows with action buttons (`批准 Member`, `拒絕`) | Desktop side-by-side action buttons; Phone stacked action buttons with touch targets ≥44px | Accessible button text, semantic list structure; direct unauthorized access renders Forbidden | [AUTH-05 / Issue #163](https://github.com/Noahlw/efcc/issues/163) |
 | **S5** | **Profile (個人檔案)** | Section | Operate / Read | View member details & check-in QR | Avatar, name/username block, role tag (`Member / Staff / Admin`), status/phone grid, **centered 220×220px square QR code** | Fits phone screen (667px height) **without page scroll** (`scrollHeight <= offsetHeight`); QR code `aspect-ratio: 1/1` | `alt` / ARIA description on QR slot, clear text hierarchy | [AUTH-01 / Issue #159](https://github.com/Noahlw/efcc/issues/159) |

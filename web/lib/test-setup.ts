@@ -1,5 +1,7 @@
-import "@testing-library/jest-dom/vitest";
-import { afterEach } from "vitest";
+import * as matchers from "@testing-library/jest-dom/matchers";
+import { afterEach, expect } from "vitest";
+
+expect.extend(matchers);
 
 // Components persist session drafts by design; tests still need a fresh
 // authenticated session boundary for each case.

@@ -31,21 +31,22 @@ An internal system built specifically for this church’s roles, workflows, and 
 
 - Used by members and ministry operators around gatherings (phone), and by management on PC.
 - Schedules and user-facing timestamps use Church Time: `Asia/Hong_Kong`, Hong Kong calendar dates, 24-hour clock.
-- Identity and authentication live on Cloudflare Worker + D1; Programs, Events, Attendance, Enrollments and related domain capabilities remain on the transitional Apps Script + Google Sheets backend until each capability is migrated with acceptance proof.
-- Roles in production: Admin, Staff, Member (ADR-0025; Teacher retired); Program Leader is a separate per-program grant, not a global role value.
-- Navigable Sections after auth include Profile, Programs, Events, Scanner, Care, and Permissions (some still transitional or placeholder on the new web shell).
+- The app is a Next.js static export served with a Cloudflare Worker. The Worker owns `/api/v1/*` routes and D1 access; the product has no Next.js production server.
+- Authentication, Programs, Departments, Events, Enrollments, Attendance, Home content, notices, and management use the Worker/D1 backend. Google Sheets, Apps Script, the old RPC bridge, and the external scanner opener are retired paths.
+- Authentication uses username/password with cookie sessions and registration approval. The editable scoped Role Definition and Grant model supplies product permissions; Auth-provider replacement is deferred to [#639](https://github.com/Noahlw/efcc/issues/639).
+- The product supports Admin, Staff, and Member identities. Program Leader authority is a scoped grant, not a global Account role.
 
 ## Capabilities and Constraints
 
-**Confirmed capabilities (current or transitional):** cookie-only login/session; legacy-PIN upgrade; self-service registration; Admin/Staff approval queue; member profile; programs, events, attendance/check-in, enrollments (domain still transitional); care dashboard and permissions planned/partial.
+**Current capabilities:** username/password login with cookie sessions; self-service registration and approval; account profile and credential settings; editable scoped roles and grants; Programs, Departments, Events, Enrollments, Attendance/check-in, Home content, notices, and management workflows.
 
 **Constraints future work must preserve:**
 
 - Internal-only church tool; do not invent public marketing claims, testimonials, or multi-church positioning.
 - Cantonese Chinese is the primary product language.
 - Phone interface is the main surface for Members, Program Leaders, and Staff; PC is for management.
-- Staged ownership: D1 owns identity; do not delete the Apps Script domain backend merely because auth migrated.
-- Production Google Sheet is operator-edited; agents do not mutate it (except documented E2E fixture rules).
+- Worker + D1 own current application data and API behavior. Development/test D1 data is rebuildable; never infer or mutate a remote database without verifying its identity and authorization.
+- There are no legacy Google Sheets accounts to import. New accounts use the current registration and approval flow.
 - Disposable destructive auth tests use `E2E_`-prefixed usernames only.
 
 **Open / undecided:**
@@ -84,6 +85,4 @@ An internal system built specifically for this church’s roles, workflows, and 
 - PC is the management context for Admin (and heavier Staff) workflows; desktop layouts must support those tasks without forcing phone compromises onto management density.
 - Existing shell accessibility baseline from product specs remains in force unless explicitly revised: phone-first below 768px with bottom nav, desktop side rail at ≥768px, ≥44×44px interactive targets, semantic navigation, and announced busy/error states.
 
-  (The implemented breakpoint is 800px — DESIGN.md and globals.css — which is
-  the authoritative value for layout; the 768px figure above is historical
-  spec wording.)
+  (The implemented breakpoint is 800px — DESIGN.md and globals.css — which is the authoritative value for layout; the 768px figure above is historical spec wording.)

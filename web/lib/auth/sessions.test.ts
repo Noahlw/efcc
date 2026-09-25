@@ -6,11 +6,10 @@
  *   - Login issues exactly one new refresh-session row plus one access token;
  *     restore-on-load (refresh) exchanges a valid refresh session for a fresh
  *     access token with no credential re-entry.
- *   - An access token verifies statelessly (no D1 read) for its full ~15 min
- *     lifetime; expiry triggers a refresh-session lookup, not a hard logout.
- *   - Logout, a credential change, and an admin-suspend action each revoke the
- *     refresh session; a revoked session's outstanding access token stops
- *     working within its remaining lifetime and can never be silently renewed.
+ *   - HMAC verification rejects malformed, tampered, and expired access
+ *     tokens; protected requests also check the live session in D1.
+ *   - Logout, a credential change, and an admin-suspend action revoke the
+ *     refresh session; the next protected request rejects its access token.
  *   - A member holds valid sessions on multiple devices simultaneously;
  *     revoking one does not affect the others.
  *   - An idle refresh session (no successful refresh for 90 days) expires and
@@ -18,39 +17,22 @@
  *   - No credential, token, or raw session value appears in test output.
  */
 /* oxlint-disable vitest/require-top-level-describe -- one shared D1 fixture spans the suites. */
-import { describe, test, expect, beforeAll } from "vitest";
+import { describe, test, expect, beforeAll, vi } from "vitest";
 
-import { importLegacyUsers } from "./accounts";
+import { ACCESS_COOKIE_NAME } from "./cookies";
 import { ACCESS_TOKEN_TTL_MS, REFRESH_IDLE_TTL_MS } from "./credentials";
 import {
   issueSession,
   refreshSession,
   revokeSession,
   revokeAllUserSessions,
+  resolveRequestSession,
+  signAccessToken,
   verifyAccessToken,
 } from "./sessions";
-import { applyMigrations, testDb } from "./test-bootstrap";
-import { completeCredentialUpgrade } from "./upgrade";
+import { applyMigrations, seedTestAccount, testDb } from "./test-bootstrap";
 
 const SECRET = "test-access-token-secret";
-const HEADER = [
-  "User_ID",
-  "Name",
-  "Username",
-  "PIN_Code",
-  "System_Role",
-  "Status",
-];
-
-/** Upgrade a legacy account so sessions can be issued. */
-async function upgrade(userId: string, pin: string, newCred: string) {
-  await completeCredentialUpgrade(testDb(), {
-    userId,
-    legacyPin: pin,
-    newCredential: newCred,
-  });
-}
-
 /** Count active (non-revoked) sessions for a user. */
 async function activeSessionCount(userId: string): Promise<number> {
   const row = await testDb()
@@ -79,15 +61,24 @@ async function sessionRevoked(sessionId: string): Promise<boolean> {
 
 beforeAll(async () => {
   await applyMigrations();
-  await importLegacyUsers(testDb(), [
-    HEADER,
-    ["U001", "Alice Chan", "alice", "1234", "Admin", "Active"],
-    ["U002", "Bob Lee", "bob", "5678", "Member", "Active"],
-    ["U003", "Carol Wong", "carol", "0000", "Member", "Active"],
-  ]);
-  await upgrade("U001", "1234", "alice-secret");
-  await upgrade("U002", "5678", "bob-secret");
-  await upgrade("U003", "0000", "carol-secret");
+  await seedTestAccount({
+    userId: "U001",
+    name: "Alice Chan",
+    username: "alice",
+    password: "alice-secret",
+  });
+  await seedTestAccount({
+    userId: "U002",
+    name: "Bob Lee",
+    username: "bob",
+    password: "bob-secret",
+  });
+  await seedTestAccount({
+    userId: "U003",
+    name: "Carol Wong",
+    username: "carol",
+    password: "carol-secret",
+  });
 });
 
 describe("AUTH-02: issue", () => {
@@ -129,8 +120,8 @@ describe("AUTH-02: issue", () => {
   });
 });
 
-describe("AUTH-02: stateless access-token verification", () => {
-  test("token verifies statelessly for its full lifetime", async () => {
+describe("AUTH-02: HMAC access-token verification", () => {
+  test("token signature verifies before its expiry", async () => {
     const bundle = await issueSession(testDb(), {
       userId: "U002",
       accessTokenSecret: SECRET,
@@ -186,6 +177,24 @@ describe("AUTH-02: stateless access-token verification", () => {
     });
     const tampered = `${bundle.accessToken.slice(0, -1)}a`;
     await expect(verifyAccessToken(SECRET, tampered)).resolves.toBeNull();
+  });
+
+  test("invalid signatures do not query D1", async () => {
+    const token = await signAccessToken(SECRET, {
+      sid: "missing-session",
+      uid: "U002",
+      iat: Date.now(),
+    });
+    const prepare = vi.fn();
+    const db = { prepare } as unknown as D1Database;
+    const request = new Request("https://efcc.example/api/v1/auth/me", {
+      headers: { Cookie: `${ACCESS_COOKIE_NAME}=${token}x` },
+    });
+
+    await expect(
+      resolveRequestSession(request, db, SECRET)
+    ).resolves.toStrictEqual({ status: "invalid" });
+    expect(prepare).not.toHaveBeenCalled();
   });
 
   test("token from a different secret is rejected", async () => {
@@ -390,33 +399,5 @@ describe("AUTH-02: revocation", () => {
     await expect(
       issueSession(testDb(), { userId: "U003", accessTokenSecret: SECRET })
     ).rejects.toMatchObject({ code: "FORBIDDEN" });
-  });
-
-  test("revoked session's outstanding access token stops working at expiry", async () => {
-    const bundle = await issueSession(testDb(), {
-      userId: "U002",
-      accessTokenSecret: SECRET,
-      now: 5_000_000,
-    });
-    await revokeSession(testDb(), bundle.sessionId);
-    // Still valid within its lifetime (stateless), then expires.
-    await expect(
-      verifyAccessToken(SECRET, bundle.accessToken, 5_000_000)
-    ).resolves.not.toBeNull();
-    await expect(
-      verifyAccessToken(
-        SECRET,
-        bundle.accessToken,
-        5_000_000 + ACCESS_TOKEN_TTL_MS
-      )
-    ).resolves.toBeNull();
-    // And can never be renewed.
-    await expect(
-      refreshSession(testDb(), {
-        sessionId: bundle.sessionId,
-        accessTokenSecret: SECRET,
-        now: 5_000_000,
-      })
-    ).rejects.toMatchObject({ code: "AUTH_REQUIRED" });
   });
 });

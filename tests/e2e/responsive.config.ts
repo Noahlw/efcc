@@ -8,6 +8,9 @@
 
 import { defineConfig } from "@playwright/test";
 
+const responsivePort = process.env.RESPONSIVE_TEST_PORT ?? "4173";
+const responsiveUrl = `http://127.0.0.1:${responsivePort}`;
+
 export default defineConfig({
   testDir: ".",
   testMatch: /(?:responsive|shell-nav|account-settings|home)\.test\.ts$/u,
@@ -19,9 +22,10 @@ export default defineConfig({
     ["list"],
     ["json", { outputFile: "test-results/phase-f/responsive/results.json" }],
   ],
-  metadata: { phaseFTargetUrl: "http://127.0.0.1:4173" },
+  outputDir: "test-results/phase-f/responsive/artifacts",
+  metadata: { phaseFTargetUrl: responsiveUrl },
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL: responsiveUrl,
     trace: "off",
     screenshot: "off",
     video: "off",
@@ -41,9 +45,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm --dir ../../web build && pnpm exec tsx serve-static.ts",
-    url: "http://127.0.0.1:4173",
-    reuseExistingServer: !process.env.CI,
+    command: "pnpm exec tsx serve-static.ts",
+    url: responsiveUrl,
+    env: { PORT: responsivePort },
+    reuseExistingServer: false,
     timeout: 240_000,
   },
 });

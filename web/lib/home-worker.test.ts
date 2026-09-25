@@ -6,10 +6,13 @@ import { beforeAll, describe, test } from "vitest";
 
 import worker from "../worker";
 import type { Env } from "../worker";
-import { importLegacyUsers } from "./auth/accounts";
 import { ACCESS_COOKIE_NAME } from "./auth/cookies";
-import { applyMigrations, testDb } from "./auth/test-bootstrap";
-import { completeCredentialUpgrade } from "./auth/upgrade";
+import { issueSession } from "./auth/sessions";
+import {
+  applyMigrations,
+  seedTestAccount,
+  testDb,
+} from "./auth/test-bootstrap";
 
 const HOST = "https://efcc.example";
 const SECRET = "test-access-token-secret";
@@ -97,36 +100,48 @@ describe("GET /api/v1/home Worker route", () => {
   beforeAll(async () => {
     await applyMigrations();
 
-    await importLegacyUsers(testDb(), [
-      ["User_ID", "Name", "Username", "PIN_Code", "System_Role", "Status"],
-      ["HOME-ADMIN", "Home Admin", "home-admin", "1234", "Admin", "Active"],
-      ["HOME-MEMBER-1", "陳小明", "home-member-1", "5678", "Member", "Active"],
-      ["HOME-MEMBER-2", "李大同", "home-member-2", "5678", "Member", "Active"],
-      [
-        "HOME-INACTIVE",
-        "停用會員",
-        "home-inactive",
-        "9999",
-        "Member",
-        "Suspended",
-      ],
-    ]);
-
-    await completeCredentialUpgrade(testDb(), {
-      userId: "HOME-ADMIN",
-      legacyPin: "1234",
-      newCredential: "home-admin-password",
-    });
-    await completeCredentialUpgrade(testDb(), {
-      userId: "HOME-MEMBER-1",
-      legacyPin: "5678",
-      newCredential: "home-member-password",
-    });
-    await completeCredentialUpgrade(testDb(), {
-      userId: "HOME-MEMBER-2",
-      legacyPin: "5678",
-      newCredential: "home-member-password",
-    });
+    await Promise.all(
+      (
+        [
+          [
+            "HOME-ADMIN",
+            "Home Admin",
+            "home-admin",
+            "home-admin-password",
+            "Active",
+          ],
+          [
+            "HOME-MEMBER-1",
+            "陳小明",
+            "home-member-1",
+            "home-member-password",
+            "Active",
+          ],
+          [
+            "HOME-MEMBER-2",
+            "李大同",
+            "home-member-2",
+            "home-member-password",
+            "Active",
+          ],
+          [
+            "HOME-INACTIVE",
+            "停用會員",
+            "home-inactive",
+            "home-inactive-password",
+            "Suspended",
+          ],
+        ] as const
+      ).map(([userId, name, username, password, accountStatus]) =>
+        seedTestAccount({
+          userId,
+          name,
+          username,
+          password,
+          accountStatus,
+        })
+      )
+    );
 
     adminCookie = await accessCookieFor("home-admin", "home-admin-password");
     memberCookie = await accessCookieFor(
@@ -503,22 +518,27 @@ describe("GET /api/v1/home Worker route", () => {
   });
 
   test("rejects inactive/suspended account with 403 Problem Details", async () => {
-    const inactiveCookie = await accessCookieFor(
-      "home-inactive",
-      "home-admin-password"
-    ).catch(async () => {
-      // Inactive account cannot log in or if token forged:
-      const { signAccessToken } = await import("./auth/sessions");
-      return signAccessToken(SECRET, {
-        sid: "inactive-sid",
-        uid: "HOME-INACTIVE",
-        iat: Date.now(),
-      });
+    await testDb()
+      .prepare(
+        "UPDATE accounts SET account_status = 'Active' WHERE user_id = ?"
+      )
+      .bind("HOME-INACTIVE")
+      .run();
+    const session = await issueSession(testDb(), {
+      userId: "HOME-INACTIVE",
+      accessTokenSecret: SECRET,
     });
+    await testDb()
+      .prepare(
+        "UPDATE accounts SET account_status = 'Suspended' WHERE user_id = ?"
+      )
+      .bind("HOME-INACTIVE")
+      .run();
+
     const response = await worker.fetch(
       request("/api/v1/home", {
         method: "GET",
-        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${inactiveCookie}` },
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${session.accessToken}` },
       }),
       testEnv()
     );
@@ -701,5 +721,186 @@ describe("GET /api/v1/home Worker route", () => {
         (row) => row.contentId === "list-announcement"
       )
     );
+  });
+
+  test("keeps Home and Messages announcement windows, ordering, defaults, and limits", async () => {
+    const now = new Date();
+    const past = new Date(now.getTime() - 60_000).toISOString();
+    const future = new Date(now.getTime() + 60_000).toISOString();
+    const rows: {
+      contentId: string;
+      version: number;
+      templateType: string;
+      status: string;
+      publishMode: string;
+      startAt: string | null;
+      endAt: string | null;
+      title: string | null;
+      summary: string | null;
+      publishedAt: string | null;
+      updatedAt: string;
+    }[] = Array.from({ length: 21 }, (_, index) => {
+      const version = 200 + index;
+      return {
+        contentId: `trial-${version}`,
+        version,
+        templateType: "B",
+        status: "Published",
+        publishMode: version === 218 ? "scheduled" : "immediate",
+        startAt: version === 218 ? past : null,
+        endAt: version === 219 ? future : null,
+        title: `Trial ${version}`,
+        summary: `Summary ${version}`,
+        publishedAt: new Date(
+          now.getTime() - 300_000 + version * 1000
+        ).toISOString(),
+        updatedAt: past,
+      };
+    });
+    rows.push(
+      {
+        contentId: "trial-221",
+        version: 221,
+        templateType: "B",
+        status: "Published",
+        publishMode: "immediate",
+        startAt: null,
+        endAt: null,
+        title: "Trial 221",
+        summary: "Summary 221",
+        publishedAt: new Date(now.getTime() - 10_000).toISOString(),
+        updatedAt: past,
+      },
+      {
+        contentId: "trial-null-published-at",
+        version: 222,
+        templateType: "B",
+        status: "Published",
+        publishMode: "immediate",
+        startAt: null,
+        endAt: null,
+        title: null,
+        summary: null,
+        publishedAt: null,
+        updatedAt: past,
+      },
+      {
+        contentId: "trial-template-a",
+        version: 901,
+        templateType: "A",
+        status: "Published",
+        publishMode: "immediate",
+        startAt: null,
+        endAt: null,
+        title: "Template A",
+        summary: "Excluded",
+        publishedAt: future,
+        updatedAt: past,
+      },
+      {
+        contentId: "trial-draft",
+        version: 902,
+        templateType: "B",
+        status: "Draft",
+        publishMode: "immediate",
+        startAt: null,
+        endAt: null,
+        title: "Draft",
+        summary: "Excluded",
+        publishedAt: future,
+        updatedAt: past,
+      },
+      {
+        contentId: "trial-scheduled-future",
+        version: 903,
+        templateType: "B",
+        status: "Published",
+        publishMode: "scheduled",
+        startAt: future,
+        endAt: null,
+        title: "Future scheduled",
+        summary: "Excluded",
+        publishedAt: future,
+        updatedAt: past,
+      },
+      {
+        contentId: "trial-expired",
+        version: 904,
+        templateType: "B",
+        status: "Published",
+        publishMode: "immediate",
+        startAt: null,
+        endAt: past,
+        title: "Expired",
+        summary: "Excluded",
+        publishedAt: future,
+        updatedAt: past,
+      }
+    );
+
+    const insert = `INSERT INTO home_content
+      (content_id, version, template_type, status, publish_mode, start_at, end_at,
+       title, summary, created_by, created_at, updated_by, updated_at, published_by, published_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'HOME-ADMIN', ?, 'HOME-ADMIN', ?, 'HOME-ADMIN', ?)`;
+    await testDb().batch(
+      rows.map((row) =>
+        testDb()
+          .prepare(insert)
+          .bind(
+            row.contentId,
+            row.version,
+            row.templateType,
+            row.status,
+            row.publishMode,
+            row.startAt,
+            row.endAt,
+            row.title,
+            row.summary,
+            past,
+            row.updatedAt,
+            row.publishedAt
+          )
+      )
+    );
+
+    const homeResponse = await worker.fetch(
+      request("/api/v1/home", {
+        method: "GET",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${memberCookie}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(homeResponse.status, 200);
+    const homeBody = (await homeResponse.json()) as HomeApiResponse;
+    assert.strictEqual(
+      homeBody.data.announcement?.contentId,
+      "trial-null-published-at"
+    );
+    assert.strictEqual(homeBody.data.announcement?.title, "");
+    assert.strictEqual(homeBody.data.announcement?.summary, "");
+    assert.strictEqual(homeBody.data.announcement?.publishedAt, past);
+
+    const listResponse = await worker.fetch(
+      request("/api/v1/home/announcements", {
+        method: "GET",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${memberCookie}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(listResponse.status, 200);
+    const listBody = (await listResponse.json()) as {
+      data: { announcements: { contentId: string }[] };
+    };
+    const listedIds = listBody.data.announcements.map((row) => row.contentId);
+    assert.strictEqual(listedIds.length, 20);
+    assert.deepStrictEqual(listedIds, [
+      "trial-null-published-at",
+      "trial-221",
+      ...Array.from({ length: 18 }, (_, index) => `trial-${220 - index}`),
+    ]);
+    assert.ok(!listedIds.includes("trial-template-a"));
+    assert.ok(!listedIds.includes("trial-draft"));
+    assert.ok(!listedIds.includes("trial-scheduled-future"));
+    assert.ok(!listedIds.includes("trial-expired"));
   });
 });

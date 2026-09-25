@@ -1,5 +1,7 @@
 # ADR-0001: Google Sheets as Database
 
+> Historical record: This decision belongs to EFCC's Apps Script generation. Google Sheets is no longer the application datastore; current D1 schema authority is [ADR-0030](0030-d1-domain-schema-and-development-database.md) and the checked-in Wrangler migrations. Keep this file as historical rationale.
+
 **Status**: Accepted  
 **Date**: 2026-07-27  
 **Context**: 顯恩堂系統 / EFCC Church Management System

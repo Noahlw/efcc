@@ -61,11 +61,10 @@ async function ensureWriteOnlyActor(): Promise<void> {
       .prepare(
         `INSERT OR IGNORE INTO accounts
            (user_id, name, username, username_normalized, credential_hash,
-            credential_kind, credential_version, account_status,  phone,
-            qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
-            failed_attempts, locked_until, lock_since, created_at, updated_at)
-         VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active', 
-                 NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
+            account_status,  phone,
+            qr_code_string, created_at, updated_at)
+         VALUES (?, ?, ?, ?, NULL, 'Active',
+                 NULL, NULL, ?, ?)`
       )
       .bind(
         WRITE_ONLY_ACTOR,
@@ -124,11 +123,10 @@ async function ensureReadOnlyActor(): Promise<void> {
       .prepare(
         `INSERT OR IGNORE INTO accounts
            (user_id, name, username, username_normalized, credential_hash,
-            credential_kind, credential_version, account_status,  phone,
-            qr_code_string, legacy_pin_hash, requires_upgrade, lock_level,
-            failed_attempts, locked_until, lock_since, created_at, updated_at)
-         VALUES (?, ?, ?, ?, NULL, 'password', 2, 'Active', 
-                 NULL, NULL, NULL, 0, 0, 0, NULL, NULL, ?, ?)`
+            account_status,  phone,
+            qr_code_string, created_at, updated_at)
+         VALUES (?, ?, ?, ?, NULL, 'Active',
+                 NULL, NULL, ?, ?)`
       )
       .bind(
         READ_ONLY_ACTOR,

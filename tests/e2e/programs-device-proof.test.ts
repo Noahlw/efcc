@@ -441,7 +441,7 @@ test("unsupported camera reaches fallback without a retry promise", async ({
   }
 });
 
-test("detector-absent probe terminates without a third-party wasm request", async ({
+test("detector-absent probe loads first-party ZXing WASM without third-party requests", async ({
   browser,
 }, testInfo) => {
   test.skip(
@@ -455,9 +455,15 @@ test("detector-absent probe terminates without a third-party wasm request", asyn
   });
   const page = await context.newPage();
   const thirdPartyRequests: string[] = [];
+  const localWasmResponses: number[] = [];
   page.on("request", (request) => {
     if (request.url().includes("jsdelivr")) {
       thirdPartyRequests.push(request.url());
+    }
+  });
+  page.on("response", (response) => {
+    if (new URL(response.url()).pathname === "/wasm/zxing_reader.wasm") {
+      localWasmResponses.push(response.status());
     }
   });
   try {
@@ -467,6 +473,12 @@ test("detector-absent probe terminates without a third-party wasm request", asyn
     await page.goto("/scanner");
     const terminalState = page.locator("[data-camera-state='live']");
     await expect(terminalState).toBeVisible({ timeout: 15_000 });
+    await expect
+      .poll(() => localWasmResponses.includes(200), {
+        timeout: 15_000,
+        message: "ZXing fallback must load its first-party WASM asset",
+      })
+      .toBe(true);
     expect(thirdPartyRequests).toEqual([]);
   } finally {
     await context.close();
@@ -502,8 +514,7 @@ test("reduced motion is honored for the Event availability Undo control", async 
     // This event has an open check-in window (per beforeAll's
     // starts_at/ends_at), so a single click triggers a 409
     // CONFIRMATION_REQUIRED and an inline confirm step (impactCount 1
-    // for the open window itself), mirroring programs-d1.test.ts's
-    // "a currently open check-in window ... requires confirmation".
+    // for the open window itself), matching Programs acceptance case #51.
     const confirmBody = COPY.eventAvailabilityConfirmBody.replace(
       "{count}",
       "1"

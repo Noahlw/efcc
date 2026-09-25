@@ -35,7 +35,7 @@ Closes #<!-- issue number -->
 pnpm run bootstrap && pnpm run verify
 ```
 
-<!-- Add any additional commands you ran (e.g. `pnpm --dir web test:components`, `playwright test ...`). -->
+<!-- Add any additional commands you ran (e.g. `pnpm test:components`, `pnpm test:programs:browser`). -->
 
 **Local/manual smoke** (what you ran on your machine, not yet deployed):
 

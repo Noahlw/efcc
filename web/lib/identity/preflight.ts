@@ -1,10 +1,10 @@
 /**
- * Disposable D1 schema preflight for the normalized identity cutover.
+ * Disposable D1 schema preflight for the current normalized identity seed.
  *
  * The check is read-only. It refuses non-disposable databases and any
  * database containing a retired authority table, even when normalized tables
- * are also present. The result contains the exact manual reset command; this
- * module never executes DROP.
+ * are also present. Rebuild instructions name the database owner; this module
+ * never executes DROP or suggests dropping selected tables.
  */
 
 const DISPOSABLE_NAME_PREFIXES = [
@@ -13,7 +13,7 @@ const DISPOSABLE_NAME_PREFIXES = [
   "E2E_DISPOSABLE_",
 ] as const;
 
-const LEGACY_PRE_019_TABLES = [
+const RETIRED_AUTHORITY_TABLES = [
   "role_capabilities",
   "department_managers",
   "program_leaders",
@@ -21,7 +21,10 @@ const LEGACY_PRE_019_TABLES = [
   "permission_policy_mutations",
 ] as const;
 
-const REQUIRED_POST_019_TABLES = [
+const REQUIRED_IDENTITY_TABLES = [
+  "accounts",
+  "departments",
+  "programs",
   "role_categories",
   "role_definitions",
   "role_definition_grants",
@@ -31,13 +34,13 @@ const REQUIRED_POST_019_TABLES = [
   "role_audit_events",
 ] as const;
 
-const REQUIRED_POST_019_COLUMNS = [
+const REQUIRED_IDENTITY_COLUMNS = [
   { table: "role_policy_mutations", column: "result_json" },
   { table: "role_assignments", column: "scope_kind" },
   { table: "role_assignments", column: "scope_id" },
 ] as const;
 
-type RequiredPost019Column = (typeof REQUIRED_POST_019_COLUMNS)[number];
+type RequiredIdentityColumn = (typeof REQUIRED_IDENTITY_COLUMNS)[number];
 
 export type PreflightOutcome =
   | { kind: "ok" }
@@ -45,14 +48,12 @@ export type PreflightOutcome =
       kind: "stale-schema";
       database: string;
       legacyTables: readonly string[];
-      resetCommand: string;
       message: string;
     }
   | {
       kind: "non-disposable";
       database: string;
       reason: string;
-      resetCommand: string;
       message: string;
     }
   | {
@@ -72,24 +73,14 @@ function isDisposableName(name: string): boolean {
   return DISPOSABLE_NAME_PREFIXES.some((prefix) => name.startsWith(prefix));
 }
 
-function buildResetCommand(database: string): string {
-  const drops = LEGACY_PRE_019_TABLES.map(
-    (table) => `DROP TABLE IF EXISTS ${table};`
-  ).join(" ");
-  return (
-    `wrangler d1 execute ${database} --local --command "${drops}" ` +
-    `# then: pnpm --dir web db:migrate:local && pnpm db:seed:disposable`
-  );
-}
-
 interface TableNameRow {
   name: string;
 }
 
 /**
- * Inspect the binding for a stale pre-019 schema, a non-disposable database
- * name, or a missing disposable schema. The check is read-only and never
- * issues a DROP of its own.
+ * Inspect the binding for retired authority tables, a non-disposable database
+ * name, or a missing identity schema. The check is read-only and never drops
+ * tables.
  */
 export async function preflightDisposableSchema(
   db: D1Database,
@@ -101,14 +92,12 @@ export async function preflightDisposableSchema(
       kind: "non-disposable",
       database,
       reason: `Database name "${database}" does not match the documented disposable prefix (${DISPOSABLE_NAME_PREFIXES.join(", ")}).`,
-      resetCommand: buildResetCommand(database),
       message: [
         `Refusing to seed or migrate the non-disposable database "${database}".`,
         `Only databases prefixed with ${DISPOSABLE_NAME_PREFIXES.join(
           ", "
         )} are eligible for the disposable pre-production schema.`,
-        `Manual reset command:`,
-        buildResetCommand(database),
+        "No database command was run. Verify the intended target and use its separately approved maintenance procedure.",
       ].join("\n"),
     };
   }
@@ -123,33 +112,31 @@ export async function preflightDisposableSchema(
     (result.results ?? []).map((row) => row.name.toLowerCase())
   );
 
-  const legacyHits = LEGACY_PRE_019_TABLES.filter((table) => tables.has(table));
+  const legacyHits = RETIRED_AUTHORITY_TABLES.filter((table) =>
+    tables.has(table)
+  );
   if (legacyHits.length > 0) {
     return {
       kind: "stale-schema",
       database,
       legacyTables: legacyHits,
-      resetCommand: buildResetCommand(database),
       message: [
         `Detected retired authority tables in "${database}" (tables: ${legacyHits.join(
           ", "
         )}).`,
-        `The preflight does NOT auto-drop. Run the following command by hand, then re-run seeds:`,
-        buildResetCommand(database),
+        "The preflight never drops selected tables. Recreate this disposable database from the current baseline through its owning test runner.",
+        "For this worktree's Wrangler-local D1 only, stop its Worker and run pnpm db:reset:local before reseeding.",
       ].join("\n"),
     };
   }
 
-  const missing = REQUIRED_POST_019_TABLES.filter(
+  const missing = REQUIRED_IDENTITY_TABLES.filter(
     (table) => !tables.has(table)
   );
-  if (missing.length === REQUIRED_POST_019_TABLES.length) {
-    return { kind: "ok" };
-  }
   const missingColumns = (
     await Promise.all(
-      REQUIRED_POST_019_COLUMNS.filter(({ table }) => tables.has(table)).map(
-        async (requirement: RequiredPost019Column) => {
+      REQUIRED_IDENTITY_COLUMNS.filter(({ table }) => tables.has(table)).map(
+        async (requirement: RequiredIdentityColumn) => {
           const columns = await db
             .prepare(`PRAGMA table_info(${requirement.table})`)
             .all<{ name: string }>();
@@ -178,7 +165,8 @@ export async function preflightDisposableSchema(
         `Disposable database "${database}" is partially migrated; ${details.join(
           "; "
         )}.`,
-        "Re-run the latest disposable identity migrations before seeding.",
+        "Recreate this disposable database from the current migration baseline through its owning test runner.",
+        "For this worktree's Wrangler-local D1 only, stop its Worker and run pnpm db:reset:local before reseeding.",
       ].join("\n"),
     };
   }
@@ -188,9 +176,8 @@ export async function preflightDisposableSchema(
 
 export const __test = {
   DISPOSABLE_NAME_PREFIXES,
-  LEGACY_PRE_019_TABLES,
-  REQUIRED_POST_019_TABLES,
-  REQUIRED_POST_019_COLUMNS,
+  RETIRED_AUTHORITY_TABLES,
+  REQUIRED_IDENTITY_TABLES,
+  REQUIRED_IDENTITY_COLUMNS,
   isDisposableName,
-  buildResetCommand,
 };

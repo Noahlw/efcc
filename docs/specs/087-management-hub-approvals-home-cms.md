@@ -1,10 +1,14 @@
 # 087 — Management Hub, Approvals, Permissions & Home Content CMS
 
-Status: Ready for agent
+Status: Historical implementation specification; the described surfaces have since shipped and the source is the current authority.
 Scope: Management Hub top-level directory, Registration Approvals (list + own
 routable detail), Account Permissions (real multi-account matrix), Member
 Directory, Home Content CMS editor.
 Blocked by: 084 (Shell, Auth, Account/Settings).
+
+> Historical note (2026-09-24): This document was an implementation plan, not
+> a current readiness state. Use the checked-in route and Worker code for
+> current behavior; retain this spec as the original design record.
 
 Design authority: `EFCC Management Workspace (Standalone).html`, verified
 directly against source. See `.scratch/prototype-port-2026/GRILLING-DECISIONS.md`

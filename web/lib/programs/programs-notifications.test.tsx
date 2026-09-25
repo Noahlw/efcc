@@ -371,6 +371,7 @@ describe("management notification control", () => {
   test("full Notifications task preserves unread items until activation", async () => {
     const user = userEvent.setup();
     const onMarkRead = vi.fn<ProgramsNotificationsProps["onMarkRead"]>();
+    const onNavigateItem = vi.fn<(href: string) => void>();
 
     const { container } = render(
       <ProgramsNotifications
@@ -380,6 +381,7 @@ describe("management notification control", () => {
         })}
         onRetry={vi.fn<ProgramsNotificationsProps["onRetry"]>()}
         onMarkRead={onMarkRead}
+        onNavigateItem={onNavigateItem}
         full
         departmentId="dept-current"
         hash="#overview"
@@ -412,6 +414,9 @@ describe("management notification control", () => {
       "/programs?mode=management&department=dept-1&program=program-1&task=participants#overview"
     );
     await user.click(enrollmentLink);
+    expect(onNavigateItem).toHaveBeenCalledWith(
+      "/programs?mode=management&department=dept-1&program=program-1&task=participants#overview"
+    );
     await waitFor(() => {
       expect(onMarkRead).toHaveBeenCalledOnce();
       expect(onMarkRead).toHaveBeenCalledWith([

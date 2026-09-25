@@ -634,14 +634,50 @@ test.afterAll(async () => {
 });
 
 test.describe("T05.6 responsive Programs UI matrix", () => {
-  test("participant catalog/detail keeps action geometry and dock clearance bounded", async ({
+  test("programs-d1 #9: participant catalog/detail keeps action geometry and dock clearance bounded", async ({
     page,
     browser,
   }, testInfo) => {
     const viewport = configuredViewport(testInfo);
     expect(fixture).not.toBeNull();
     const { eventId, programId, programName } = fixture!;
+    const longCopy = testInfo.project.name === "phone-320";
+    const longTitle = "超長課程名稱：門徒訓練與社區同行計劃";
+    const longDescription =
+      "https://example.invalid/programs/this-is-a-deliberately-unbroken-value";
     await loginAs(page, MEMBER);
+    if (longCopy) {
+      await page.route("**/api/v1/programs/catalog", async (route) => {
+        const response = await route.fetch();
+        const body = (await response.json()) as {
+          data?: {
+            catalog?: {
+              programs?: {
+                program_id?: string;
+                name?: string;
+                description?: string;
+                viewerState?: string;
+                nextEventStartsAt?: string | null;
+                upcomingEventCount?: number;
+              }[];
+            }[];
+          };
+        };
+        const target = body.data?.catalog
+          ?.flatMap((entry) => entry.programs ?? [])
+          .find((program) => program.program_id === programId);
+        if (!target) {
+          await route.fulfill({ response });
+          return;
+        }
+        target.name = longTitle;
+        target.description = longDescription;
+        target.viewerState = "withdrawn";
+        target.nextEventStartsAt = null;
+        target.upcomingEventCount = 0;
+        await route.fulfill({ response, json: body });
+      });
+    }
     await page.goto("/programs");
     const search = page.getByRole("searchbox", { name: COPY.catalogSearch });
     await expect(search).toBeVisible();
@@ -656,12 +692,86 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
       .first()
       .click();
     await expect(search).toHaveValue("");
-    await search.fill(programName);
+    const visibleProgramName = longCopy ? longTitle : programName;
+    await search.fill(visibleProgramName);
     const programLink = page.getByRole("link", {
-      name: new RegExp(programName, "u"),
+      name: new RegExp(visibleProgramName, "u"),
     });
     await expect(programLink).toBeVisible();
     assertGeometry(await measure(page, viewport.width), "participant catalog");
+    if (longCopy) {
+      await expect(programLink).toContainText(longDescription);
+      for (const width of [320, 390, 799, 800]) {
+        await page.setViewportSize({ width, height: viewport.height });
+        const geometry = await page.evaluate(() => {
+          const outlet = document.querySelector<HTMLElement>("#shell-content");
+          const card =
+            document.querySelector<HTMLElement>("[data-program-row]");
+          const title = card?.querySelector<HTMLElement>("[data-program-name]");
+          const secondary = title?.nextElementSibling as HTMLElement | null;
+          const chevron = card?.querySelector<SVGElement>("svg");
+          const search = document.querySelector<HTMLElement>(
+            "#programs-catalog-search"
+          );
+          const filters = document.querySelector<HTMLElement>(
+            '[role="group"][aria-label="課程篩選"]'
+          );
+          if (
+            !outlet ||
+            !card ||
+            !title ||
+            !secondary ||
+            !chevron ||
+            !search ||
+            !filters
+          ) {
+            throw new Error("long-copy geometry fixture is incomplete");
+          }
+          const right = (element: Element) =>
+            element.getBoundingClientRect().right;
+          return {
+            documentScrollWidth: document.documentElement.scrollWidth,
+            viewportWidth: window.innerWidth,
+            outletClientWidth: outlet.clientWidth,
+            outletScrollWidth: outlet.scrollWidth,
+            titleClientWidth: title.clientWidth,
+            titleScrollWidth: title.scrollWidth,
+            descriptionClientWidth: secondary.clientWidth,
+            descriptionScrollWidth: secondary.scrollWidth,
+            outletRight: right(outlet),
+            cardRight: right(card),
+            chevronRight: right(chevron),
+            searchRight: right(search),
+            filtersRight: right(filters),
+          };
+        });
+        expect(geometry.documentScrollWidth).toBeLessThanOrEqual(
+          geometry.viewportWidth
+        );
+        expect(geometry.outletScrollWidth).toBeLessThanOrEqual(
+          geometry.outletClientWidth
+        );
+        expect(geometry.titleScrollWidth).toBeLessThanOrEqual(
+          geometry.titleClientWidth
+        );
+        expect(geometry.descriptionScrollWidth).toBeLessThanOrEqual(
+          geometry.descriptionClientWidth
+        );
+        expect(geometry.chevronRight).toBeLessThanOrEqual(
+          geometry.cardRight + 1
+        );
+        expect(geometry.cardRight).toBeLessThanOrEqual(
+          geometry.outletRight + 1
+        );
+        expect(geometry.searchRight).toBeLessThanOrEqual(
+          geometry.outletRight + 1
+        );
+        expect(geometry.filtersRight).toBeLessThanOrEqual(
+          geometry.outletRight + 1
+        );
+      }
+      await page.setViewportSize(viewport);
+    }
     await programLink.click();
     await expect(page).toHaveURL(
       new RegExp(`/programs\\?program=${programId}(?:&from=programs)?$`, "u")
@@ -688,12 +798,64 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
     }
   });
 
-  test("management settings keeps composition and controls usable", async ({
+  test("programs-d1 #35: management settings keeps composition and controls usable", async ({
     page,
   }, testInfo) => {
     const viewport = configuredViewport(testInfo);
     expect(fixture).not.toBeNull();
     const { programId } = fixture!;
+    const assertWorkspaceKeyboardGeometry = async () => {
+      const workspace = page.locator(
+        'section[aria-labelledby="program-settings-focused-title"], section[aria-labelledby="programs-workspace-title"]'
+      );
+      await workspace
+        .locator("a, button, input, select, textarea")
+        .filter({ visible: true })
+        .first()
+        .focus();
+      await page.keyboard.press("Tab");
+      const geometry = await workspace.evaluate((workspaceElement) => {
+        const outlet = document.querySelector<HTMLElement>("#shell-content");
+        const active = document.activeElement;
+        if (
+          !(workspaceElement instanceof HTMLElement) ||
+          !outlet ||
+          !(active instanceof HTMLElement) ||
+          !workspaceElement.contains(active)
+        ) {
+          throw new Error(
+            "management workspace geometry fixture is incomplete"
+          );
+        }
+        const style = getComputedStyle(active);
+        const workspaceBox = workspaceElement.getBoundingClientRect();
+        const outletBox = outlet.getBoundingClientRect();
+        return {
+          focusVisible: active.matches(":focus-visible"),
+          outlineWidth: Number.parseFloat(style.outlineWidth),
+          boxShadow: style.boxShadow,
+          workspaceClientWidth: workspaceElement.clientWidth,
+          workspaceScrollWidth: workspaceElement.scrollWidth,
+          workspaceLeft: workspaceBox.left,
+          workspaceRight: workspaceBox.right,
+          outletLeft: outletBox.left,
+          outletRight: outletBox.right,
+        };
+      });
+      expect(geometry.focusVisible).toBe(true);
+      expect(geometry.outlineWidth >= 2 || geometry.boxShadow !== "none").toBe(
+        true
+      );
+      expect(geometry.workspaceScrollWidth).toBeLessThanOrEqual(
+        geometry.workspaceClientWidth + 1
+      );
+      expect(geometry.workspaceLeft).toBeGreaterThanOrEqual(
+        geometry.outletLeft - 1
+      );
+      expect(geometry.workspaceRight).toBeLessThanOrEqual(
+        geometry.outletRight + 1
+      );
+    };
     await loginAs(page, ADMIN);
     await page.goto(
       `/programs?mode=management&program=${programId}&task=settings`
@@ -734,6 +896,7 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
     await expect(
       page.getByRole("button", { name: COPY.managementNotifications })
     ).toHaveCount(0);
+    await assertWorkspaceKeyboardGeometry();
 
     const managementGeometry = await measure(page, viewport.width);
     expect(
@@ -749,6 +912,7 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
     await expect(page.getByRole("heading", { name: "營運" })).toBeVisible({
       timeout: 15000,
     });
+    await assertWorkspaceKeyboardGeometry();
     assertGeometry(await measure(page, viewport.width), "management workspace");
 
     await workspaceNavigation
@@ -760,6 +924,7 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
         exact: true,
       })
     ).toBeVisible({ timeout: 15000 });
+    await assertWorkspaceKeyboardGeometry();
     assertGeometry(
       await measure(page, viewport.width),
       "management participants task"
@@ -771,6 +936,7 @@ test.describe("T05.6 responsive Programs UI matrix", () => {
     await expect(
       page.getByRole("heading", { name: COPY.workspaceEvents, exact: true })
     ).toBeVisible({ timeout: 15000 });
+    await assertWorkspaceKeyboardGeometry();
     assertGeometry(
       await measure(page, viewport.width),
       "management events task"

@@ -962,7 +962,7 @@ describe("Contract Probes Validation", () => {
       const traversalRoute = {
         ...WAIVER_REGISTRY[0],
         id: "WVR-TRAVERSAL-ROUTE",
-        route: "/management/../prototype",
+        route: "/management/../settings",
       };
       const result = validateRegistries({
         ...getCanonicalRegistries(),
@@ -2067,49 +2067,6 @@ describe("Static Governance Source Audit Engine", () => {
     });
   });
   describe("Historical Debt Waiver & Live Audit Enforcement", () => {
-    it("waives documented historical debt when exact active waiver exists", () => {
-      const prototypePageTsx = `
-        import styles from "./prototype.module.css";
-        export default function Prototype() {
-          return <div className={styles.container}>Prototype</div>;
-        }
-      `;
-
-      const violations = auditFileContent(
-        "web/app/prototype/page.tsx",
-        prototypePageTsx
-      );
-      // Raw file audit finds the violation
-      expect(violations.some((v) => v.ruleId === "RULE-NO-CSS-MODULES")).toBe(
-        true
-      );
-
-      // Audit with active waiver inventory properly marks it as waived
-      const result = auditSourceCode({
-        targetFiles: ["web/app/prototype/page.tsx"],
-        waivers: WAIVER_REGISTRY,
-        now: "2026-09-03T00:00:00Z",
-      });
-
-      expect(result.passed).toBe(true);
-      expect(result.violations).toHaveLength(0);
-      expect(result.waivedViolations.length).toBeGreaterThan(0);
-      expect(result.waivedViolations[0].waiverId).toBe(
-        "WVR-HISTORICAL-PROTOTYPE-MODULE-CSS"
-      );
-    });
-
-    it("fails audit if historical debt waiver has expired", () => {
-      const result = auditSourceCode({
-        targetFiles: ["web/app/prototype/page.tsx"],
-        waivers: WAIVER_REGISTRY,
-        now: "2027-01-01T00:00:00Z", // Past waiver expiry (2026-12-31)
-      });
-
-      expect(result.passed).toBe(false);
-      expect(result.violations.length).toBeGreaterThan(0);
-    });
-
     it("passes static governance audit across the current repository cleanly", () => {
       const result = auditSourceCode({
         waivers: WAIVER_REGISTRY,
@@ -2419,12 +2376,12 @@ describe("Static Governance Source Audit Engine", () => {
   it("enforces exact waiver path matching without prefix overreach", () => {
     const waiver: Waiver = {
       id: "WVR-EXACT-TEST",
-      ruleId: "RULE-NO-CSS-MODULES",
-      route: "/prototype",
+      ruleId: "RULE-NO-ROUTE-CVA",
+      route: "/management",
       scenario: "default",
       viewports: [320, 1024],
       browsers: ["chromium"],
-      affectedFiles: ["web/app/prototype/page.tsx"],
+      affectedFiles: ["web/app/management/account-access-panel.tsx"],
       owner: "Test",
       createdAt: "2026-08-31",
       expiresAt: "2026-12-31",
@@ -2436,7 +2393,7 @@ describe("Static Governance Source Audit Engine", () => {
     };
 
     const resultExact = auditSourceCode({
-      targetFiles: ["web/app/prototype/page.tsx"],
+      targetFiles: ["web/app/management/account-access-panel.tsx"],
       waivers: [waiver],
       now: "2026-09-03T00:00:00Z",
     });

@@ -11,7 +11,7 @@
  *     token material in the JSON body.
  *   * No Access-Control-* headers are emitted on this surface; the Worker
  *     transport guard rejects OPTIONS before it reaches the handler.
- *   * No raw credential, PIN, token, or session value is included in any
+ *   * No raw credential, token, or session value is included in any
  *     response body or log.
  *
  * Contract (AUTH-04 #162, locked): success responses use the `{ requestId,
@@ -46,7 +46,6 @@ import {
   setAuthCookieHeaders,
 } from "./cookies";
 import { verifyCredential, hashCredential } from "./credentials";
-import { LegacyUpgradeLockedError, adminUnlockLegacyUpgrade } from "./lockout";
 import {
   approveRegistration,
   approveRegistrationsBatch,
@@ -61,11 +60,9 @@ import {
   AuthError,
   issueSession,
   refreshSession,
-  revokeAllUserSessions,
   revokeSession,
-  verifyAccessToken,
+  resolveRequestSession,
 } from "./sessions";
-import { completeCredentialUpgrade, verifyLegacyPinForLogin } from "./upgrade";
 
 export interface AuthEnv {
   DB: D1Database;
@@ -244,8 +241,12 @@ async function resolveAuthenticatedAccount(
   env: AuthEnv,
   requestId: string
 ): Promise<{ account: AccountRow } | Response> {
-  const access = readCookie(request.headers, ACCESS_COOKIE_NAME);
-  if (!access) {
+  const resolved = await resolveRequestSession(
+    request,
+    env.DB,
+    env.EFCC_ACCESS_TOKEN_SECRET
+  );
+  if (resolved.status === "missing") {
     return problem(
       401,
       "AUTH_REQUIRED",
@@ -254,8 +255,7 @@ async function resolveAuthenticatedAccount(
       requestId
     );
   }
-  const claims = await verifyAccessToken(env.EFCC_ACCESS_TOKEN_SECRET, access);
-  if (!claims) {
+  if (resolved.status === "invalid") {
     return problem(
       401,
       "AUTH_REQUIRED",
@@ -264,8 +264,7 @@ async function resolveAuthenticatedAccount(
       requestId
     );
   }
-  const account = await findAccountByUserId(env.DB, claims.uid);
-  if (!account) {
+  if (resolved.status === "unknown_account") {
     return problem(
       401,
       "AUTH_REQUIRED",
@@ -274,9 +273,8 @@ async function resolveAuthenticatedAccount(
       requestId
     );
   }
-  return { account };
+  return { account: resolved.account };
 }
-
 
 /** Resolve an authenticated caller through the D1 Role-to-Capability policy. */
 async function requireCapability(
@@ -432,12 +430,7 @@ export async function handleRegister(
  * POST /api/v1/auth/login (AUTH-04 #162)
  *
  * Body: `{ username, password }`. NOT idempotent — a repeated successful call
- * issues a fresh refresh session (never a duplicate account/resource). For a
- * migrated legacy account the `password` is verified against the one-time
- * legacy-PIN hash; a match returns `mustSetNewCredential: true` WITHOUT
- * issuing a session (the forced-upgrade flow triggers immediately). A normal
- * account issues access+refresh cookies and returns `mustSetNewCredential:
- * false`.
+ * issues a fresh refresh session (never a duplicate account/resource).
  */
 export async function handleLogin(
   request: Request,
@@ -479,47 +472,6 @@ export async function handleLogin(
     );
   }
 
-  // Legacy-PIN forced-upgrade gate (AUTH-01 #159 / ADR-0020 §4): the account
-  // is gated (requires_upgrade) until the one-time legacy PIN proves identity.
-  if (account.requires_upgrade === 1) {
-    const check = await verifyLegacyPinForLogin(env.DB, {
-      userId: account.user_id,
-      legacyPin: password,
-    });
-    if (check.locked) {
-      return problem(
-        423,
-        "UPGRADE_LOCKED",
-        "Locked",
-        "Account is locked pending credential-upgrade review.",
-        requestId
-      );
-    }
-    if (!check.ok) {
-      return problem(
-        401,
-        "AUTH_REQUIRED",
-        "Unauthorized",
-        "Invalid username or password.",
-        requestId
-      );
-    }
-    // Identity proven but no session is issued until the credential is set.
-    return jsonResponse(
-      200,
-      {
-        requestId,
-        data: {
-          userId: account.user_id,
-          name: account.name,
-          status: account.account_status,
-          mustSetNewCredential: true,
-        },
-      },
-      requestId
-    );
-  }
-
   if (account.account_status !== "Active") {
     return problem(
       403,
@@ -552,133 +504,7 @@ export async function handleLogin(
         userId: account.user_id,
         name: account.name,
         status: account.account_status,
-        mustSetNewCredential: false,
       },
-    },
-    accessCookieHeader(bundle.accessToken),
-    refreshCookieHeader(bundle.sessionId),
-    requestId
-  );
-}
-
-/**
- * POST /api/v1/auth/upgrade (preserved from AUTH-02 #160, ADR-0020 §4)
- *
- * Body: `{ username, legacyPin, newCredential }`. Completes the forced
- * credential upgrade for a legacy account: verifies the one-time legacy PIN,
- * sets the new credential, clears the legacy proof, and issues a session.
- */
-export async function handleUpgrade(
-  request: Request,
-  env: AuthEnv
-): Promise<Response> {
-  const requestId = crypto.randomUUID();
-  let body: {
-    username?: unknown;
-    legacyPin?: unknown;
-    newCredential?: unknown;
-  };
-  try {
-    body = (await request.json()) as typeof body;
-  } catch {
-    return problem(
-      422,
-      "VALIDATION",
-      "Validation failed",
-      "Body must be JSON.",
-      requestId
-    );
-  }
-  const username = typeof body.username === "string" ? body.username : "";
-  const legacyPin = typeof body.legacyPin === "string" ? body.legacyPin : "";
-  const newCredential =
-    typeof body.newCredential === "string" ? body.newCredential : "";
-  if (!username || !legacyPin || !newCredential) {
-    return problem(
-      422,
-      "VALIDATION",
-      "Validation failed",
-      "username, legacyPin, newCredential are required.",
-      requestId
-    );
-  }
-  if (newCredential.length < 8) {
-    return problem(
-      422,
-      "VALIDATION",
-      "Validation failed",
-      "newCredential must be at least 8 characters.",
-      requestId
-    );
-  }
-
-  const account = await findAccountByUsername(env.DB, username);
-  try {
-    await completeCredentialUpgrade(env.DB, {
-      userId: account?.user_id ?? "",
-      legacyPin,
-      newCredential,
-    });
-  } catch (error) {
-    if (error instanceof AuthError) {
-      return authErrorToProblem(error, requestId);
-    }
-    if (error instanceof LegacyUpgradeLockedError) {
-      return problem(
-        423,
-        "UPGRADE_LOCKED",
-        "Locked",
-        "Account is locked pending credential-upgrade review.",
-        requestId
-      );
-    }
-    const message = error instanceof Error ? error.message : "Upgrade failed.";
-    if (
-      /invalid username or pin/iu.test(message) ||
-      /unknown account/iu.test(message)
-    ) {
-      return problem(
-        401,
-        "AUTH_REQUIRED",
-        "Unauthorized",
-        "Invalid username or PIN.",
-        requestId
-      );
-    }
-    if (/not awaiting credential upgrade/iu.test(message)) {
-      return problem(409, "UPGRADE_REQUIRED", "Conflict", message, requestId);
-    }
-    return problem(
-      401,
-      "AUTH_REQUIRED",
-      "Unauthorized",
-      "Invalid username or PIN.",
-      requestId
-    );
-  }
-
-  const upgradedAccount = account
-    ? await findAccountByUserId(env.DB, account.user_id)
-    : null;
-  if (!upgradedAccount) {
-    return problem(
-      401,
-      "AUTH_REQUIRED",
-      "Unauthorized",
-      "Invalid username or credential.",
-      requestId
-    );
-  }
-  const identity = await loadBootstrapIdentity(env.DB, upgradedAccount.user_id);
-  const bundle = await issueSession(env.DB, {
-    userId: upgradedAccount.user_id,
-    accessTokenSecret: env.EFCC_ACCESS_TOKEN_SECRET,
-  });
-  return authCookieJsonResponse(
-    200,
-    {
-      requestId,
-      data: { user: secretFreeUser(upgradedAccount, identity) },
     },
     accessCookieHeader(bundle.accessToken),
     refreshCookieHeader(bundle.sessionId),
@@ -772,7 +598,7 @@ export async function handleLogout(
 /**
  * GET /api/v1/auth/me (preserved from AUTH-02 #160)
  *
- * Reads the access cookie, verifies statelessly, and returns the public user
+ * Validates the access cookie's live D1 session and returns the public user
  * alongside server-authorized sections and stable navigation metadata.
  */
 export async function handleMe(
@@ -1010,65 +836,6 @@ export async function handleChangePassword(
   return clearedAuthJsonResponse(
     200,
     { requestId, data: { sessionRevoked: true } },
-    requestId
-  );
-}
-
-/**
- * POST /api/v1/auth/admin-unlock (preserved from AUTH-02 #160)
- *
- * Admin/Teacher intervention: clears a legacy-PIN lockout so the upgrade can
- * proceed. Body: `{ userId }`. The caller must be authenticated (access
- * cookie) and hold Admin or Staff.
- */
-export async function handleAdminUnlock(
-  request: Request,
-  env: AuthEnv
-): Promise<Response> {
-  const requestId = crypto.randomUUID();
-  const auth = await requireCapability(request, env, requestId, CAPABILITY.REGISTRATION_APPROVAL_MANAGE);
-  if (auth instanceof Response) {
-    return auth;
-  }
-
-  let body: { userId?: unknown };
-  try {
-    body = (await request.json()) as typeof body;
-  } catch {
-    return problem(
-      422,
-      "VALIDATION",
-      "Validation failed",
-      "Body must be JSON.",
-      requestId
-    );
-  }
-  const userId = typeof body.userId === "string" ? body.userId : "";
-  if (!userId) {
-    return problem(
-      422,
-      "VALIDATION",
-      "Validation failed",
-      "userId is required.",
-      requestId
-    );
-  }
-  const unlocked = await adminUnlockLegacyUpgrade(env.DB, userId);
-  if (!unlocked) {
-    return problem(
-      404,
-      "NOT_FOUND",
-      "Not found",
-      "No account with that userId.",
-      requestId
-    );
-  }
-  // Operator convention: revoke every outstanding session for the unlocked
-  // account so the member re-authenticates with the new credential.
-  await revokeAllUserSessions(env.DB, userId);
-  return jsonResponse(
-    200,
-    { requestId, data: { userId, unlocked: true } },
     requestId
   );
 }

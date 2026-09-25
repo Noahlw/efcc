@@ -117,10 +117,22 @@ function barrieredDb(db: D1Database): D1Database {
 
 describe("#476 disposable D1 schema contract", () => {
   beforeAll(async () => {
-    await testDb().prepare("DROP TABLE IF EXISTS accounts_old").run().catch(() => {});
-    await testDb().prepare("DROP TABLE IF EXISTS registration_requests_old").run().catch(() => {});
-    await testDb().prepare("DROP TABLE IF EXISTS accounts_new").run().catch(() => {});
-    await testDb().prepare("DROP TABLE IF EXISTS registration_requests_new").run().catch(() => {});
+    await testDb()
+      .prepare("DROP TABLE IF EXISTS accounts_old")
+      .run()
+      .catch(() => {});
+    await testDb()
+      .prepare("DROP TABLE IF EXISTS registration_requests_old")
+      .run()
+      .catch(() => {});
+    await testDb()
+      .prepare("DROP TABLE IF EXISTS accounts_new")
+      .run()
+      .catch(() => {});
+    await testDb()
+      .prepare("DROP TABLE IF EXISTS registration_requests_new")
+      .run()
+      .catch(() => {});
     await applyMigrations();
     const preflight = await preflightDisposableSchema(testDb(), {
       databaseName: DISPOSABLE_DATABASE,
@@ -132,7 +144,7 @@ describe("#476 disposable D1 schema contract", () => {
       databaseName: DISPOSABLE_DATABASE,
     });
   });
-  test("preflight reports non-disposable database names without touching D1", async () => {
+  test("preflight reports non-disposable names without suggesting a reset", async () => {
     const result = await preflightDisposableSchema(testDb(), {
       databaseName: "efcc-identity-prod",
     });
@@ -140,15 +152,30 @@ describe("#476 disposable D1 schema contract", () => {
     if (result.kind !== "non-disposable") {
       throw new Error("expected non-disposable outcome");
     }
-    expect(result.resetCommand).toContain("DROP TABLE IF EXISTS");
-    expect(result.resetCommand).toContain("pnpm db:seed:disposable");
-    expect(result.resetCommand).toContain("pnpm --dir web db:migrate:local");
+    expect(result.message).toContain("No database command was run");
+    expect(result.message).not.toContain("DROP TABLE");
     expect(result.message).toContain("efcc-identity-prod");
     const tables = await readAllTables();
     expect(tables).toContain("role_definitions");
   });
-  test("preflight rejects missing Phase C columns before seed or mutation", async () => {
-    const tables = __preflightTest.REQUIRED_POST_019_TABLES.map((name) => ({
+  test("preflight refuses an empty database before disposable seeding", async () => {
+    const db = {
+      prepare() {
+        return { all: async () => ({ results: [] }) };
+      },
+    } as unknown as D1Database;
+    const result = await preflightDisposableSchema(db, {
+      databaseName: DISPOSABLE_DATABASE,
+    });
+    expect(result.kind).toBe("incomplete-schema");
+    if (result.kind !== "incomplete-schema") {
+      throw new Error("expected empty schema to be rejected");
+    }
+    expect(result.missingTables).toContain("accounts");
+    expect(result.missingTables).toContain("role_definitions");
+  });
+  test("preflight rejects missing identity columns before seed or mutation", async () => {
+    const tables = __preflightTest.REQUIRED_IDENTITY_TABLES.map((name) => ({
       name,
     }));
     const db = {
@@ -206,9 +233,8 @@ describe("#476 disposable D1 schema contract", () => {
         throw new Error("expected stale-schema outcome");
       }
       expect(result.legacyTables).toStrictEqual(legacyTables);
-      expect(result.resetCommand).toContain("DROP TABLE IF EXISTS");
-      expect(result.resetCommand).toContain("department_managers");
-      expect(result.resetCommand).toContain("program_leaders");
+      expect(result.message).toContain("pnpm db:reset:local");
+      expect(result.message).not.toContain("DROP TABLE");
     } finally {
       for (const table of legacyTables) {
         await db.prepare(`DROP TABLE IF EXISTS ${table}`).run();

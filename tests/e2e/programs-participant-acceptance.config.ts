@@ -34,6 +34,7 @@ export default defineConfig({
   testMatch: [
     "**/programs-participant-acceptance.test.ts",
     "**/programs-management-acceptance.test.ts",
+    "**/programs-navigation-parity.test.ts",
   ],
   timeout: 60_000,
   retries: 0,
@@ -58,9 +59,15 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
+  // Management workflows run once at the representative phone width; the
+  // responsive matrix owns viewport-specific coverage.
   projects: [
     {
       name: "phone-360",
+      testIgnore: [
+        "**/programs-management-acceptance.test.ts",
+        "**/programs-navigation-parity.test.ts",
+      ],
       use: {
         ...devices["Pixel 5"],
         viewport: { width: 360, height: 800 },
@@ -75,6 +82,10 @@ export default defineConfig({
     },
     {
       name: "phone-402",
+      testIgnore: [
+        "**/programs-management-acceptance.test.ts",
+        "**/programs-navigation-parity.test.ts",
+      ],
       use: {
         ...devices["Pixel 5"],
         viewport: { width: 402, height: 874 },

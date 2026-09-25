@@ -6,8 +6,7 @@
  *   * `/api/v1/auth/*` — cookie-only auth surface (AUTH-04 #162 / AUTH-06
  *     #165). Locked actions — register, login, refresh, logout,
  *     registrations/:id/approve, registrations/:id/reject — plus the
- *     self-service account changes (username, password, UI-04 #196) and the
- *     preserved legacy forced-upgrade helpers (upgrade, me, admin-unlock).
+ *     self-service account changes (username, password, UI-04 #196).
  *     No CORS, no OPTIONS, no Authorization header, no X-Efcc-Session-Id
  *     header. Token material travels only in two httpOnly Secure
  *     SameSite=Strict cookies. The transport guard rejects forbidden
@@ -80,6 +79,15 @@ function authProblemResponse(
   );
 }
 
+function authNotConfiguredResponse(): Response {
+  return authProblemResponse(
+    503,
+    "AUTH_NOT_CONFIGURED",
+    "Service unavailable",
+    "Auth signing secret is not configured."
+  );
+}
+
 /**
  * Decode a percent-encoded path segment without throwing on malformed
  * encoding (e.g. a lone `%` or a truncated `%E4`). Returns null for
@@ -98,7 +106,7 @@ function decodePathSegment(value: string): string | null {
  * Rejects:
  *   * OPTIONS / non-POST/GET methods (no CORS preflight support).
  *   * Authorization header (every flavor is forbidden on this surface).
- *   * X-Efcc-Session-Id header (the legacy session id travels only via the
+ *   * X-Efcc-Session-Id header (the opaque session id travels only via the
  *     opaque refresh cookie).
  *   * Cross-origin requests (no CORS = no cross-origin).
  * Returns null on a clean cookie-only same-origin request, or a 403/405
@@ -173,12 +181,7 @@ export default {
             return guard;
           }
           if (!env.EFCC_ACCESS_TOKEN_SECRET) {
-            return authProblemResponse(
-              503,
-              "AUTH_NOT_CONFIGURED",
-              "Service unavailable",
-              "Auth signing secret is not configured."
-            );
+            return authNotConfiguredResponse();
           }
           const authEnv = {
             DB: env.DB,
@@ -187,11 +190,9 @@ export default {
           const {
             handleRegister,
             handleLogin,
-            handleUpgrade,
             handleRefresh,
             handleLogout,
             handleMe,
-            handleAdminUnlock,
             handleApprove,
             handleApproveBatch,
             handleReject,
@@ -223,12 +224,6 @@ export default {
             request.method === "POST"
           ) {
             return handleLogin(request, authEnv);
-          }
-          if (
-            url.pathname === "/api/v1/auth/upgrade" &&
-            request.method === "POST"
-          ) {
-            return handleUpgrade(request, authEnv);
           }
           if (
             url.pathname === "/api/v1/auth/refresh" &&
@@ -266,12 +261,6 @@ export default {
               authEnv,
               registrationDetail.groups?.id ?? ""
             );
-          }
-          if (
-            url.pathname === "/api/v1/auth/admin-unlock" &&
-            request.method === "POST"
-          ) {
-            return handleAdminUnlock(request, authEnv);
           }
           const approve = url.pathname.match(
             /^\/api\/v1\/auth\/registrations\/(?<id>[^/]+)\/approve$/u
@@ -318,525 +307,534 @@ export default {
     // ---- Programs domain: cookie-only transport, no CORS ----------------
     if (url.pathname.startsWith("/api/v1/programs/")) {
       try {
-      if (!env.EFCC_ACCESS_TOKEN_SECRET) {
-        return authProblemResponse(
-          503,
-          "AUTH_NOT_CONFIGURED",
-          "Service unavailable",
-          "Auth signing secret is not configured."
-        );
-      }
-      const programEnv = {
-        DB: env.DB,
-        EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
-      } as const;
-      const {
-        handleCreateDepartment,
-        handleListDepartments,
-        handleListManagementAccess,
-        handleGetManagementHub,
-        handleListManagementDirectory,
-        handleSearchManagementMembers,
-        handleSearchAccountDirectory,
-        handleGetAccountDirectoryDetail,
-        handleGetManagementAttention,
-        handleGetManagementNotifications,
-        handleMarkManagementNotificationsRead,
-        handleListParticipantCatalog,
-        handleGetParticipantProgramDetail,
-        handleGetManagementProgram,
-        handleGetProgramAttendanceArtifact,
-        handleRotateProgramAttendanceArtifact,
-        handleGetManagementCockpit,
-        handleGetDepartment,
-        handleUpdateDepartment,
-        handleCreateProgram,
-        handleListPrograms,
-        handleGetProgram,
-        handleUpdateProgram,
-        handleSearchMemberOptions,
-        handleSetModule,
-        handleListScheduleRules,
-        handleListScheduleExceptions,
-        handleCreateScheduleRule,
-        handleUpdateScheduleRule,
-        handleRetireScheduleRule,
-        handleCreateScheduleException,
-        handleDeleteScheduleException,
-        handlePreviewEvents,
-        handleGenerateEvents,
-        handleCreateEvent,
-        handleListEvents,
-        handleGetEvent,
-        handleEventUpdate,
-        handleCreateEnrollmentRequest,
-        handleListEnrollmentRequests,
-        handleListEnrollmentSnapshot,
-        handleStartEnrollmentApprovalRun,
-        handleListEnrollmentApprovalRuns,
-        handleReconcileEnrollmentApprovalRun,
-        handleContinueEnrollmentApprovalRun,
-        handleCancelEnrollmentApprovalRun,
-        handleDecideEnrollmentRequest,
-        handleWithdrawEnrollmentRequest,
-        handleAssistedEnroll,
-        handleListEnrollments,
-        handleCancelEnrollment,
-        handleListParticipantNotices,
-        handleMarkParticipantNoticesRead,
-        handleCreateParticipantNotice,
-      } = await import("./lib/programs/program-handlers");
+        if (!env.EFCC_ACCESS_TOKEN_SECRET) {
+          return authNotConfiguredResponse();
+        }
+        const programEnv = {
+          DB: env.DB,
+          EFCC_ACCESS_TOKEN_SECRET: env.EFCC_ACCESS_TOKEN_SECRET,
+        } as const;
+        const {
+          handleCreateDepartment,
+          handleListDepartments,
+          handleListManagementAccess,
+          handleGetManagementHub,
+          handleListManagementDirectory,
+          handleSearchManagementMembers,
+          handleSearchAccountDirectory,
+          handleGetAccountDirectoryDetail,
+          handleGetManagementAttention,
+          handleGetManagementNotifications,
+          handleMarkManagementNotificationsRead,
+          handleListParticipantCatalog,
+          handleGetParticipantProgramDetail,
+          handleGetManagementProgram,
+          handleGetProgramAttendanceArtifact,
+          handleRotateProgramAttendanceArtifact,
+          handleGetManagementCockpit,
+          handleGetDepartment,
+          handleUpdateDepartment,
+          handleCreateProgram,
+          handleListPrograms,
+          handleGetProgram,
+          handleUpdateProgram,
+          handleSearchMemberOptions,
+          handleSetModule,
+          handleListScheduleRules,
+          handleListScheduleExceptions,
+          handleCreateScheduleRule,
+          handleUpdateScheduleRule,
+          handleRetireScheduleRule,
+          handleCreateScheduleException,
+          handleDeleteScheduleException,
+          handlePreviewEvents,
+          handleGenerateEvents,
+          handleCreateEvent,
+          handleListEvents,
+          handleGetEvent,
+          handleEventUpdate,
+          handleCreateEnrollmentRequest,
+          handleListEnrollmentRequests,
+          handleListEnrollmentSnapshot,
+          handleStartEnrollmentApprovalRun,
+          handleListEnrollmentApprovalRuns,
+          handleReconcileEnrollmentApprovalRun,
+          handleContinueEnrollmentApprovalRun,
+          handleCancelEnrollmentApprovalRun,
+          handleDecideEnrollmentRequest,
+          handleWithdrawEnrollmentRequest,
+          handleAssistedEnroll,
+          handleListEnrollments,
+          handleCancelEnrollment,
+          handleListParticipantNotices,
+          handleMarkParticipantNoticesRead,
+          handleCreateParticipantNotice,
+        } = await import("./lib/programs/program-handlers");
 
-      if (
-        url.pathname === "/api/v1/programs/access" &&
-        request.method === "GET"
-      ) {
-        return await handleListManagementAccess(request, programEnv);
-      }
-      if (url.pathname === "/api/v1/programs/hub" && request.method === "GET") {
-        return await handleGetManagementHub(request, programEnv);
-      }
-      if (
-        url.pathname === "/api/v1/programs/management-directory" &&
-        request.method === "GET"
-      ) {
-        return await handleListManagementDirectory(request, programEnv);
-      }
-      if (
-        url.pathname.startsWith("/api/v1/programs/accounts/") &&
-        request.method === "GET"
-      ) {
-        const accountId = url.pathname.slice(
-          "/api/v1/programs/accounts/".length
-        );
-        return await handleGetAccountDirectoryDetail(request, programEnv, accountId);
-      }
-      if (
-        url.pathname === "/api/v1/programs/accounts" &&
-        request.method === "GET"
-      ) {
-        return await handleSearchAccountDirectory(request, programEnv);
-      }
-      if (
-        url.pathname === "/api/v1/programs/members" &&
-        request.method === "GET"
-      ) {
-        return await handleSearchManagementMembers(request, programEnv);
-      }
-      if (
-        url.pathname === "/api/v1/programs/attention" &&
-        request.method === "GET"
-      ) {
-        return await handleGetManagementAttention(request, programEnv);
-      }
-      if (
-        url.pathname === "/api/v1/programs/notifications" &&
-        request.method === "GET"
-      ) {
-        return await handleGetManagementNotifications(request, programEnv);
-      }
-      if (
-        url.pathname === "/api/v1/programs/notifications/read" &&
-        request.method === "POST"
-      ) {
-        return await handleMarkManagementNotificationsRead(request, programEnv);
-      }
-      if (
-        url.pathname === "/api/v1/programs/notices" &&
-        request.method === "GET"
-      ) {
-        return await handleListParticipantNotices(request, programEnv);
-      }
-      if (
-        url.pathname === "/api/v1/programs/notices/read-all" &&
-        request.method === "POST"
-      ) {
-        return await handleMarkParticipantNoticesRead(request, programEnv);
-      }
-      if (
-        url.pathname === "/api/v1/programs/notices" &&
-        request.method === "POST"
-      ) {
-        return await handleCreateParticipantNotice(request, programEnv);
-      }
-      if (
-        url.pathname === "/api/v1/programs/catalog" &&
-        request.method === "GET"
-      ) {
-        return await handleListParticipantCatalog(request, programEnv);
-      }
-      const managementProgram = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/management$/u
-      );
-      if (managementProgram && request.method === "GET") {
-        return await handleGetManagementProgram(
-          request,
-          programEnv,
-          managementProgram.groups?.id ?? ""
-        );
-      }
-      const attendanceArtifact = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/attendance-artifact$/u
-      );
-      if (attendanceArtifact && request.method === "GET") {
-        return await handleGetProgramAttendanceArtifact(
-          request,
-          programEnv,
-          attendanceArtifact.groups?.id ?? ""
-        );
-      }
-      const attendanceArtifactRotation = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/attendance-artifact\/rotate$/u
-      );
-      if (attendanceArtifactRotation && request.method === "POST") {
-        return await handleRotateProgramAttendanceArtifact(
-          request,
-          programEnv,
-          attendanceArtifactRotation.groups?.id ?? ""
-        );
-      }
-      const cockpit = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/cockpit$/u
-      );
-      if (cockpit && request.method === "GET") {
-        return await handleGetManagementCockpit(
-          request,
-          programEnv,
-          cockpit.groups?.id ?? ""
-        );
-      }
-      const participantDetail = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/participant-detail$/u
-      );
-      if (participantDetail && request.method === "GET") {
-        return await handleGetParticipantProgramDetail(
-          request,
-          programEnv,
-          participantDetail.groups?.id ?? ""
-        );
-      }
-      if (
-        url.pathname === "/api/v1/programs/departments" &&
-        request.method === "POST"
-      ) {
-        return await handleCreateDepartment(request, programEnv);
-      }
-      if (
-        url.pathname === "/api/v1/programs/departments" &&
-        request.method === "GET"
-      ) {
-        return await handleListDepartments(request, programEnv);
-      }
-      const department = url.pathname.match(
-        /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)$/u
-      );
-      if (department && request.method === "GET") {
-        return await handleGetDepartment(
-          request,
-          programEnv,
-          department.groups?.id ?? ""
-        );
-      }
-      if (department && request.method === "PATCH") {
-        return await handleUpdateDepartment(
-          request,
-          programEnv,
-          department.groups?.id ?? ""
-        );
-      }
-      const departmentPrograms = url.pathname.match(
-        /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)\/programs$/u
-      );
-      if (departmentPrograms && request.method === "POST") {
-        return await handleCreateProgram(
-          request,
-          programEnv,
-          departmentPrograms.groups?.id ?? ""
-        );
-      }
-      if (departmentPrograms && request.method === "GET") {
-        return await handleListPrograms(
-          request,
-          programEnv,
-          departmentPrograms.groups?.id ?? ""
-        );
-      }
-      const moduleMatch = url.pathname.match(
-        /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)\/modules\/(?<key>[^/]+)\/(?<action>enable|disable)$/u
-      );
-      if (moduleMatch && request.method === "POST") {
-        return await handleSetModule(
-          request,
-          programEnv,
-          moduleMatch.groups?.id ?? "",
-          moduleMatch.groups?.key ?? "",
-          moduleMatch.groups?.action === "enable"
-        );
-      }
-      const program = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)$/u
-      );
-      if (program && request.method === "GET") {
-        return await handleGetProgram(request, programEnv, program.groups?.id ?? "");
-      }
-      if (program && request.method === "PATCH") {
-        return await handleUpdateProgram(
-          request,
-          programEnv,
-          program.groups?.id ?? ""
-        );
-      }
-      const memberOptions = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/member-options$/u
-      );
-      if (memberOptions && request.method === "GET") {
-        return await handleSearchMemberOptions(
-          request,
-          programEnv,
-          memberOptions.groups?.id ?? ""
-        );
-      }
-      const scheduleRules = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules$/u
-      );
-      if (scheduleRules && request.method === "POST") {
-        return await handleCreateScheduleRule(
-          request,
-          programEnv,
-          scheduleRules.groups?.id ?? ""
-        );
-      }
-      if (scheduleRules && request.method === "GET") {
-        return await handleListScheduleRules(
-          request,
-          programEnv,
-          scheduleRules.groups?.id ?? ""
-        );
-      }
-      const scheduleRuleRetire = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)\/retire$/u
-      );
-      if (scheduleRuleRetire && request.method === "POST") {
-        return await handleRetireScheduleRule(
-          request,
-          programEnv,
-          scheduleRuleRetire.groups?.id ?? "",
-          scheduleRuleRetire.groups?.ruleId ?? ""
-        );
-      }
-      const scheduleRule = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)$/u
-      );
-      if (scheduleRule && request.method === "PATCH") {
-        return await handleUpdateScheduleRule(
-          request,
-          programEnv,
-          scheduleRule.groups?.id ?? "",
-          scheduleRule.groups?.ruleId ?? ""
-        );
-      }
-      const scheduleExceptions = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)\/exceptions$/u
-      );
-      if (scheduleExceptions && request.method === "POST") {
-        return await handleCreateScheduleException(
-          request,
-          programEnv,
-          scheduleExceptions.groups?.id ?? "",
-          scheduleExceptions.groups?.ruleId ?? ""
-        );
-      }
-      if (scheduleExceptions && request.method === "GET") {
-        return await handleListScheduleExceptions(
-          request,
-          programEnv,
-          scheduleExceptions.groups?.id ?? "",
-          scheduleExceptions.groups?.ruleId ?? ""
-        );
-      }
-      const scheduleException = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)\/exceptions\/(?<exceptionId>[^/]+)$/u
-      );
-      if (scheduleException && request.method === "DELETE") {
-        return await handleDeleteScheduleException(
-          request,
-          programEnv,
-          scheduleException.groups?.id ?? "",
-          scheduleException.groups?.exceptionId ?? ""
-        );
-      }
-      const programPreview = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/events\/preview$/u
-      );
-      if (programPreview && request.method === "POST") {
-        return await handlePreviewEvents(
-          request,
-          programEnv,
-          programPreview.groups?.id ?? ""
-        );
-      }
-      const programGenerate = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/events\/generate$/u
-      );
-      if (programGenerate && request.method === "POST") {
-        return await handleGenerateEvents(
-          request,
-          programEnv,
-          programGenerate.groups?.id ?? ""
-        );
-      }
-      const programEvents = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/events$/u
-      );
-      if (programEvents && request.method === "POST") {
-        return await handleCreateEvent(
-          request,
-          programEnv,
-          programEvents.groups?.id ?? ""
-        );
-      }
-      if (programEvents && request.method === "GET") {
-        return await handleListEvents(
-          request,
-          programEnv,
-          programEvents.groups?.id ?? ""
-        );
-      }
-      const event = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/events\/(?<eventId>[^/]+)$/u
-      );
-      if (event && request.method === "GET") {
-        return await handleGetEvent(
-          request,
-          programEnv,
-          event.groups?.id ?? "",
-          event.groups?.eventId ?? ""
-        );
-      }
-      if (event && request.method === "PATCH") {
-        return await handleEventUpdate(
-          request,
-          programEnv,
-          event.groups?.id ?? "",
-          event.groups?.eventId ?? ""
-        );
-      }
-      const enrollmentRequests = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-requests$/u
-      );
-      if (enrollmentRequests && request.method === "POST") {
-        return await handleCreateEnrollmentRequest(
-          request,
-          programEnv,
-          enrollmentRequests.groups?.id ?? ""
-        );
-      }
-      if (enrollmentRequests && request.method === "GET") {
-        return await handleListEnrollmentRequests(
-          request,
-          programEnv,
-          enrollmentRequests.groups?.id ?? ""
-        );
-      }
-      const enrollmentSnapshot = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-snapshot$/u
-      );
-      if (enrollmentSnapshot && request.method === "GET") {
-        return await handleListEnrollmentSnapshot(
-          request,
-          programEnv,
-          enrollmentSnapshot.groups?.id ?? ""
-        );
-      }
-      const enrollmentApprovalRuns = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-approval-runs$/u
-      );
-      if (enrollmentApprovalRuns && request.method === "POST") {
-        return await handleStartEnrollmentApprovalRun(
-          request,
-          programEnv,
-          enrollmentApprovalRuns.groups?.id ?? ""
-        );
-      }
-      if (enrollmentApprovalRuns && request.method === "GET") {
-        return await handleListEnrollmentApprovalRuns(
-          request,
-          programEnv,
-          enrollmentApprovalRuns.groups?.id ?? ""
-        );
-      }
-      const enrollmentApprovalRunAction = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-approval-runs\/(?<runId>[^/]+)\/(?<action>reconcile|continue|cancel)$/u
-      );
-      if (enrollmentApprovalRunAction && request.method === "POST") {
-        const action = enrollmentApprovalRunAction.groups?.action;
-        const args = [
-          request,
-          programEnv,
-          enrollmentApprovalRunAction.groups?.id ?? "",
-          enrollmentApprovalRunAction.groups?.runId ?? "",
-        ] as const;
-        if (action === "reconcile") {
-          return await handleReconcileEnrollmentApprovalRun(...args);
+        if (
+          url.pathname === "/api/v1/programs/access" &&
+          request.method === "GET"
+        ) {
+          return await handleListManagementAccess(request, programEnv);
         }
-        if (action === "continue") {
-          return await handleContinueEnrollmentApprovalRun(...args);
+        if (
+          url.pathname === "/api/v1/programs/hub" &&
+          request.method === "GET"
+        ) {
+          return await handleGetManagementHub(request, programEnv);
         }
-        return await handleCancelEnrollmentApprovalRun(...args);
-      }
-      const enrollmentRequest = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-requests\/(?<requestId>[^/]+)\/(?<action>decision|withdraw)$/u
-      );
-      if (enrollmentRequest && request.method === "POST") {
-        if (enrollmentRequest.groups?.action === "decision") {
-          return await handleDecideEnrollmentRequest(
+        if (
+          url.pathname === "/api/v1/programs/management-directory" &&
+          request.method === "GET"
+        ) {
+          return await handleListManagementDirectory(request, programEnv);
+        }
+        if (
+          url.pathname.startsWith("/api/v1/programs/accounts/") &&
+          request.method === "GET"
+        ) {
+          const accountId = url.pathname.slice(
+            "/api/v1/programs/accounts/".length
+          );
+          return await handleGetAccountDirectoryDetail(
+            request,
+            programEnv,
+            accountId
+          );
+        }
+        if (
+          url.pathname === "/api/v1/programs/accounts" &&
+          request.method === "GET"
+        ) {
+          return await handleSearchAccountDirectory(request, programEnv);
+        }
+        if (
+          url.pathname === "/api/v1/programs/members" &&
+          request.method === "GET"
+        ) {
+          return await handleSearchManagementMembers(request, programEnv);
+        }
+        if (
+          url.pathname === "/api/v1/programs/attention" &&
+          request.method === "GET"
+        ) {
+          return await handleGetManagementAttention(request, programEnv);
+        }
+        if (
+          url.pathname === "/api/v1/programs/notifications" &&
+          request.method === "GET"
+        ) {
+          return await handleGetManagementNotifications(request, programEnv);
+        }
+        if (
+          url.pathname === "/api/v1/programs/notifications/read" &&
+          request.method === "POST"
+        ) {
+          return await handleMarkManagementNotificationsRead(
+            request,
+            programEnv
+          );
+        }
+        if (
+          url.pathname === "/api/v1/programs/notices" &&
+          request.method === "GET"
+        ) {
+          return await handleListParticipantNotices(request, programEnv);
+        }
+        if (
+          url.pathname === "/api/v1/programs/notices/read-all" &&
+          request.method === "POST"
+        ) {
+          return await handleMarkParticipantNoticesRead(request, programEnv);
+        }
+        if (
+          url.pathname === "/api/v1/programs/notices" &&
+          request.method === "POST"
+        ) {
+          return await handleCreateParticipantNotice(request, programEnv);
+        }
+        if (
+          url.pathname === "/api/v1/programs/catalog" &&
+          request.method === "GET"
+        ) {
+          return await handleListParticipantCatalog(request, programEnv);
+        }
+        const managementProgram = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/management$/u
+        );
+        if (managementProgram && request.method === "GET") {
+          return await handleGetManagementProgram(
+            request,
+            programEnv,
+            managementProgram.groups?.id ?? ""
+          );
+        }
+        const attendanceArtifact = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/attendance-artifact$/u
+        );
+        if (attendanceArtifact && request.method === "GET") {
+          return await handleGetProgramAttendanceArtifact(
+            request,
+            programEnv,
+            attendanceArtifact.groups?.id ?? ""
+          );
+        }
+        const attendanceArtifactRotation = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/attendance-artifact\/rotate$/u
+        );
+        if (attendanceArtifactRotation && request.method === "POST") {
+          return await handleRotateProgramAttendanceArtifact(
+            request,
+            programEnv,
+            attendanceArtifactRotation.groups?.id ?? ""
+          );
+        }
+        const cockpit = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/cockpit$/u
+        );
+        if (cockpit && request.method === "GET") {
+          return await handleGetManagementCockpit(
+            request,
+            programEnv,
+            cockpit.groups?.id ?? ""
+          );
+        }
+        const participantDetail = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/participant-detail$/u
+        );
+        if (participantDetail && request.method === "GET") {
+          return await handleGetParticipantProgramDetail(
+            request,
+            programEnv,
+            participantDetail.groups?.id ?? ""
+          );
+        }
+        if (
+          url.pathname === "/api/v1/programs/departments" &&
+          request.method === "POST"
+        ) {
+          return await handleCreateDepartment(request, programEnv);
+        }
+        if (
+          url.pathname === "/api/v1/programs/departments" &&
+          request.method === "GET"
+        ) {
+          return await handleListDepartments(request, programEnv);
+        }
+        const department = url.pathname.match(
+          /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)$/u
+        );
+        if (department && request.method === "GET") {
+          return await handleGetDepartment(
+            request,
+            programEnv,
+            department.groups?.id ?? ""
+          );
+        }
+        if (department && request.method === "PATCH") {
+          return await handleUpdateDepartment(
+            request,
+            programEnv,
+            department.groups?.id ?? ""
+          );
+        }
+        const departmentPrograms = url.pathname.match(
+          /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)\/programs$/u
+        );
+        if (departmentPrograms && request.method === "POST") {
+          return await handleCreateProgram(
+            request,
+            programEnv,
+            departmentPrograms.groups?.id ?? ""
+          );
+        }
+        if (departmentPrograms && request.method === "GET") {
+          return await handleListPrograms(
+            request,
+            programEnv,
+            departmentPrograms.groups?.id ?? ""
+          );
+        }
+        const moduleMatch = url.pathname.match(
+          /^\/api\/v1\/programs\/departments\/(?<id>[^/]+)\/modules\/(?<key>[^/]+)\/(?<action>enable|disable)$/u
+        );
+        if (moduleMatch && request.method === "POST") {
+          return await handleSetModule(
+            request,
+            programEnv,
+            moduleMatch.groups?.id ?? "",
+            moduleMatch.groups?.key ?? "",
+            moduleMatch.groups?.action === "enable"
+          );
+        }
+        const program = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)$/u
+        );
+        if (program && request.method === "GET") {
+          return await handleGetProgram(
+            request,
+            programEnv,
+            program.groups?.id ?? ""
+          );
+        }
+        if (program && request.method === "PATCH") {
+          return await handleUpdateProgram(
+            request,
+            programEnv,
+            program.groups?.id ?? ""
+          );
+        }
+        const memberOptions = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/member-options$/u
+        );
+        if (memberOptions && request.method === "GET") {
+          return await handleSearchMemberOptions(
+            request,
+            programEnv,
+            memberOptions.groups?.id ?? ""
+          );
+        }
+        const scheduleRules = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules$/u
+        );
+        if (scheduleRules && request.method === "POST") {
+          return await handleCreateScheduleRule(
+            request,
+            programEnv,
+            scheduleRules.groups?.id ?? ""
+          );
+        }
+        if (scheduleRules && request.method === "GET") {
+          return await handleListScheduleRules(
+            request,
+            programEnv,
+            scheduleRules.groups?.id ?? ""
+          );
+        }
+        const scheduleRuleRetire = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)\/retire$/u
+        );
+        if (scheduleRuleRetire && request.method === "POST") {
+          return await handleRetireScheduleRule(
+            request,
+            programEnv,
+            scheduleRuleRetire.groups?.id ?? "",
+            scheduleRuleRetire.groups?.ruleId ?? ""
+          );
+        }
+        const scheduleRule = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)$/u
+        );
+        if (scheduleRule && request.method === "PATCH") {
+          return await handleUpdateScheduleRule(
+            request,
+            programEnv,
+            scheduleRule.groups?.id ?? "",
+            scheduleRule.groups?.ruleId ?? ""
+          );
+        }
+        const scheduleExceptions = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)\/exceptions$/u
+        );
+        if (scheduleExceptions && request.method === "POST") {
+          return await handleCreateScheduleException(
+            request,
+            programEnv,
+            scheduleExceptions.groups?.id ?? "",
+            scheduleExceptions.groups?.ruleId ?? ""
+          );
+        }
+        if (scheduleExceptions && request.method === "GET") {
+          return await handleListScheduleExceptions(
+            request,
+            programEnv,
+            scheduleExceptions.groups?.id ?? "",
+            scheduleExceptions.groups?.ruleId ?? ""
+          );
+        }
+        const scheduleException = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/schedule-rules\/(?<ruleId>[^/]+)\/exceptions\/(?<exceptionId>[^/]+)$/u
+        );
+        if (scheduleException && request.method === "DELETE") {
+          return await handleDeleteScheduleException(
+            request,
+            programEnv,
+            scheduleException.groups?.id ?? "",
+            scheduleException.groups?.exceptionId ?? ""
+          );
+        }
+        const programPreview = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/events\/preview$/u
+        );
+        if (programPreview && request.method === "POST") {
+          return await handlePreviewEvents(
+            request,
+            programEnv,
+            programPreview.groups?.id ?? ""
+          );
+        }
+        const programGenerate = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/events\/generate$/u
+        );
+        if (programGenerate && request.method === "POST") {
+          return await handleGenerateEvents(
+            request,
+            programEnv,
+            programGenerate.groups?.id ?? ""
+          );
+        }
+        const programEvents = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/events$/u
+        );
+        if (programEvents && request.method === "POST") {
+          return await handleCreateEvent(
+            request,
+            programEnv,
+            programEvents.groups?.id ?? ""
+          );
+        }
+        if (programEvents && request.method === "GET") {
+          return await handleListEvents(
+            request,
+            programEnv,
+            programEvents.groups?.id ?? ""
+          );
+        }
+        const event = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/events\/(?<eventId>[^/]+)$/u
+        );
+        if (event && request.method === "GET") {
+          return await handleGetEvent(
+            request,
+            programEnv,
+            event.groups?.id ?? "",
+            event.groups?.eventId ?? ""
+          );
+        }
+        if (event && request.method === "PATCH") {
+          return await handleEventUpdate(
+            request,
+            programEnv,
+            event.groups?.id ?? "",
+            event.groups?.eventId ?? ""
+          );
+        }
+        const enrollmentRequests = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-requests$/u
+        );
+        if (enrollmentRequests && request.method === "POST") {
+          return await handleCreateEnrollmentRequest(
+            request,
+            programEnv,
+            enrollmentRequests.groups?.id ?? ""
+          );
+        }
+        if (enrollmentRequests && request.method === "GET") {
+          return await handleListEnrollmentRequests(
+            request,
+            programEnv,
+            enrollmentRequests.groups?.id ?? ""
+          );
+        }
+        const enrollmentSnapshot = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-snapshot$/u
+        );
+        if (enrollmentSnapshot && request.method === "GET") {
+          return await handleListEnrollmentSnapshot(
+            request,
+            programEnv,
+            enrollmentSnapshot.groups?.id ?? ""
+          );
+        }
+        const enrollmentApprovalRuns = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-approval-runs$/u
+        );
+        if (enrollmentApprovalRuns && request.method === "POST") {
+          return await handleStartEnrollmentApprovalRun(
+            request,
+            programEnv,
+            enrollmentApprovalRuns.groups?.id ?? ""
+          );
+        }
+        if (enrollmentApprovalRuns && request.method === "GET") {
+          return await handleListEnrollmentApprovalRuns(
+            request,
+            programEnv,
+            enrollmentApprovalRuns.groups?.id ?? ""
+          );
+        }
+        const enrollmentApprovalRunAction = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-approval-runs\/(?<runId>[^/]+)\/(?<action>reconcile|continue|cancel)$/u
+        );
+        if (enrollmentApprovalRunAction && request.method === "POST") {
+          const action = enrollmentApprovalRunAction.groups?.action;
+          const args = [
+            request,
+            programEnv,
+            enrollmentApprovalRunAction.groups?.id ?? "",
+            enrollmentApprovalRunAction.groups?.runId ?? "",
+          ] as const;
+          if (action === "reconcile") {
+            return await handleReconcileEnrollmentApprovalRun(...args);
+          }
+          if (action === "continue") {
+            return await handleContinueEnrollmentApprovalRun(...args);
+          }
+          return await handleCancelEnrollmentApprovalRun(...args);
+        }
+        const enrollmentRequest = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollment-requests\/(?<requestId>[^/]+)\/(?<action>decision|withdraw)$/u
+        );
+        if (enrollmentRequest && request.method === "POST") {
+          if (enrollmentRequest.groups?.action === "decision") {
+            return await handleDecideEnrollmentRequest(
+              request,
+              programEnv,
+              enrollmentRequest.groups?.id ?? "",
+              enrollmentRequest.groups?.requestId ?? ""
+            );
+          }
+          return await handleWithdrawEnrollmentRequest(
             request,
             programEnv,
             enrollmentRequest.groups?.id ?? "",
             enrollmentRequest.groups?.requestId ?? ""
           );
         }
-        return await handleWithdrawEnrollmentRequest(
-          request,
-          programEnv,
-          enrollmentRequest.groups?.id ?? "",
-          enrollmentRequest.groups?.requestId ?? ""
+        const enrollments = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollments$/u
         );
-      }
-      const enrollments = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollments$/u
-      );
-      if (enrollments && request.method === "POST") {
-        return await handleAssistedEnroll(
-          request,
-          programEnv,
-          enrollments.groups?.id ?? ""
+        if (enrollments && request.method === "POST") {
+          return await handleAssistedEnroll(
+            request,
+            programEnv,
+            enrollments.groups?.id ?? ""
+          );
+        }
+        if (enrollments && request.method === "GET") {
+          return await handleListEnrollments(
+            request,
+            programEnv,
+            enrollments.groups?.id ?? ""
+          );
+        }
+        const enrollment = url.pathname.match(
+          /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollments\/(?<enrollmentId>[^/]+)\/cancel$/u
         );
-      }
-      if (enrollments && request.method === "GET") {
-        return await handleListEnrollments(
-          request,
-          programEnv,
-          enrollments.groups?.id ?? ""
+        if (enrollment && request.method === "POST") {
+          return await handleCancelEnrollment(
+            request,
+            programEnv,
+            enrollment.groups?.id ?? "",
+            enrollment.groups?.enrollmentId ?? ""
+          );
+        }
+        return authProblemResponse(
+          404,
+          "NOT_FOUND",
+          "Not found",
+          "Unknown programs route."
         );
-      }
-      const enrollment = url.pathname.match(
-        /^\/api\/v1\/programs\/(?<id>[^/]+)\/enrollments\/(?<enrollmentId>[^/]+)\/cancel$/u
-      );
-      if (enrollment && request.method === "POST") {
-        return await handleCancelEnrollment(
-          request,
-          programEnv,
-          enrollment.groups?.id ?? "",
-          enrollment.groups?.enrollmentId ?? ""
-        );
-      }
-      return authProblemResponse(
-        404,
-        "NOT_FOUND",
-        "Not found",
-        "Unknown programs route."
-      );
       } catch (error) {
         // Parity with the auth envelope (worker.ts try/catch): unmapped
         // throws become RFC 9457 500s with requestId + server log line,
@@ -858,12 +856,7 @@ export default {
 
     if (url.pathname.startsWith("/api/v1/attendance")) {
       if (!env.EFCC_ACCESS_TOKEN_SECRET) {
-        return authProblemResponse(
-          503,
-          "AUTH_NOT_CONFIGURED",
-          "Service unavailable",
-          "Auth signing secret is not configured."
-        );
+        return authNotConfiguredResponse();
       }
       const attendanceEnv = {
         DB: env.DB,
@@ -1025,12 +1018,7 @@ export default {
       url.pathname.startsWith("/api/v1/home/")
     ) {
       if (!env.EFCC_ACCESS_TOKEN_SECRET) {
-        return authProblemResponse(
-          503,
-          "AUTH_NOT_CONFIGURED",
-          "Service unavailable",
-          "Auth signing secret is not configured."
-        );
+        return authNotConfiguredResponse();
       }
       const homeEnv = {
         DB: env.DB,
@@ -1104,12 +1092,7 @@ export default {
         );
       }
       if (!env.EFCC_ACCESS_TOKEN_SECRET) {
-        return authProblemResponse(
-          503,
-          "AUTH_NOT_CONFIGURED",
-          "Service unavailable",
-          "Auth signing secret is not configured."
-        );
+        return authNotConfiguredResponse();
       }
       const roleEnv = {
         DB: env.DB,

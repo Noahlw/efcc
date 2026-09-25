@@ -24,9 +24,9 @@ import type {
   AccountDirectoryMember,
   AccountDirectoryView,
 } from "@/lib/programs/program-api";
-import { useAsyncResource } from "@/lib/programs/use-async-resource";
 import { RouteHeader } from "@/lib/route-header";
 import { rememberDeepLink } from "@/lib/session";
+import { useAsyncResource } from "@/lib/use-async-resource";
 
 import { DirectoryFrame } from "./directory-frame";
 import type { DirectoryFrameState } from "./directory-frame";

@@ -1,6 +1,8 @@
 # 084 — Shell, Auth Surfaces, Account & Settings
 
-Status: Ready for agent
+> Historical design input, not active acceptance authority (2026-09-25). The old “Ready for agent” status is retired. Legacy-PIN upgrade stories 12–13 below are retired because no old accounts need migration; username/password auth, registration approval, the Worker/D1 boundary, and role outcomes remain current. For current terminology and implementation scope, use [CONTEXT.md](../../CONTEXT.md), [TESTING.md](../../TESTING.md), the [repo-wide organization plan](../plans/2026-09-23-repo-wide-organization.md), and deferred Auth work in [#639](https://github.com/Noahlw/efcc/issues/639). Treat the remaining prototype-derived stories as historical design input and verify against current source before using them as acceptance criteria.
+
+Status: Historical design reference; not active implementation work
 Scope: Foundational — 5-slot shell, Auth Surfaces, Account, system Settings hub.
 Blocks: 085 (Participant Experience), 086 (Course Cockpit + Operations), 087
 (Management Hub + Approvals/Permissions + Home CMS) — all three mount inside

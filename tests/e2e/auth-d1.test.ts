@@ -1,7 +1,7 @@
 /* oxlint-disable vitest/prefer-importing-vitest-globals */
 import { expect, test } from "@playwright/test";
 
-import { DEV_ADMIN, DEV_LEGACY } from "./dev-fixtures";
+import { DEV_ADMIN } from "./dev-fixtures";
 
 const localTarget = (() => {
   const target = process.env.AUTH_TARGET_URL;
@@ -22,15 +22,6 @@ const TEST_USERNAME =
 const TEST_CREDENTIAL =
   process.env.AUTH_TEST_CREDENTIAL ??
   (localTarget ? DEV_ADMIN.credential : undefined);
-const LEGACY_USERNAME =
-  process.env.AUTH_LEGACY_USERNAME ??
-  (localTarget ? DEV_LEGACY.username : undefined);
-const LEGACY_PIN =
-  process.env.AUTH_LEGACY_PIN ??
-  (localTarget ? DEV_LEGACY.legacyPin : undefined);
-const NEW_CREDENTIAL =
-  process.env.AUTH_NEW_CREDENTIAL ??
-  (localTarget ? DEV_LEGACY.newCredential : undefined);
 function originFor(baseURL: string | undefined): string {
   if (!baseURL) {
     throw new Error("AUTH_TARGET_URL is required");
@@ -85,18 +76,12 @@ test.beforeAll(() => {
   for (const [name, value] of [
     ["AUTH_TEST_USERNAME", TEST_USERNAME],
     ["AUTH_TEST_CREDENTIAL", TEST_CREDENTIAL],
-    ["AUTH_LEGACY_USERNAME", LEGACY_USERNAME],
-    ["AUTH_LEGACY_PIN", LEGACY_PIN],
-    ["AUTH_NEW_CREDENTIAL", NEW_CREDENTIAL],
   ]) {
     if (!value) {
       throw new Error(`${name} is required`);
     }
   }
-  for (const [name, value] of [
-    ["AUTH_TEST_USERNAME", TEST_USERNAME],
-    ["AUTH_LEGACY_USERNAME", LEGACY_USERNAME],
-  ]) {
+  for (const [name, value] of [["AUTH_TEST_USERNAME", TEST_USERNAME]]) {
     if (typeof value !== "string" || !value.startsWith("E2E_")) {
       throw new Error(
         `${name} must start with E2E_; destructive auth runs require disposable fixtures`
@@ -136,31 +121,6 @@ test.describe("D1 cookie-only login gate", () => {
 
     const logout = await request.post("/api/v1/auth/logout", {
       headers: { Origin: origin, Cookie: cookieHeader },
-    });
-    expect(logout.status()).toBe(204);
-    assertClearedCookies(setCookieHeaders(logout));
-  });
-
-  test("legacy account upgrade verifies the PIN before issuing cookies", async ({
-    request,
-    baseURL,
-  }) => {
-    const origin = originFor(baseURL);
-    const upgrade = await request.post("/api/v1/auth/upgrade", {
-      headers: { Origin: origin },
-      data: {
-        username: LEGACY_USERNAME,
-        legacyPin: LEGACY_PIN,
-        newCredential: NEW_CREDENTIAL,
-      },
-    });
-
-    expect(upgrade.status()).toBe(200);
-    assertLockedCookies(setCookieHeaders(upgrade));
-    assertNoTokenMaterial(await upgrade.json());
-
-    const logout = await request.post("/api/v1/auth/logout", {
-      headers: { Origin: origin },
     });
     expect(logout.status()).toBe(204);
     assertClearedCookies(setCookieHeaders(logout));

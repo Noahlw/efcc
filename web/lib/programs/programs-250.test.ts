@@ -5,19 +5,13 @@ import { beforeAll, describe, test } from "vitest";
 
 import worker from "../../worker";
 import type { Env } from "../../worker";
-import { importLegacyUsers } from "../auth/accounts";
 import { ACCESS_COOKIE_NAME } from "../auth/cookies";
-import { applyMigrations, testDb } from "../auth/test-bootstrap";
-import { completeCredentialUpgrade } from "../auth/upgrade";
+import {
+  applyMigrations,
+  seedTestAccount,
+  testDb,
+} from "../auth/test-bootstrap";
 
-const LEGACY_HEADER = [
-  "User_ID",
-  "Name",
-  "Username",
-  "PIN_Code",
-  "System_Role",
-  "Status",
-];
 const SECRET = "test-access-token-secret";
 const HOST = "https://efcc.example";
 
@@ -134,27 +128,28 @@ async function createProgram(
 describe("MUI-02: Program lifecycle and behavior", () => {
   beforeAll(async () => {
     await applyMigrations();
-    await importLegacyUsers(testDb(), [
-      LEGACY_HEADER,
-      ["U001", "Alice Chan", "alice", "1234", "Admin", "Active"],
-      ["U002", "Bob Lee", "bob", "5678", "Member", "Active"],
-      ["U003", "Carol Ng", "carol", "4321", "Admin", "Active"],
-    ]);
-    await completeCredentialUpgrade(testDb(), {
-      userId: "U001",
-      legacyPin: "1234",
-      newCredential: "alice-secret",
-    });
-    await completeCredentialUpgrade(testDb(), {
-      userId: "U002",
-      legacyPin: "5678",
-      newCredential: "bob-secret",
-    });
-    await completeCredentialUpgrade(testDb(), {
-      userId: "U003",
-      legacyPin: "4321",
-      newCredential: "carol-secret",
-    });
+    await Promise.all(
+      [
+        {
+          userId: "U001",
+          name: "Alice Chan",
+          username: "alice",
+          password: "alice-secret",
+        },
+        {
+          userId: "U002",
+          name: "Bob Lee",
+          username: "bob",
+          password: "bob-secret",
+        },
+        {
+          userId: "U003",
+          name: "Carol Ng",
+          username: "carol",
+          password: "carol-secret",
+        },
+      ].map((account) => seedTestAccount(account))
+    );
     const adminRoleDefinitionId = "programs-250-admin";
     const seededAt = "2026-08-31T00:00:00.000Z";
     await testDb()
