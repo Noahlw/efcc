@@ -42,6 +42,25 @@ import {
   SetModuleResponseSchema,
   parseProgramFields,
 } from "@efcc/contracts";
+import {
+  EventCreateResponseSchema,
+  EventTypeSchema,
+  EventDetailResponseSchema,
+  EventResponseSchema,
+  EventsListSchema,
+  ExceptionActionSchema,
+  GenerateEventsResponseSchema,
+  PreviewEventsResponseSchema,
+  ScheduleExceptionCreateResponseSchema,
+  ScheduleExceptionDeleteResponseSchema,
+  ScheduleExceptionsSchema,
+  ScheduleRuleCreateResponseSchema,
+  ScheduleRuleResponseSchema,
+  ScheduleRulesSchema,
+  parseExceptionBody,
+  parseRuleBody,
+  parseRulePatch,
+} from "@efcc/contracts";
 
 import type { AccountRow } from "../auth/accounts";
 import { resolveRequestSession } from "../auth/sessions";
@@ -1629,137 +1648,6 @@ export async function handleSetModule(
 // PRG-02 (#198): schedule rules, exceptions, generation, events.
 // ---------------------------------------------------------------------------
 
-function isDayOfWeekValue(v: unknown): v is number {
-  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 6;
-}
-
-function isMonthDayValue(v: unknown): v is number {
-  return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 31;
-}
-
-/**
- * The rule resolved from `update` over `existing` must satisfy the same
- * cross-field invariants as create: the field matching the effective
- * recurrence kind is required. Returns an error detail, or null when valid.
- */
-function resolvedRuleInvariantError(
-  update: UpdateScheduleRuleCommand,
-  existing: ScheduleRuleRow
-): string | null {
-  const resolvedRecurrence = update.recurrence ?? existing.recurrence;
-  const resolvedDayOfWeek = update.day_of_week ?? existing.day_of_week;
-  const resolvedMonthDay = update.month_day ?? existing.month_day;
-  if (
-    resolvedRecurrence === "WEEKLY" &&
-    (resolvedDayOfWeek === null || !isDayOfWeekValue(resolvedDayOfWeek))
-  ) {
-    return "day_of_week (0-6) is required for WEEKLY.";
-  }
-  if (
-    resolvedRecurrence === "MONTHLY" &&
-    (resolvedMonthDay === null || !isMonthDayValue(resolvedMonthDay))
-  ) {
-    return "month_day (1-31) is required for MONTHLY.";
-  }
-  return null;
-}
-
-type RuleBodyResult =
-  | { ok: false; detail: string }
-  | { ok: true; value: CreateScheduleRuleCommand };
-
-function parseRuleBody(body: {
-  recurrence?: unknown;
-  day_of_week?: unknown;
-  month_day?: unknown;
-  start_time?: unknown;
-  end_time?: unknown;
-  location?: unknown;
-  effective_start_date?: unknown;
-  effective_end_date?: unknown;
-}): RuleBodyResult {
-  if (!isOneOf(body.recurrence, ["WEEKLY", "MONTHLY"] as const)) {
-    return { ok: false, detail: "recurrence must be WEEKLY or MONTHLY." };
-  }
-  if (!isWallTime(body.start_time) || !isWallTime(body.end_time)) {
-    return { ok: false, detail: "start_time and end_time must be HH:MM." };
-  }
-  if (body.end_time <= body.start_time) {
-    return { ok: false, detail: "end_time must be after start_time." };
-  }
-  const isDayOfWeek = isDayOfWeekValue(body.day_of_week);
-  const isMonthDay = isMonthDayValue(body.month_day);
-  if (body.recurrence === "WEEKLY" && !isDayOfWeek) {
-    return { ok: false, detail: "day_of_week (0-6) is required for WEEKLY." };
-  }
-  if (body.recurrence === "MONTHLY" && !isMonthDay) {
-    return { ok: false, detail: "month_day (1-31) is required for MONTHLY." };
-  }
-  if (
-    body.location !== undefined &&
-    body.location !== null &&
-    typeof body.location !== "string"
-  ) {
-    return { ok: false, detail: "location must be text or null." };
-  }
-  if (
-    body.effective_start_date !== undefined &&
-    !isValidWallDate(body.effective_start_date)
-  ) {
-    return { ok: false, detail: "effective_start_date must be YYYY-MM-DD." };
-  }
-  if (
-    body.effective_end_date !== undefined &&
-    body.effective_end_date !== null &&
-    !isValidWallDate(body.effective_end_date)
-  ) {
-    return {
-      ok: false,
-      detail: "effective_end_date must be YYYY-MM-DD or null.",
-    };
-  }
-  const effectiveStart =
-    body.effective_start_date === undefined
-      ? undefined
-      : body.effective_start_date;
-  const effectiveEnd =
-    body.effective_end_date === undefined ? undefined : body.effective_end_date;
-  if (
-    typeof effectiveStart === "string" &&
-    typeof effectiveEnd === "string" &&
-    effectiveEnd < effectiveStart
-  ) {
-    return {
-      ok: false,
-      detail: "effective_end_date must be on or after effective_start_date.",
-    };
-  }
-  return {
-    ok: true,
-    value: {
-      recurrence: body.recurrence,
-      day_of_week: isDayOfWeekValue(body.day_of_week) ? body.day_of_week : null,
-      month_day: isMonthDayValue(body.month_day) ? body.month_day : null,
-      start_time: body.start_time,
-      end_time: body.end_time,
-      ...(body.location === undefined
-        ? {}
-        : {
-            location:
-              typeof body.location === "string"
-                ? body.location.trim() || null
-                : null,
-          }),
-      ...(effectiveStart === undefined
-        ? {}
-        : { effective_start_date: effectiveStart }),
-      ...(effectiveEnd === undefined
-        ? {}
-        : { effective_end_date: effectiveEnd }),
-    },
-  };
-}
-
 /** GET /api/v1/programs/:programId/schedule-rules */
 export async function handleListScheduleRules(
   request: Request,
@@ -1779,7 +1667,12 @@ export async function handleListScheduleRules(
     const ctx = authorizationContextFor(auth.account);
     await workspace.assertProgramManagement(ctx, programId);
     const rules = await workspace.listScheduleRules(ctx, programId);
-    return jsonResponse(200, { rules }, requestId);
+    const rulesData = { rules };
+    if (!ScheduleRulesSchema.safeParse(rulesData).success) {
+      console.error(`[programs] rules malformed data requestId=${requestId}`);
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, rulesData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -1817,7 +1710,14 @@ export async function handleListScheduleExceptions(
       programId,
       ruleId
     );
-    return jsonResponse(200, { exceptions }, requestId);
+    const exceptionsData = { exceptions };
+    if (!ScheduleExceptionsSchema.safeParse(exceptionsData).success) {
+      console.error(
+        `[programs] exceptions malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, exceptionsData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -1871,11 +1771,14 @@ export async function handleCreateScheduleRule(
       correlationId,
       idempotencyKey
     );
-    return jsonResponse(
-      result.idempotent ? 200 : 201,
-      { rule: result.rule, idempotent: result.idempotent },
-      requestId
-    );
+    const ruleData = { rule: result.rule, idempotent: result.idempotent };
+    if (!ScheduleRuleCreateResponseSchema.safeParse(ruleData).success) {
+      console.error(
+        `[programs] rule create malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(result.idempotent ? 200 : 201, ruleData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -1883,115 +1786,6 @@ export async function handleCreateScheduleRule(
     }
     throw error;
   }
-}
-
-type RulePatchResult =
-  | { ok: false; detail: string }
-  | { ok: true; update: UpdateScheduleRuleCommand };
-
-function parseRulePatch(
-  body: {
-    recurrence?: unknown;
-    day_of_week?: unknown;
-    month_day?: unknown;
-    start_time?: unknown;
-    end_time?: unknown;
-    location?: unknown;
-    effective_start_date?: unknown;
-    effective_end_date?: unknown;
-  },
-  existing: ScheduleRuleRow
-): RulePatchResult {
-  const update: UpdateScheduleRuleCommand = {};
-  if (isOneOf(body.recurrence, ["WEEKLY", "MONTHLY"] as const)) {
-    update.recurrence = body.recurrence;
-  }
-  if (body.day_of_week !== undefined && !isDayOfWeekValue(body.day_of_week)) {
-    return { ok: false, detail: "day_of_week must be an integer 0-6." };
-  }
-  if (isDayOfWeekValue(body.day_of_week)) {
-    update.day_of_week = body.day_of_week;
-  }
-  if (body.month_day !== undefined && !isMonthDayValue(body.month_day)) {
-    return { ok: false, detail: "month_day must be an integer 1-31." };
-  }
-  if (isMonthDayValue(body.month_day)) {
-    update.month_day = body.month_day;
-  }
-  const startTime =
-    typeof body.start_time === "string" ? body.start_time : null;
-  const endTime = typeof body.end_time === "string" ? body.end_time : null;
-  if (startTime !== null && !isWallTime(startTime)) {
-    return { ok: false, detail: "start_time must be HH:MM." };
-  }
-  if (endTime !== null && !isWallTime(endTime)) {
-    return { ok: false, detail: "end_time must be HH:MM." };
-  }
-  if (startTime !== null) {
-    update.start_time = startTime;
-  }
-  if (endTime !== null) {
-    update.end_time = endTime;
-  }
-  if (body.location !== undefined) {
-    if (body.location !== null && typeof body.location !== "string") {
-      return { ok: false, detail: "location must be text or null." };
-    }
-    update.location =
-      typeof body.location === "string" ? body.location.trim() || null : null;
-  }
-  if (body.effective_start_date !== undefined) {
-    if (
-      body.effective_start_date !== null &&
-      !isValidWallDate(body.effective_start_date)
-    ) {
-      return {
-        ok: false,
-        detail: "effective_start_date must be YYYY-MM-DD or null.",
-      };
-    }
-    update.effective_start_date = body.effective_start_date as string | null;
-  }
-  if (body.effective_end_date !== undefined) {
-    if (
-      body.effective_end_date !== null &&
-      !isValidWallDate(body.effective_end_date)
-    ) {
-      return {
-        ok: false,
-        detail: "effective_end_date must be YYYY-MM-DD or null.",
-      };
-    }
-    update.effective_end_date = body.effective_end_date as string | null;
-  }
-  const resolvedStart = update.start_time ?? existing.start_time;
-  const resolvedEnd = update.end_time ?? existing.end_time;
-  if (resolvedEnd <= resolvedStart) {
-    return { ok: false, detail: "end_time must be after start_time." };
-  }
-  const invariantError = resolvedRuleInvariantError(update, existing);
-  if (invariantError !== null) {
-    return { ok: false, detail: invariantError };
-  }
-  const resolvedEffectiveStart =
-    update.effective_start_date === undefined
-      ? (existing.effective_start_date ?? null)
-      : update.effective_start_date;
-  const resolvedEffectiveEnd =
-    update.effective_end_date === undefined
-      ? (existing.effective_end_date ?? null)
-      : update.effective_end_date;
-  if (
-    typeof resolvedEffectiveStart === "string" &&
-    typeof resolvedEffectiveEnd === "string" &&
-    resolvedEffectiveEnd < resolvedEffectiveStart
-  ) {
-    return {
-      ok: false,
-      detail: "effective_end_date must be on or after effective_start_date.",
-    };
-  }
-  return { ok: true, update };
 }
 
 /** PATCH /api/v1/programs/:programId/schedule-rules/:ruleId */
@@ -2041,7 +1835,12 @@ export async function handleUpdateScheduleRule(
       update,
       correlationId
     );
-    return jsonResponse(200, { rule: row }, requestId);
+    const ruleData = { rule: row };
+    if (!ScheduleRuleResponseSchema.safeParse(ruleData).success) {
+      console.error(`[programs] rule malformed data requestId=${requestId}`);
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, ruleData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2073,7 +1872,12 @@ export async function handleRetireScheduleRule(
       return notFound(requestId, "Unknown schedule rule.");
     }
     const row = await workspace.retireScheduleRule(ctx, ruleId, correlationId);
-    return jsonResponse(200, { rule: row }, requestId);
+    const ruleData = { rule: row };
+    if (!ScheduleRuleResponseSchema.safeParse(ruleData).success) {
+      console.error(`[programs] rule malformed data requestId=${requestId}`);
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, ruleData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2110,7 +1914,7 @@ export async function handleCreateScheduleException(
   if (!isValidWallDate(body.override_date)) {
     return validation(requestId, "override_date must be YYYY-MM-DD.");
   }
-  if (!isOneOf(body.action, ["CANCEL", "RESCHEDULE"] as const)) {
+  if (!ExceptionActionSchema.safeParse(body.action).success) {
     return validation(requestId, "action must be CANCEL or RESCHEDULE.");
   }
   const newStart =
@@ -2164,14 +1968,23 @@ export async function handleCreateScheduleException(
       ruleId,
       {
         override_date: body.override_date,
-        action: body.action,
+        action: body.action as "CANCEL" | "RESCHEDULE",
         new_date: newDate,
         new_start_time: newStart,
         new_end_time: newEnd,
       },
       correlationId
     );
-    return jsonResponse(201, { exception: row }, requestId);
+    const exceptionData = { exception: row };
+    if (
+      !ScheduleExceptionCreateResponseSchema.safeParse(exceptionData).success
+    ) {
+      console.error(
+        `[programs] exception malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(201, exceptionData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2207,7 +2020,14 @@ export async function handleDeleteScheduleException(
       return notFound(requestId, "Unknown schedule exception.");
     }
     await workspace.deleteScheduleException(ctx, exceptionId, correlationId);
-    return jsonResponse(200, { deleted: true }, requestId);
+    const deletedData = { deleted: true };
+    if (!ScheduleExceptionDeleteResponseSchema.safeParse(deletedData).success) {
+      console.error(
+        `[programs] exception delete malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, deletedData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2323,11 +2143,12 @@ export async function handlePreviewEvents(
       correlationId,
       { fromDate, untilDate }
     );
-    return jsonResponse(
-      200,
-      { plan: result.plan, occurrences: result.occurrences },
-      requestId
-    );
+    const previewData = { plan: result.plan, occurrences: result.occurrences };
+    if (!PreviewEventsResponseSchema.safeParse(previewData).success) {
+      console.error(`[programs] preview malformed data requestId=${requestId}`);
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, previewData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2368,7 +2189,14 @@ export async function handleGenerateEvents(
       body.plan_id,
       correlationId
     );
-    return jsonResponse(200, { generated: result }, requestId);
+    const generatedData = { generated: result };
+    if (!GenerateEventsResponseSchema.safeParse(generatedData).success) {
+      console.error(
+        `[programs] generate malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, generatedData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2436,10 +2264,7 @@ export async function handleCreateEvent(
     if (
       body.event_type !== undefined &&
       body.event_type !== null &&
-      (typeof body.event_type !== "string" ||
-        !["崇拜", "訓練", "小組", "排練", "外展", "其他"].includes(
-          body.event_type
-        ))
+      !EventTypeSchema.safeParse(body.event_type).success
     ) {
       return validation(
         requestId,
@@ -2500,7 +2325,14 @@ export async function handleCreateEvent(
       } satisfies CreateEventCommand,
       correlationId
     );
-    return jsonResponse(201, { event: row }, requestId);
+    const eventData = { event: row };
+    if (!EventCreateResponseSchema.safeParse(eventData).success) {
+      console.error(
+        `[programs] event create malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(201, eventData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2529,7 +2361,12 @@ export async function handleListEvents(
   if (rows === null) {
     return notFound(requestId, "Unknown program.");
   }
-  return jsonResponse(200, { events: rows }, requestId);
+  const eventsData = { events: rows };
+  if (!EventsListSchema.safeParse(eventsData).success) {
+    console.error(`[programs] events malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, eventsData, requestId);
 }
 
 /** GET /api/v1/programs/:programId/events/:eventId */
@@ -2552,6 +2389,12 @@ export async function handleGetEvent(
     );
     if (!detail || detail.event.program_id !== programId) {
       return notFound(requestId, "Unknown event.");
+    }
+    if (!EventDetailResponseSchema.safeParse(detail).success) {
+      console.error(
+        `[programs] event detail malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
     }
     return jsonResponse(200, detail, requestId);
   } catch (error) {
@@ -2624,7 +2467,14 @@ export async function handleEventUpdate(
         { availability, confirm: confirmed },
         correlationId
       );
-      return jsonResponse(200, { event: row }, requestId);
+      const updatedEventData = { event: row };
+      if (!EventResponseSchema.safeParse(updatedEventData).success) {
+        console.error(
+          `[programs] event update malformed data requestId=${requestId}`
+        );
+        throw new Error("programs contract violation");
+      }
+      return jsonResponse(200, updatedEventData, requestId);
     } catch (error) {
       const mapped = mapWorkspaceError(error, requestId);
       if (mapped) {
@@ -2643,7 +2493,14 @@ export async function handleEventUpdate(
         { reason },
         correlationId
       );
-      return jsonResponse(200, { event: row }, requestId);
+      const updatedEventData = { event: row };
+      if (!EventResponseSchema.safeParse(updatedEventData).success) {
+        console.error(
+          `[programs] event update malformed data requestId=${requestId}`
+        );
+        throw new Error("programs contract violation");
+      }
+      return jsonResponse(200, updatedEventData, requestId);
     } catch (error) {
       const mapped = mapWorkspaceError(error, requestId);
       if (mapped) {
@@ -2706,10 +2563,7 @@ export async function handleEventUpdate(
     if (
       body.event_type !== undefined &&
       body.event_type !== null &&
-      (typeof body.event_type !== "string" ||
-        !["崇拜", "訓練", "小組", "排練", "外展", "其他"].includes(
-          body.event_type
-        ))
+      !EventTypeSchema.safeParse(body.event_type).success
     ) {
       return validation(
         requestId,
@@ -2772,7 +2626,14 @@ export async function handleEventUpdate(
       update,
       correlationId
     );
-    return jsonResponse(200, { event: row }, requestId);
+    const updatedEventData = { event: row };
+    if (!EventResponseSchema.safeParse(updatedEventData).success) {
+      console.error(
+        `[programs] event update malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, updatedEventData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {

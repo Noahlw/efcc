@@ -120,7 +120,9 @@ const rule: ScheduleRule = {
   start_time: "11:30",
   end_time: "13:00",
   location: "主堂",
+  created_by: null,
   created_at: "2026-01-01T00:00:00.000Z",
+  updated_by: null,
   updated_at: "2026-01-01T00:00:00.000Z",
 };
 
@@ -1653,6 +1655,7 @@ describe("F02 Preview 調整 uses Management Drafts (#632)", () => {
         new_start_time: "11:30",
         new_end_time: "13:00",
         new_date: "2026-09-17",
+        created_by: null,
         created_at: "2026-09-18T00:00:00.000Z",
       },
     });

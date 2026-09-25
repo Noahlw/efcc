@@ -8,4 +8,5 @@ export * from "./identity";
 export * from "./primitives";
 export * from "./problem";
 export * from "./programs-reads";
+export * from "./programs-schedule";
 export * from "./programs-settings";

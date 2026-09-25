@@ -313,6 +313,34 @@ clean SHA (#662).
   +demo D1 (two initial failures were a missing demo seed in the
   harness, re-proven passing).
 
+## #658 record — Schedule Plan/Event contracts (ADR-0047)
+
+- `packages/contracts` `src/programs-schedule.ts`: verbatim ports of
+  the wall/instant/day/month predicates and of parseRuleBody,
+  parseRulePatch, and the exception-create chain (messages
+  preserved); preview-horizon and plan-id predicates; event-text
+  trim port; rule/exception/preview/generate/event/detail response
+  schemas. Nothing here retries a write; the browser already treats
+  MALFORMED_RESPONSE as unknown with no auto-replay.
+- Worker: local rule/exception parsers deleted in favor of the
+  shared ports; action/event-type enums via shared schemas;
+  response gates on all 13 schedule/event routes via
+  throw-inside-try to the existing 500. Preview/generate
+  orchestration (HK date math, defaults) stays local and tested.
+- Browser: all 13 call sites wired. Client `ScheduleRule` /
+  `ScheduleException` types gain the always-sent `created_by` /
+  `updated_by` (wire truth; no runtime change).
+- Fixture corrections (mock-only): events-panel, storybook, and
+  panel mocks gain the always-sent audit columns and the create
+  `idempotent` flag.
+- TDD: wall-predicate/port parity tests; boundary-value request
+  locks (day 7, bad availability, unknown fields, zero horizon,
+  blank plan); client malformed tests.
+- Proof: contracts 51+39+34+24+16, workerd programs 174, clients 6,
+  schedule/event panels 405, t07 64/64, typechecks/Knip/boundaries
+  clean, static export builds, full programs-management browser
+  file 35/35 vs local Worker/disposable+demo D1.
+
 ## Proof plan per slice
 
 Worker/D1 contract tests (valid + invalid request/response,

@@ -10,6 +10,18 @@ import {
   AccountDirectoryMemberSchema,
   AccountDirectoryViewSchema,
   DepartmentCreateResponseSchema,
+  EventCreateResponseSchema,
+  EventDetailResponseSchema,
+  EventResponseSchema,
+  EventsListSchema,
+  GenerateEventsResponseSchema,
+  PreviewEventsResponseSchema,
+  ScheduleExceptionCreateResponseSchema,
+  ScheduleExceptionDeleteResponseSchema,
+  ScheduleExceptionsSchema,
+  ScheduleRuleCreateResponseSchema,
+  ScheduleRuleResponseSchema,
+  ScheduleRulesSchema,
   DepartmentDetailSchema,
   DepartmentUpdateResponseSchema,
   DepartmentsListSchema,
@@ -411,7 +423,9 @@ export interface ScheduleRule {
   retired_at?: string | null;
   retired_by?: string | null;
   has_generated_events?: number | boolean;
+  created_by: string | null;
   created_at: string;
+  updated_by: string | null;
   updated_at: string;
 }
 
@@ -426,6 +440,7 @@ export interface ScheduleException {
   new_start_time: string | null;
   new_end_time: string | null;
   new_date?: string | null;
+  created_by: string | null;
   created_at: string;
 }
 
@@ -1355,7 +1370,9 @@ export function listScheduleRules(
 ): Promise<{ rules: ScheduleRule[] }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: ScheduleRulesSchema }
   );
 }
 
@@ -1369,7 +1386,7 @@ export function createScheduleRule(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules`,
     "POST",
     input,
-    options
+    { ...options, schema: ScheduleRuleCreateResponseSchema }
   );
 }
 
@@ -1380,7 +1397,9 @@ export function listScheduleExceptions(
 ): Promise<{ exceptions: ScheduleException[] }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/exceptions`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: ScheduleExceptionsSchema }
   );
 }
 
@@ -1395,7 +1414,7 @@ export function updateScheduleRule(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}`,
     "PATCH",
     patch,
-    { idempotencyKey }
+    { idempotencyKey, schema: ScheduleRuleResponseSchema }
   );
 }
 
@@ -1409,7 +1428,7 @@ export function retireScheduleRule(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/retire`,
     "POST",
     undefined,
-    { idempotencyKey }
+    { idempotencyKey, schema: ScheduleRuleResponseSchema }
   );
 }
 
@@ -1430,7 +1449,7 @@ export function createScheduleException(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/exceptions`,
     "POST",
     input,
-    options
+    { ...options, schema: ScheduleExceptionCreateResponseSchema }
   );
 }
 
@@ -1445,7 +1464,7 @@ export function deleteScheduleException(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/exceptions/${encodeURIComponent(exceptionId)}`,
     "DELETE",
     undefined,
-    { idempotencyKey }
+    { idempotencyKey, schema: ScheduleExceptionDeleteResponseSchema }
   );
 }
 
@@ -1467,7 +1486,8 @@ export function previewEvents(
     "POST",
     typeof range === "number"
       ? { horizon_days: range }
-      : { from_date: range.from_date, until_date: range.until_date }
+      : { from_date: range.from_date, until_date: range.until_date },
+    { schema: PreviewEventsResponseSchema }
   );
 }
 
@@ -1479,7 +1499,8 @@ export function generateEvents(
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/generate`,
     "POST",
-    { plan_id: planId }
+    { plan_id: planId },
+    { schema: GenerateEventsResponseSchema }
   );
 }
 
@@ -1499,7 +1520,8 @@ export function createEvent(
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events`,
     "POST",
-    input
+    input,
+    { schema: EventCreateResponseSchema }
   );
 }
 
@@ -1509,7 +1531,9 @@ export function listEvents(
 ): Promise<{ events: ProgramEvent[] }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: EventsListSchema }
   );
 }
 
@@ -1520,7 +1544,9 @@ export function getEvent(
 ): Promise<EventDetail> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: EventDetailResponseSchema }
   );
 }
 
@@ -1542,7 +1568,8 @@ export function updateEvent(
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
     "PATCH",
-    patch
+    patch,
+    { schema: EventResponseSchema }
   );
 }
 

@@ -12471,3 +12471,135 @@ describe("#657 department and program settings mutations", () => {
     assert.strictEqual(res.status, 422);
   });
 });
+
+describe("#658 schedule and event request policies", () => {
+  async function setupProgram(): Promise<{
+    adminAccess: string;
+    programId: string;
+    eventId: string;
+  }> {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const stamp = Date.now();
+    const department = await createDepartment(adminAccess, {
+      code: `T658-${stamp}`,
+      name: "合約排程部",
+    });
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: `合約排程課程-${stamp}`,
+      behavior_type: "OneOff",
+    });
+    const programId = program.program_id;
+    const event = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events`, {
+        method: "POST",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          starts_at: "2030-10-01T10:00:00.000Z",
+          ends_at: "2030-10-01T11:00:00.000Z",
+          name: "合約聚會",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(event.status, 201);
+    const eventBody = (await event.json()) as {
+      data: { event: { event_id: string } };
+    };
+    return { adminAccess, programId, eventId: eventBody.data.event.event_id };
+  }
+
+  test("rule create rejects an out-of-range day_of_week", async () => {
+    const { adminAccess, programId } = await setupProgram();
+    const res = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/schedule-rules`, {
+        method: "POST",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          recurrence: "WEEKLY",
+          day_of_week: 7,
+          start_time: "09:00",
+          end_time: "10:00",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 422);
+  });
+
+  test("event PATCH rejects bad availability and unknown fields", async () => {
+    const { adminAccess, programId, eventId } = await setupProgram();
+    const badAvailability = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events/${eventId}`, {
+        method: "PATCH",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { availability: "Maybe" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(badAvailability.status, 422);
+    const unknownField = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events/${eventId}`, {
+        method: "PATCH",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { nickname: "x" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(unknownField.status, 422);
+  });
+
+  test("preview rejects a zero horizon and generate rejects a blank plan", async () => {
+    const { adminAccess, programId } = await setupProgram();
+    const preview = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events/preview`, {
+        method: "POST",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { horizon_days: 0 },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(preview.status, 422);
+    const generate = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events/generate`, {
+        method: "POST",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { plan_id: "  " },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(generate.status, 422);
+  });
+
+  test("exception DELETE on an unknown id is 404", async () => {
+    const { adminAccess, programId } = await setupProgram();
+    const res = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/unknown-rule/exceptions/unknown-exc`,
+        {
+          method: "DELETE",
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 404);
+  });
+});

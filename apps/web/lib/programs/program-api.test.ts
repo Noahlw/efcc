@@ -87,6 +87,43 @@ describe("program-api client", () => {
     }
   });
 
+  test("schedule mutations reject malformed data", async () => {
+    const { previewEvents, generateEvents } =
+      await import("@/lib/programs/program-api");
+    const restore = stubFetch(() =>
+      jsonResponse(
+        { requestId: "r-p-7", data: { plan: null, occurrences: [] } },
+        200,
+        "r-p-7"
+      )
+    );
+    try {
+      await assert.rejects(previewEvents("p", 90), (error: unknown) => {
+        assert.ok(error instanceof RpcError);
+        assert.strictEqual(error.problem.code, "MALFORMED_RESPONSE");
+        return true;
+      });
+    } finally {
+      restore();
+    }
+    const restore2 = stubFetch(() =>
+      jsonResponse(
+        { requestId: "r-p-8", data: { generated: { status: "weird" } } },
+        200,
+        "r-p-8"
+      )
+    );
+    try {
+      await assert.rejects(generateEvents("p", "plan"), (error: unknown) => {
+        assert.ok(error instanceof RpcError);
+        assert.strictEqual(error.problem.code, "MALFORMED_RESPONSE");
+        return true;
+      });
+    } finally {
+      restore2();
+    }
+  });
+
   test("settings mutations reject malformed data", async () => {
     const { createDepartment, setDepartmentModule } =
       await import("@/lib/programs/program-api");

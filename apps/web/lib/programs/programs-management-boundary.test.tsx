@@ -267,7 +267,9 @@ describe("Programs management boundary", () => {
       start_time: "19:30",
       end_time: "21:00",
       location: "副堂 201",
+      created_by: null,
       created_at: "2026-01-01T00:00:00.000Z",
+      updated_by: null,
       updated_at: "2026-01-01T00:00:00.000Z",
     };
     mocks.listScheduleRules.mockResolvedValue({ rules: [populatedRule] });

@@ -799,6 +799,7 @@ describe("EVT-01 event detail", () => {
       action: "RESCHEDULE" as const,
       new_start_time: "20:30",
       new_end_time: "22:00",
+      created_by: null,
       created_at: "2026-01-01T00:00:00.000Z",
     };
     mocks.getEvent.mockResolvedValue(
