@@ -1,8 +1,9 @@
 ---
 status: accepted
 date: 2026-09-23
+supersedes: GitHub CI policy in ADR-0014 and ADR-0044
 ---
 
 # Local-only verification
 
-The repository will remove GitHub Actions and use a deterministic local pnpm verify as its complete machine readiness gate; contributors run affected checks while iterating and keep pre-commit limited to fast formatting and static checks. This avoids maintaining a remote CI gate while preserving code review, owner approval, independent review, human/device checks, and deployment evidence as separate gates. Remove the workflows and the required Fast CI status together; this ADR records the accepted target, not a claim that implementation is already complete.
+EFCC uses deterministic local `pnpm verify` as its complete machine-readiness gate; contributors run affected checks while iterating and keep pre-commit limited to fast formatting and static checks. Remove the GitHub Actions workflows and the `Fast CI` required status together. Code review, owner approval, independent review, human/device checks, and deployment evidence remain separate gates. This supersedes only the GitHub CI policy in ADR-0014 and ADR-0044; their historical testing rationale remains intact.
