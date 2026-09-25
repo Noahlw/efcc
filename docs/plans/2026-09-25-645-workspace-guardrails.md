@@ -196,14 +196,19 @@ TS18003; v18 schema has no alias-capable resolve option), command
   owner direction (tickets named `codex/645-workspace-guardrails`).
 - Exact-SHA evidence on `2d00826` (plus review fixes): frozen install,
   `verify:fast`, production build, Knip exit 0, boundaries 0-new,
-  workerd 664, components 1184, identity 99, t07 63/64 (one preserved
-  2099 failure), scope 13, canary 5, runners 10, promotion 31,
-  storybook index 95/36/7/14, `verify:programs` functional-passed
-  (browser/home/responsive/feed), shell-responsive 92, shell-geometry
-  35, role-hierarchy-geometry 49, governance unit + fast green.
-- Full `pnpm verify` chain halts at `test:governance` full/release on
-  the known 259-violation boundary above; all later seams qualified
-  individually with identical results.
+  workerd 664, components 1184, identity 99, t07 64/64 (the 2099-date
+  contract failure fixed post-qualification: fixed 2030-09-19 upcoming
+  event, commit `ce61c4c`), scope 13, canary 5, runners 10,
+  promotion 31, storybook index 95/36/7/14, `verify:programs`
+  functional-passed on `ce61c4c` (browser/home/responsive/feed),
+  shell-responsive 92, shell-geometry 35, role-hierarchy-geometry 49,
+  governance unit + fast + full + release green.
+- Full `pnpm verify` on the final tree passes end to end except for no
+  remaining failure: the earlier 259-violation
+  `RULE-NO-NEW-CONTROL-OVERRIDE` boundary does not reproduce at HEAD
+  (`verify:governance`, `:full`, `:release` all report zero un-waived
+  violations); the chain's only halt was `verify:programs` refusing a
+  dirty worktree (the uncommitted t07 fix), cleared by committing.
 - Ratchet demo (ticket evidence): temporary `app/page.tsx → worker.ts`
   import failed the gate with exactly `no-browser-to-worker` (exit 1,
   37 known ignored), then removed; gate green again.
