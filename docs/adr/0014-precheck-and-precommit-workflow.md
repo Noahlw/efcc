@@ -1,5 +1,10 @@
 # ADR-0014 — GitHub Merge Precheck & Pre-commit Typecheck Standardization
 
+> **CI policy superseded (2026-09-25):** the GitHub Actions and required-check
+> decisions in this ADR no longer apply. [ADR-0056](0056-local-only-verification.md)
+> is the current verification policy; this ADR remains historical context for
+> the earlier testing and pre-commit decisions.
+
 - **Status**: Accepted (grill-with-docs session, locked 2026-07-30)
 - **Deciders**: Noah Wong, OMP planner (grill-with-docs)
 - **Date**: 2026-07-30

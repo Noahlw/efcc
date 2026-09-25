@@ -1,5 +1,9 @@
 # ADR-0044 — Layered Testing Authority for Programs
 
+> **CI policy note (2026-09-25):** this ADR's layered local testing authority
+> remains current, but its older statements about fast-only GitHub CI and
+> manual workflow dispatch are superseded by [ADR-0056](0056-local-only-verification.md).
+
 - **Status:** Accepted
 - **Deciders:** Noah Wong, product/release owner
 - **Date:** 2026-09-05

@@ -1,5 +1,13 @@
 # Staged Platform Migration Acceptance Trace
 
+> Historical acceptance record for merged PR #166 (2026-08). This is not the
+> current release checklist or deployment instruction. The legacy-account PIN
+> upgrade criterion AUTH-2 was retired on 2026-09-24 because EFCC has no old
+> accounts to migrate; do not provision or test that flow. Current Auth
+> follow-up is tracked in [#639](https://github.com/Noahlw/efcc/issues/639).
+
+**Status:** Historical / completed for PR #166; AUTH-2 retired
+
 ## Purpose
 
 This trace defined the observable checks required before PR #166 was considered merge-ready as the staged Worker/D1 platform starting point.
@@ -14,7 +22,7 @@ This trace defined the observable checks required before PR #166 was considered 
 | ID | Observable criterion | Verification |
 | --- | --- | --- |
 | AUTH-1 | A valid account can log in through the deployed Worker using the cookie-only boundary. | Fresh deployed acceptance run asserts HTTP success, public user data, and both locked cookies. |
-| AUTH-2 | A legacy account can verify its PIN once and choose a new credential through the real UI/API flow. | Disposable `E2E_` account; assert upgrade success and no session before upgrade completion. |
+| AUTH-2 | ~~A legacy account can verify its PIN once and choose a new credential through the real UI/API flow.~~ **Retired 2026-09-24:** there are no legacy accounts to migrate. | Not applicable; do not provision or test a legacy-PIN account. |
 | AUTH-3 | Refresh rotates the refresh credential and preserves the authenticated profile. | Acceptance run asserts old refresh value is rejected and the rotated flow succeeds. |
 | AUTH-4 | Logout revokes the session and clears both cookies, including when revocation fails. | Worker contract test plus deployed smoke assertion for cookie clearing and problem correlation. |
 | AUTH-5 | Registration creates a pending request and an authorized Admin/Teacher can approve or reject it. | Workerd contract tests and deployed acceptance flow with disposable test data. |
@@ -26,6 +34,6 @@ This trace defined the observable checks required before PR #166 was considered 
 | SAFE-1 | Destructive E2E upgrade tests accept only explicitly marked disposable usernames beginning with `E2E_`. | Test configuration assertion and a negative test with a non-`E2E_` username. |
 | SAFE-2 | No credential, token, PIN, or cookie value appears in test output or uploaded artifacts. | Secret-safe test assertions and artifact review. |
 
-## Fresh deployment gate
+## Historical deployment note
 
 The D1-era criteria are verified against local `wrangler dev` + local D1 (the default `READY` gate, ADR-0029); an isolated Worker deployment is optional operational evidence. The legacy `/exec` surface no longer exists.
