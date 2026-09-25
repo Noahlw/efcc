@@ -22,6 +22,7 @@ export default defineConfig({
     ["list"],
     ["json", { outputFile: "test-results/phase-f/responsive/results.json" }],
   ],
+  outputDir: "test-results/phase-f/responsive/artifacts",
   metadata: { phaseFTargetUrl: responsiveUrl },
   use: {
     baseURL: responsiveUrl,
