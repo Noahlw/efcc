@@ -10,8 +10,11 @@
 import { expect, test } from "@playwright/test";
 import type { Page, Route, TestInfo } from "@playwright/test";
 
-import { COPY, LANDING } from "../../web/lib/copy";
-import { defaultSections, projectNavigation } from "../../web/lib/sections";
+import { COPY, LANDING } from "../../apps/web/lib/copy";
+import {
+  defaultSections,
+  projectNavigation,
+} from "../../apps/web/lib/sections";
 import { attachNumericEvidence } from "./numeric-evidence";
 
 interface BoundingBox {
@@ -218,7 +221,7 @@ test("bottom nav and page outlet reserve safe-area inset", async ({
   await expect(page.getByRole("main")).toBeVisible();
 
   // Emulate a notched device so env(safe-area-inset-bottom) resolves to a
-  // non-zero value (viewport-fit=cover is set in web/app/layout.tsx).
+  // non-zero value (viewport-fit=cover is set in apps/web/app/layout.tsx).
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Emulation.setSafeAreaInsetsOverride", {
     insets: { top: 0, left: 0, right: 0, bottom: 34 },

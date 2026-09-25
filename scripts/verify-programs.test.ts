@@ -736,7 +736,7 @@ describe("T05.7 Programs promotion gate", () => {
           participantRows: 1,
           managementRows: 1,
           executableMappings: [
-            "web/lib/programs/programs-contract.test.ts",
+            "apps/web/lib/programs/programs-contract.test.ts",
             "tests/e2e/programs-participant-acceptance.test.ts",
             "tests/e2e/programs-management-acceptance.test.ts",
             "tests/e2e/programs-responsive-matrix.test.ts",
@@ -785,7 +785,7 @@ describe("T05.7 Programs promotion gate", () => {
       participantRows: expect.any(Number),
       managementRows: expect.any(Number),
       executableMappings: expect.arrayContaining([
-        "web/lib/programs/programs-contract.test.ts",
+        "apps/web/lib/programs/programs-contract.test.ts",
         "tests/e2e/programs-participant-acceptance.test.ts",
         "tests/e2e/programs-management-acceptance.test.ts",
         "tests/e2e/programs-responsive-matrix.test.ts",
@@ -908,7 +908,7 @@ describe("T05.7 Programs promotion gate", () => {
       status: "passed",
       revision: "rev-1",
       runtime: "wrangler-dev-local",
-      config: "web/wrangler.jsonc",
+      config: "apps/web/wrangler.jsonc",
       windowMs: 5 * 60 * 1000,
       retries: 0,
       setupStartedAt: "2026-09-05T00:00:00.000Z",
@@ -939,7 +939,7 @@ describe("T05.7 Programs promotion gate", () => {
     const manifest = {
       status: "passed",
       runtime: "wrangler-dev-local",
-      config: "web/wrangler.jsonc",
+      config: "apps/web/wrangler.jsonc",
       suite: "tests/e2e/programs-home-acceptance.config.ts",
       revision: "rev-1",
       layer: "home-browser-acceptance",
@@ -981,7 +981,7 @@ describe("T05.7 Programs promotion gate", () => {
     const browserManifest = {
       status: "passed",
       runtime: "wrangler-dev-local",
-      config: "web/wrangler.jsonc",
+      config: "apps/web/wrangler.jsonc",
       suite: "tests/e2e/programs-participant-acceptance.config.ts",
       revision: "rev-1",
       layer: "browser-acceptance",
@@ -1044,7 +1044,7 @@ describe("T05.7 Programs promotion gate", () => {
     const manifest = {
       status: "passed",
       runtime: "wrangler-dev-local",
-      config: "web/wrangler.jsonc",
+      config: "apps/web/wrangler.jsonc",
       suite: "tests/e2e/programs-feed-acceptance.config.ts",
       revision: "rev-1",
       layer: "feed-browser-acceptance",

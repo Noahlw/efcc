@@ -6,7 +6,10 @@
 import { expect, test } from "@playwright/test";
 import type { Page, Route, TestInfo } from "@playwright/test";
 
-import { projectSections, projectNavigation } from "../../web/lib/sections";
+import {
+  projectSections,
+  projectNavigation,
+} from "../../apps/web/lib/sections";
 import { attachNumericEvidence } from "./numeric-evidence";
 
 const AUTH_HINT_KEY = "efcc_auth_active";

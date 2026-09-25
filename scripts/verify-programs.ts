@@ -433,7 +433,7 @@ export const PROGRAMS_MANAGEMENT_PARITY_MAPPINGS = [
     44,
     "member direct Program mutation is denied server-side",
     "program update rejects invalid fields and archives permanently",
-    "web/lib/programs/programs.test.ts"
+    "apps/web/lib/programs/programs.test.ts"
   ),
   managementMapping(
     45,
@@ -464,7 +464,7 @@ export const PROGRAMS_MANAGEMENT_PARITY_MAPPINGS = [
     50,
     "an active Program enrollment alone does not gate this event's deactivation",
     "availability: program-wide enrollments alone do not gate this event's deactivation",
-    "web/lib/programs/programs.test.ts"
+    "apps/web/lib/programs/programs.test.ts"
   ),
   managementMapping(
     51,
@@ -485,7 +485,7 @@ export const PROGRAMS_MANAGEMENT_PARITY_MAPPINGS = [
     54,
     "preview materializes exact rows without writing events",
     "EVT-02.1 preview materializes exact weekly/monthly occurrences with locations and exceptions, without writing events",
-    "web/lib/programs/programs.test.ts"
+    "apps/web/lib/programs/programs.test.ts"
   ),
   managementMapping(
     55,
@@ -665,13 +665,13 @@ export function assertMigrationLedgersComplete(
     participantSource,
     "participant",
     [
-      "web/lib/programs/programs-contract.test.ts",
+      "apps/web/lib/programs/programs-contract.test.ts",
       "tests/e2e/programs-participant-acceptance.test.ts",
       "tests/e2e/programs-responsive-matrix.test.ts",
     ]
   );
   const managementRows = assertLedgerMappings(managementSource, "management", [
-    "web/lib/programs/programs-contract.test.ts",
+    "apps/web/lib/programs/programs-contract.test.ts",
     "tests/e2e/programs-management-acceptance.test.ts",
     "tests/e2e/programs-responsive-matrix.test.ts",
   ]);
@@ -680,7 +680,7 @@ export function assertMigrationLedgersComplete(
     participantRows,
     managementRows,
     executableMappings: [
-      "web/lib/programs/programs-contract.test.ts",
+      "apps/web/lib/programs/programs-contract.test.ts",
       "tests/e2e/programs-participant-acceptance.test.ts",
       "tests/e2e/programs-management-acceptance.test.ts",
       "tests/e2e/programs-responsive-matrix.test.ts",
@@ -949,7 +949,7 @@ function hasCompleteMigrationLedger(manifest: JsonRecord | null): boolean {
     migrationLedger.managementRows > 0 &&
     Array.isArray(migrationLedger?.executableMappings) &&
     [
-      "web/lib/programs/programs-contract.test.ts",
+      "apps/web/lib/programs/programs-contract.test.ts",
       "tests/e2e/programs-participant-acceptance.test.ts",
       "tests/e2e/programs-management-acceptance.test.ts",
       "tests/e2e/programs-responsive-matrix.test.ts",
@@ -1476,7 +1476,7 @@ function isLocalAcceptanceRunGreen(
   if (
     manifest?.status !== "passed" ||
     manifest.runtime !== "wrangler-dev-local" ||
-    manifest.config !== "web/wrangler.jsonc" ||
+    manifest.config !== "apps/web/wrangler.jsonc" ||
     manifest.suite !== expectedSuite ||
     manifest.revision !== expectedRevision ||
     manifest.layer !== expectedLayer ||
@@ -1610,7 +1610,7 @@ function hasCanaryIdentity(
     manifest?.status === "passed" &&
     manifest.revision === expectedRevision &&
     manifest.runtime === "wrangler-dev-local" &&
-    manifest.config === "web/wrangler.jsonc" &&
+    manifest.config === "apps/web/wrangler.jsonc" &&
     manifest.windowMs === EXPECTED_CANARY_WINDOW_MS &&
     manifest.retries === EXPECTED_CANARY_RETRIES
   );

@@ -40,7 +40,7 @@ export default defineConfig({
     { name: "w-1440", use: { viewport: { width: 1440, height: 900 } } },
   ],
   webServer: {
-    command: "pnpm --dir ../../web build && pnpm exec tsx serve-static.ts",
+    command: "pnpm --dir ../../apps/web build && pnpm exec tsx serve-static.ts",
     url: "http://127.0.0.1:4173",
     reuseExistingServer: !process.env.CI,
     timeout: 240_000,

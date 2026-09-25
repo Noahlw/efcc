@@ -18,7 +18,7 @@ This ledger counts logical participant behavior, not the historical three viewpo
 
 | Authority | Executable replacement |
 | --- | --- |
-| Worker Contract Gate | `web/lib/programs/programs-contract.test.ts` |
+| Worker Contract Gate | `apps/web/lib/programs/programs-contract.test.ts` |
 | Browser Acceptance | `tests/e2e/programs-participant-acceptance.test.ts` |
 | Responsive UI Matrix | `tests/e2e/programs-responsive-matrix.test.ts` |
 

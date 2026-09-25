@@ -3,12 +3,12 @@ import { appendFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-// Keep this allowlist deliberately narrow. In particular, web/lib/identity
+// Keep this allowlist deliberately narrow. In particular, apps/web/lib/identity
 // contains production presentation panels and must remain fail-closed.
 const CLEARLY_NON_PRESENTATION_PATHS = [
   /^docs\//u,
   /^(?:README|CHANGELOG|LICENSE)(?:\.|$)/u,
-  /^web\/migrations\//u,
+  /^apps\/web\/migrations\//u,
 ];
 
 function gitEnvironment() {

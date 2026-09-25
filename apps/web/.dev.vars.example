@@ -1,0 +1,11 @@
+# Copy this file to apps/web/.dev.vars for local Worker development.
+# It is a reference/placeholder file only and must never contain production
+# credentials. apps/web/.dev.vars is gitignored; keep real values out of Git.
+#
+# Required for wrangler dev / pnpm dev:local (see AGENTS.md). The Worker
+# fails auth/programs/attendance routes closed (503) without it. Generate a
+# fresh local-only value; it is never the real deploy secret
+# (`wrangler secret put EFCC_ACCESS_TOKEN_SECRET`) and rotating it only
+# invalidates local sessions/access tokens.
+#   openssl rand -hex 32
+EFCC_ACCESS_TOKEN_SECRET="REPLACE_WITH_A_LOCAL_ONLY_RANDOM_HEX_STRING"

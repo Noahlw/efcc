@@ -4,4 +4,4 @@
 
 # High-risk paths: shared governance and web (Cloudflare/Next).
 .github/ @noahwong-hue
-web/ @noahwong-hue
+apps/web/ @noahwong-hue

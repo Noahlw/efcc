@@ -9,9 +9,9 @@
 // - T3: viewport change mid-flow preserves partially entered guest data
 // - T4: session expiry during an active mutation -> clean 401 -> login -> restore
 //
-// Every copy string below is grepped fresh from web/lib/copy.ts (attendance,
+// Every copy string below is grepped fresh from apps/web/lib/copy.ts (attendance,
 // programs, error and restore groups) — never guessed. programTransportAmbiguous
-// is the program-save family copy (web/lib/programs/program-form.tsx) and is
+// is the program-save family copy (apps/web/lib/programs/program-form.tsx) and is
 // documented here for traceability; the enrollment-request panel surfaces
 // error.networkError instead (errorCopyFor("NETWORK_ERROR")), which is what T1
 // asserts as the actually-rendered copy.

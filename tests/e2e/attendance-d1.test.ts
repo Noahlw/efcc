@@ -8,11 +8,11 @@
 // against the local Worker/D1 by default, or an explicitly isolated remote
 // target when `PROGRAMS_TARGET_URL` is supplied.
 // Acceptance trace: docs/omp-plans/2026-08-07-att-04-ticket-216.md.
-// Copy strings below mirror web/lib/copy.ts; the suite asserts observable
+// Copy strings below mirror apps/web/lib/copy.ts; the suite asserts observable
 // DOM state and server responses (RFC 9457 problem codes), never
 // client-side gating alone.
 //
-// Entry model (verified against web/lib/attendance.ts):
+// Entry model (verified against apps/web/lib/attendance.ts):
 //   - a typed entry is ambiguous; the server tries the Event manual code
 //     first (unique per Event, migration 0004: 8 uppercase hex chars), then
 //     the Program check-in token (migration 0004: 32 lowercase hex chars).
@@ -54,7 +54,7 @@ interface StorageState {
 const TARGET_URL = process.env.PROGRAMS_TARGET_URL ?? "http://127.0.0.1:8787";
 
 // Non-secret presence flag the shell requires before it re-verifies cookies
-// (web/lib/session.ts AUTH_HINT_KEY). Login normally sets it in browser
+// (apps/web/lib/session.ts AUTH_HINT_KEY). Login normally sets it in browser
 // storage; the API-driven fixture logins here must mirror it in the
 // storageState origins, or the shell cold-boots to the login surface.
 const AUTH_HINT_KEY = "efcc_auth_active";
@@ -193,7 +193,7 @@ const MEMBER_QR_STRING = "E2E-MEMBER-U-E2E-MEMBER";
 
 interface AttendanceEventFixture {
   // Raw snake_case EventRow as returned by POST /api/v1/programs/:id/events
-  // (web/lib/programs/workspace-store.ts EventRow).
+  // (apps/web/lib/programs/workspace-store.ts EventRow).
   event_id: string;
   manual_check_in_code: string;
 }

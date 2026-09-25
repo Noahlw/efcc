@@ -1,0 +1,117 @@
+import { cleanup, render, screen } from "@testing-library/react";
+import { describe, test, expect, afterEach } from "vitest";
+
+import { SectionView } from "@/app/_sections/section-view";
+import type { Bootstrap, Section } from "@/lib/api";
+import { AppProvider } from "@/lib/app-context";
+import { COPY } from "@/lib/copy";
+
+const events: Section = {
+  key: "events",
+  label: "聚會",
+  capability: "READ",
+  requiresServerAuth: false,
+};
+
+afterEach(() => cleanup());
+
+function bootstrapWith(...sections: Section[]): Bootstrap {
+  return {
+    sections,
+    navigation: [],
+    profile: {
+      userId: "U-test",
+      name: "測試用",
+      username: "test",
+      phone: "00000000",
+      identities: [],
+      capabilities: {},
+      status: "Active",
+      qrCodeString: "qr-placeholder",
+    },
+  };
+}
+
+describe(SectionView, () => {
+  test("renders the section heading and the truthful building-state placeholder", () => {
+    render(
+      <AppProvider bootstrap={bootstrapWith(events)} onSignOut={() => {}}>
+        <SectionView sectionKey="events" title={COPY.sections.events} />
+      </AppProvider>
+    );
+    expect(
+      screen.getByRole("heading", { name: COPY.sections.events })
+    ).toBeInTheDocument();
+    expect(screen.getByText(COPY.sections.placeholder)).toBeInTheDocument();
+  });
+
+  test("exposes the section as a named landmark region", () => {
+    render(
+      <AppProvider bootstrap={bootstrapWith(events)} onSignOut={() => {}}>
+        <SectionView sectionKey="events" title={COPY.sections.events} />
+      </AppProvider>
+    );
+    expect(
+      screen.getByRole("region", { name: COPY.sections.events })
+    ).toBeInTheDocument();
+  });
+
+  test("renders the forbidden view for a section absent from the bootstrap", () => {
+    render(
+      <AppProvider bootstrap={bootstrapWith(events)} onSignOut={() => {}}>
+        <SectionView sectionKey="scanner" title={COPY.sections.scanner} />
+      </AppProvider>
+    );
+    expect(screen.getByText(COPY.error.forbidden)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: COPY.sections.scanner })
+    ).not.toBeInTheDocument();
+  });
+
+  test("renders every shell section heading from centralized zh-Hant COPY", () => {
+    const cases: Array<[string, string]> = [
+      ["programs", COPY.sections.programs],
+      ["scanner", COPY.sections.scanner],
+      ["notices", COPY.sections.notices],
+      ["management", COPY.sections.management],
+    ];
+    const ALL_SECTIONS: Section[] = [
+      {
+        key: "programs",
+        label: "聚會",
+        capability: "READ",
+        requiresServerAuth: false,
+      },
+      {
+        key: "scanner",
+        label: "簽到",
+        capability: "AUTH",
+        requiresServerAuth: false,
+      },
+      {
+        key: "notices",
+        label: "通知",
+        capability: "READ",
+        requiresServerAuth: false,
+      },
+      {
+        key: "management",
+        label: "管理",
+        capability: "AUTH",
+        requiresServerAuth: false,
+      },
+    ];
+    for (const [key, title] of cases) {
+      cleanup();
+      render(
+        <AppProvider
+          bootstrap={bootstrapWith(...ALL_SECTIONS)}
+          onSignOut={() => {}}
+        >
+          <SectionView sectionKey={key} title={title} />
+        </AppProvider>
+      );
+      expect(screen.getByRole("heading", { name: title })).toBeInTheDocument();
+    }
+  });
+});

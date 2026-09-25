@@ -17,7 +17,7 @@
 // Deliberately out of scope (would invent or mutate backend behavior):
 //   - inducing a network failure to render the RecoveryView error path.
 // Acceptance trace: docs/omp-plans/2026-08-07-ui-04-release-stack.md Task 8.
-// Copy strings below mirror web/lib/copy.ts / registration-copy.ts /
+// Copy strings below mirror apps/web/lib/copy.ts / registration-copy.ts /
 // account-settings-copy.ts; the suite asserts observable DOM state, never
 // client-side gating alone.
 import { expect, test } from "@playwright/test";
@@ -109,7 +109,7 @@ const COPY = {
   registerDone: "申請已提交",
   passwordSubmit: "更改密碼",
   accountUpdatedNotice: "帳戶資料已更新，請重新登入。",
-  // 084-04 Settings hub (mirrors web/lib/copy.ts settings + profile blocks).
+  // 084-04 Settings hub (mirrors apps/web/lib/copy.ts settings + profile blocks).
   settingsEntry: "設定",
   settingsEntryHint: "帳戶及系統設定",
   settingsTitle: "設定",

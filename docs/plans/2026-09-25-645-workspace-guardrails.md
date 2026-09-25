@@ -63,3 +63,52 @@ No Project References were added.
 - `vitest.components` `lib/permission-editor-panel.test.tsx` → 12 pass.
 - workerd `worker.auth.test.ts` → 47 pass.
 - `pnpm --filter web build` → static export succeeds (16 routes, no prototype).
+
+## #649 — Relocate web/ to apps/web/
+
+Package name stays `web` (so `pnpm --filter web` keeps selecting by name);
+only the directory moves. Historical evidence (`.delivery/`, `docs/qa/`,
+ADRs, specs, prior plans) retains `web/` snapshot wording. Current guidance
+prose (README, AGENTS.md, TESTING.md, issue template) moves in #652.
+
+Mechanical updates (all `web/` → `apps/web/` live refs):
+
+- `pnpm-workspace.yaml`, `pnpm-lock.yaml` importer key, root `package.json`
+  `apps/web/scripts/...` commands, `.gitignore` storybook-static ignore,
+  `oxlint.config.ts` override paths, `.github/CODEOWNERS`, dependabot comment.
+- `apps/web/package.json` verify-index (`../../node_modules`), `next.config.ts`
+  turbopack root (`../..`), `wrangler.jsonc` comment.
+- Runner `REPO_ROOT` (`../../..`), canary `WEB_ROOT`/`.dev.vars`/`--dir`,
+  `reset-local-d1.mjs` D1 state dir, `run-shell-responsive.mjs` `--dir`.
+- `tests/e2e/*` imports (`../../apps/web/`), tsconfig `@/*` mapping, Playwright
+  `--dir ../../apps/web build` commands, storybook launcher paths,
+  wrangler binary/cwd, `serve-static.ts` `apps/web/out` root.
+- `scripts/*` governance/verify imports (`../apps/web/...`), CLI-arg and
+  manifest fixtures (`apps/web/...`), storybook scope allowlist + fixtures,
+  t09 census paths, `verify-programs.ts` wrangler/test mappings.
+- Governance runtime paths: `resolveRepoRoot` marker, scan `webDir`,
+  `normalizeRepoPath` (apps-first, legacy `web/` fallback),
+  `resolveTargetFilePath` (both prefixes), generated-output classifiers,
+  `registries.ts` scopes, `validation.ts`, ratchets, failure hints, runner
+  manifests (`config: apps/web/wrangler.jsonc`).
+- `docs/implementation/t05-*-migration-ledger.md` executable mappings: these
+  ledgers are live `verify:programs` gate inputs, so their cited paths move
+  (historical prose untouched).
+
+### Evidence (this branch)
+
+- `pnpm install --frozen-lockfile` → pass; `apps/web/node_modules` linked.
+- `pnpm verify:fast` (root + e2e + both web projects) → clean.
+- `pnpm --filter web build` → static export, 16 routes.
+- `pnpm --filter web storybook:build` + `pnpm storybook:verify-index` →
+  95 Stories / 36 Screen obligations reconciled.
+- runners:unit 10 pass; canary:unit 5 pass; `test:governance` 18 pass;
+  `test:programs:promotion` 31 pass; `test:storybook:scope` 13 pass.
+- `pnpm db:reset:local` → D1 migrated at `apps/web/.wrangler`.
+- `wrangler dev` smoke: `/`, `/home`, `/programs`, `/scanner`,
+  `/wasm/zxing_reader.wasm` → 200; API routes → 401 unauthenticated.
+- `serve-static.ts` smoke over `apps/web/out`: same five URLs → 200.
+- t07: 63/64 (only the preserved pre-existing 2099-date failure).
+- workerd `worker.auth.test.ts`: 47 pass (moved `wrangler.jsonc` resolves).
+- Note: port 8787 is held by an unrelated pre-existing python process; smoke
+  used :18787 instead and left the holder untouched.

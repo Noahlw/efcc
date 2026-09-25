@@ -29,7 +29,7 @@ coverage/
 test-results/
 
 # Storybook build output
-web/storybook-static/
+apps/web/storybook-static/
 
 # Logs
 *.log
