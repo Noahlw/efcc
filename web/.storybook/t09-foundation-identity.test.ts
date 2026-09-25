@@ -6,6 +6,7 @@ import {
   SCREEN_CATALOG,
   SCREEN_PRESENTATION_DECLARATIONS,
   validateScreenCatalog,
+  type PresentationDeclaration,
 } from "./presentation-catalog";
 import {
   discoverStoryDeclarations,
@@ -15,11 +16,16 @@ import {
 describe("T09 additive foundation presentation identity", () => {
   test("discovers durable foundation Stories without creating Screen Catalog obligations", () => {
     expect(FOUNDATION_PRESENTATION_DECLARATIONS).toHaveLength(14);
+    const foundationDeclarations = FOUNDATION_PRESENTATION_DECLARATIONS.filter(
+      (
+        declaration
+      ): declaration is Extract<
+        PresentationDeclaration,
+        { subject: "foundation" }
+      > => declaration.subject === "foundation"
+    );
     expect(
-      FOUNDATION_PRESENTATION_DECLARATIONS.map(({ foundationId, psn }) => [
-        foundationId,
-        psn,
-      ])
+      foundationDeclarations.map(({ foundationId, psn }) => [foundationId, psn])
     ).toStrictEqual([
       ["surface", "PSN-FOUNDATION-SURFACE"],
       ["surface", "PSN-FOUNDATION-SURFACE-CARD-FOOTER"],

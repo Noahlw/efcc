@@ -6,6 +6,7 @@ import {
   SCREEN_CATALOG,
   SCREEN_PRESENTATION_DECLARATIONS,
   validateScreenCatalog,
+  type PresentationDeclaration,
 } from "./presentation-catalog";
 
 describe("T08 presentation subject contract", () => {
@@ -20,11 +21,16 @@ describe("T08 presentation subject contract", () => {
     ).toBeTruthy();
 
     expect(CONTROL_PRESENTATION_DECLARATIONS).toHaveLength(7);
+    const controlDeclarations = CONTROL_PRESENTATION_DECLARATIONS.filter(
+      (
+        declaration
+      ): declaration is Extract<
+        PresentationDeclaration,
+        { subject: "control" }
+      > => declaration.subject === "control"
+    );
     expect(
-      CONTROL_PRESENTATION_DECLARATIONS.map(({ controlId, psn }) => [
-        controlId,
-        psn,
-      ])
+      controlDeclarations.map(({ controlId, psn }) => [controlId, psn])
     ).toStrictEqual([
       ["button", "PSN-CONTROL-BUTTON"],
       ["icon-button", "PSN-CONTROL-ICON-BUTTON"],
