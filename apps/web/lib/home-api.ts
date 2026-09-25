@@ -6,50 +6,19 @@
  * Errors are RFC 9457 Problem Details surfaced as RpcError.
  */
 
+import type { HomeAnnouncement, HomeProjection } from "@efcc/contracts";
+import {
+  HomeAnnouncementsSchema,
+  HomeProjectionSchema,
+  parseSuccessEnvelope,
+} from "@efcc/contracts";
+
 import { RpcError } from "@/lib/api";
 import type { ProblemDetails } from "@/lib/api";
 
-interface HomeFeaturedEvent {
-  eventId: string;
-  programId: string;
-  programTitle: string;
-  title: string;
-  startsAt: string;
-  endsAt: string;
-  startAt?: string;
-  endAt?: string;
-  location: string;
-  status: string;
-  isEnrolled: boolean;
-}
-
-export interface HomeAnnouncement {
-  contentId: string;
-  version: number;
-  title: string;
-  summary: string;
-  bodyMarkdown: string | null;
-  ctaLabel: string | null;
-  ctaUrl: string | null;
-  imageUrl: string | null;
-  imageAlt: string | null;
-  publishedAt: string | null;
-}
-
-interface HomeExploreProgram {
-  programId: string;
-  title: string;
-  summary: string | null;
-  category: string | null;
-  enrollmentType: string;
-  nextEventStartAt: string | null;
-}
-
-export interface HomeData {
-  featuredEvent: HomeFeaturedEvent | null;
-  announcement: HomeAnnouncement | null;
-  exploreProgram: HomeExploreProgram | null;
-}
+export type { HomeAnnouncement };
+/** Browser name for the shared home projection contract. */
+export type HomeData = HomeProjection;
 
 function recordFrom(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null
@@ -88,13 +57,11 @@ function problemFromPayload(
   return problem;
 }
 
-function hasData(value: unknown): value is { data: unknown } {
-  const record = recordFrom(value);
-  return record !== null && "data" in record && record.data !== undefined;
-}
-
 /** One fetch to the cookie-only home surface. Never builds auth headers. */
-async function homeGet<T>(path: string): Promise<T> {
+async function homeGet<T>(
+  path: string,
+  payloadSchema: { safeParse: (value: unknown) => { success: boolean } }
+): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
@@ -136,7 +103,11 @@ async function homeGet<T>(path: string): Promise<T> {
   if (!res.ok) {
     throw new RpcError(problemFromPayload(parsed, res.status, requestId));
   }
-  if (!hasData(parsed)) {
+  const envelope = parseSuccessEnvelope(parsed);
+  // Shared contract gate (#646): the envelope carries no shape promise —
+  // a 2xx whose data fails the route schema is MALFORMED_RESPONSE,
+  // never a partial success.
+  if (!envelope || !payloadSchema.safeParse(envelope.data).success) {
     throw new RpcError({
       status: res.status,
       code: "MALFORMED_RESPONSE",
@@ -145,17 +116,18 @@ async function homeGet<T>(path: string): Promise<T> {
       requestId,
     });
   }
-  return parsed.data as T;
+  return envelope.data as T;
 }
 
 export function getHome(): Promise<HomeData> {
-  return homeGet<HomeData>("/api/v1/home");
+  return homeGet<HomeData>("/api/v1/home", HomeProjectionSchema);
 }
 
 export function listAnnouncements(): Promise<{
   announcements: HomeAnnouncement[];
 }> {
   return homeGet<{ announcements: HomeAnnouncement[] }>(
-    "/api/v1/home/announcements"
+    "/api/v1/home/announcements",
+    HomeAnnouncementsSchema
   );
 }

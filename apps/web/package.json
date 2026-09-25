@@ -18,6 +18,7 @@
     "test:t07:foundation": "vitest run --config vitest.t07.config.ts"
   },
   "dependencies": {
+    "@efcc/contracts": "workspace:*",
     "@tailwindcss/postcss": "^4.3.3",
     "barcode-detector": "3.2.2",
     "class-variance-authority": "^0.7.1",

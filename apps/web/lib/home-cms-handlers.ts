@@ -1,3 +1,16 @@
+import {
+  FeaturedEventPreviewSchema,
+  HomeAuditListSchema,
+  HomeContentSchema,
+  HomePublishModeSchema,
+  HomeTemplateTypeSchema,
+  clampLimit,
+  isValidExpectedVersion,
+  normalizeHkTimestamp,
+  positiveInt,
+} from "@efcc/contracts";
+import type { HomePublishMode, HomeTemplateType } from "@efcc/contracts";
+
 import type { AccountRow } from "./auth/accounts";
 import { resolveRequestSession } from "./auth/sessions";
 import { CAPABILITY } from "./programs/capabilities";
@@ -43,10 +56,6 @@ interface AuditRow {
 }
 
 const CONTENT_ID = "home";
-const TEMPLATE_TYPES = ["A", "B"] as const;
-const PUBLISH_MODES = ["immediate", "scheduled"] as const;
-type TemplateType = (typeof TEMPLATE_TYPES)[number];
-type PublishMode = (typeof PUBLISH_MODES)[number];
 
 function problem(
   status: number,
@@ -84,6 +93,16 @@ function jsonResponse(
   return Response.json(
     { requestId, data },
     { status, headers: { "X-Request-Id": requestId } }
+  );
+}
+
+function homeUnavailable(requestId: string, detail: string): Response {
+  return problem(
+    503,
+    "HOME_UNAVAILABLE",
+    "Service unavailable",
+    detail,
+    requestId
   );
 }
 
@@ -191,45 +210,6 @@ function sanitizeBody(
     .replaceAll(/javascript\s*:/giu, "");
 }
 
-function normalizeHkTimestamp(value: unknown): string | null {
-  if (typeof value !== "string" || !value.trim()) {
-    return null;
-  }
-  const raw = value.trim();
-  const parsed = /(?:Z|[+-]\d{2}:?\d{2})$/u.test(raw)
-    ? new Date(raw)
-    : // oxlint-disable-next-line prefer-named-capture-group
-      (() => {
-        const match =
-          // oxlint-disable-next-line prefer-named-capture-group
-          /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/u.exec(raw);
-        if (!match) {
-          return new Date("invalid");
-        }
-        const [, year, month, day, hour, minute, second = "00"] = match;
-        return new Date(
-          Date.UTC(
-            Number(year),
-            Number(month) - 1,
-            Number(day),
-            Number(hour) - 8,
-            Number(minute),
-            Number(second)
-          )
-        );
-      })();
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
-}
-
-function isOneOf<T extends string>(
-  value: unknown,
-  options: readonly T[]
-): value is T {
-  return (
-    typeof value === "string" && (options as readonly string[]).includes(value)
-  );
-}
-
 function latestDto(row: HomeContentRow | null): Record<string, unknown> | null {
   if (!row) {
     return null;
@@ -289,15 +269,15 @@ function validateFields(
   requestId: string
 ):
   | {
-      templateType: TemplateType;
-      publishMode: PublishMode;
+      templateType: HomeTemplateType;
+      publishMode: HomePublishMode;
       startAt: string | null;
       endAt: string | null;
     }
   | Response {
   const templateType =
     body.template_type ?? body.templateType ?? existing?.template_type;
-  if (!isOneOf(templateType, TEMPLATE_TYPES)) {
+  if (!HomeTemplateTypeSchema.safeParse(templateType).success) {
     return problem(
       422,
       "VALIDATION",
@@ -311,7 +291,7 @@ function validateFields(
     body.publishMode ??
     existing?.publish_mode ??
     "immediate";
-  if (!isOneOf(publishMode, PUBLISH_MODES)) {
+  if (!HomePublishModeSchema.safeParse(publishMode).success) {
     return problem(
       422,
       "VALIDATION",
@@ -355,7 +335,12 @@ function validateFields(
       requestId
     );
   }
-  return { templateType, publishMode, startAt, endAt };
+  return {
+    templateType: templateType as HomeTemplateType,
+    publishMode: publishMode as HomePublishMode,
+    startAt,
+    endAt,
+  };
 }
 
 function field(
@@ -390,7 +375,17 @@ export async function handleGetHomeContent(
     const latest = await env.DB.prepare(
       "SELECT * FROM home_content ORDER BY version DESC LIMIT 1"
     ).first<HomeContentRow>();
-    return jsonResponse(200, latestDto(latest), requestId);
+    const data = latestDto(latest);
+    if (!HomeContentSchema.nullable().safeParse(data).success) {
+      console.error(
+        `[home-cms] GET content malformed data requestId=${requestId}`
+      );
+      return homeUnavailable(
+        requestId,
+        "Home content is temporarily unavailable."
+      );
+    }
+    return jsonResponse(200, data, requestId);
   } catch (error) {
     console.error(
       `[home-cms] GET content failed requestId=${requestId}:`,
@@ -458,20 +453,26 @@ export async function handleGetFeaturedEventPreview(
         requestId
       );
     }
-    return jsonResponse(
-      200,
-      {
-        eventId: row.event_id,
-        programId: row.program_id,
-        programTitle: row.program_title,
-        title: row.title,
-        startsAt: row.starts_at,
-        endsAt: row.ends_at,
-        location: row.location,
-        status: row.status,
-      },
-      requestId
-    );
+    const data = {
+      eventId: row.event_id,
+      programId: row.program_id,
+      programTitle: row.program_title,
+      title: row.title,
+      startsAt: row.starts_at,
+      endsAt: row.ends_at,
+      location: row.location,
+      status: row.status,
+    };
+    if (!FeaturedEventPreviewSchema.safeParse(data).success) {
+      console.error(
+        `[home-cms] GET featured-event preview malformed data requestId=${requestId}`
+      );
+      return homeUnavailable(
+        requestId,
+        "Home content is temporarily unavailable."
+      );
+    }
+    return jsonResponse(200, data, requestId);
   } catch (error) {
     console.error(
       `[home-cms] GET featured-event preview failed requestId=${requestId}:`,
@@ -511,10 +512,7 @@ export async function handleSaveHomeDraft(
     optionalString(body, "contentId") ??
     CONTENT_ID;
   const expected = body.expected_version ?? body.expectedVersion;
-  if (
-    expected !== undefined &&
-    (!Number.isSafeInteger(expected) || (expected as number) < 1)
-  ) {
+  if (!isValidExpectedVersion(expected)) {
     return problem(
       422,
       "VALIDATION",
@@ -598,7 +596,19 @@ export async function handleSaveHomeDraft(
     )
       .bind(contentId, version)
       .first<HomeContentRow>();
-    return jsonResponse(200, latestDto(saved), requestId);
+    const savedDto = latestDto(saved);
+    // Shared contract gate (#646): a malformed stored row must not
+    // become a malformed 2xx. Same 503 fallback, never a new code.
+    if (!HomeContentSchema.nullable().safeParse(savedDto).success) {
+      console.error(
+        `[home-cms] POST draft malformed data requestId=${requestId}`
+      );
+      return homeUnavailable(
+        requestId,
+        "Home content is temporarily unavailable."
+      );
+    }
+    return jsonResponse(200, savedDto, requestId);
   } catch (error) {
     console.error(
       `[home-cms] POST draft failed requestId=${requestId}:`,
@@ -638,7 +648,7 @@ export async function handlePublishHome(
     optionalString(body, "contentId") ??
     CONTENT_ID;
   const { version } = body;
-  if (!Number.isSafeInteger(version) || (version as number) < 1) {
+  if (!positiveInt.safeParse(version).success) {
     return problem(
       422,
       "VALIDATION",
@@ -706,7 +716,17 @@ export async function handlePublishHome(
     )
       .bind(contentId, version)
       .first<HomeContentRow>();
-    return jsonResponse(200, latestDto(published), requestId);
+    const publishedDto = latestDto(published);
+    if (!HomeContentSchema.nullable().safeParse(publishedDto).success) {
+      console.error(
+        `[home-cms] POST publish malformed data requestId=${requestId}`
+      );
+      return homeUnavailable(
+        requestId,
+        "Home content is temporarily unavailable."
+      );
+    }
+    return jsonResponse(200, publishedDto, requestId);
   } catch (error) {
     console.error(
       `[home-cms] POST publish failed requestId=${requestId}:`,
@@ -732,10 +752,9 @@ export async function handleListHomeAudit(
     return auth;
   }
   const url = new URL(request.url);
-  const parsedLimit = Number(url.searchParams.get("limit") ?? "50");
-  const limit = Number.isSafeInteger(parsedLimit)
-    ? Math.min(Math.max(parsedLimit, 1), 100)
-    : 50;
+  // Shared clamp policy (#646): coerce then clamp to [1, 100], default
+  // 50 — identical outcomes to the inline version (never 422).
+  const limit = clampLimit(url.searchParams.get("limit"), 50, 1, 100);
   try {
     const rows =
       await env.DB.prepare(`SELECT a.audit_id, a.inserted_at, a.actor_user_id, ac.name AS actor_name,
@@ -746,7 +765,7 @@ export async function handleListHomeAudit(
         .bind(limit)
         .all<AuditRow>();
     const items = (rows.results ?? []).map((row) => {
-      let details: { version?: number; templateType?: TemplateType } = {};
+      let details: { version?: number; templateType?: HomeTemplateType } = {};
       try {
         details = row.new_value_json
           ? (JSON.parse(row.new_value_json) as typeof details)
@@ -766,7 +785,17 @@ export async function handleListHomeAudit(
         templateType: details.templateType ?? null,
       };
     });
-    return jsonResponse(200, { items }, requestId);
+    const data = { items };
+    if (!HomeAuditListSchema.safeParse(data).success) {
+      console.error(
+        `[home-cms] GET audit malformed data requestId=${requestId}`
+      );
+      return homeUnavailable(
+        requestId,
+        "Home audit is temporarily unavailable."
+      );
+    }
+    return jsonResponse(200, data, requestId);
   } catch (error) {
     console.error(`[home-cms] GET audit failed requestId=${requestId}:`, error);
     return problem(

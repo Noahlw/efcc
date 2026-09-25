@@ -105,4 +105,82 @@ describe("home-api client", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  test("getHome rejects malformed success data with MALFORMED_RESPONSE", async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => {
+        return new Response(
+          JSON.stringify({
+            requestId: "req-bad-1",
+            data: {
+              featuredEvent: {
+                eventId: "EVT-1",
+                programId: "PRG-1",
+                // title is missing: malformed success data.
+                startsAt: "2026-08-20T11:30:00.000Z",
+                endsAt: "2026-08-20T13:00:00.000Z",
+                location: "二樓禮堂",
+                status: "Active",
+                isEnrolled: true,
+              },
+              announcement: null,
+              exploreProgram: null,
+            },
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+              "X-Request-Id": "req-bad-1",
+            },
+          }
+        );
+      };
+
+      await assert.rejects(
+        async () => {
+          await getHome();
+        },
+        (error: unknown) => {
+          assert.ok(error instanceof RpcError);
+          assert.strictEqual(error.problem.status, 200);
+          assert.strictEqual(error.problem.code, "MALFORMED_RESPONSE");
+          assert.strictEqual(error.problem.requestId, "req-bad-1");
+          return true;
+        }
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("getHome preserves status and requestId on malformed error bodies", async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => {
+        return new Response(JSON.stringify({ unexpected: "shape" }), {
+          status: 403,
+          headers: {
+            "Content-Type": "application/problem+json",
+            "X-Request-Id": "req-bad-2",
+          },
+        });
+      };
+
+      await assert.rejects(
+        async () => {
+          await getHome();
+        },
+        (error: unknown) => {
+          assert.ok(error instanceof RpcError);
+          assert.strictEqual(error.problem.status, 403);
+          assert.strictEqual(error.problem.requestId, "req-bad-2");
+          return true;
+        }
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

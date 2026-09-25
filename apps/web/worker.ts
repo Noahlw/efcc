@@ -1063,9 +1063,21 @@ export default {
         url.pathname.startsWith(featuredPreviewPrefix) &&
         request.method === "GET"
       ) {
-        const eventId = decodeURIComponent(
-          url.pathname.slice(featuredPreviewPrefix.length)
-        );
+        let eventId: string;
+        try {
+          eventId = decodeURIComponent(
+            url.pathname.slice(featuredPreviewPrefix.length)
+          );
+        } catch {
+          // Malformed percent-encoding is a stable 404, never a raw 500
+          // (parity with the identity decodePathSegment rule).
+          return authProblemResponse(
+            404,
+            "NOT_FOUND",
+            "Not found",
+            "Featured event not found."
+          );
+        }
         return handleGetFeaturedEventPreview(request, homeEnv, eventId);
       }
 
