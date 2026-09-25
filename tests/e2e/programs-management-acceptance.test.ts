@@ -2540,9 +2540,17 @@ test.describe("Programs parity replacements 39-63", () => {
       expect(targetEventId).toBeTruthy();
       expect(targetDate).toMatch(/^\d{4}-\d{2}-\d{2}$/u);
 
+      const eventsLoaded = page.waitForResponse(
+        (response) =>
+          response.request().method() === "GET" &&
+          new URL(response.url()).pathname ===
+            `/api/v1/programs/${encodeURIComponent(fixture.programId)}/events` &&
+          response.status() === 200
+      );
       await page.goto(
         `/programs?mode=management&program=${encodeURIComponent(fixture.programId)}&task=events`
       );
+      await eventsLoaded;
       const events = page.getByRole("list", { name: COPY.workspaceEvents });
       const row = events.locator(`[data-event-id="${targetEventId}"]`);
       await expect(row).toBeVisible();

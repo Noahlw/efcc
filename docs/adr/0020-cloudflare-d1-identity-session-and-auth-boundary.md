@@ -1,6 +1,6 @@
 # ADR-0020 — Cloudflare D1 Identity, Session, and Auth Boundary
 
-> Historical scope note (2026-09-24): D1 identity and the Worker username/password boundary remain current. The legacy Google Sheets Users/PIN importer, forced-upgrade flow, and PIN-only lockout described below are retired because there are no legacy accounts to migrate. Auth provider/library replacement and password-login brute-force protection remain deferred to [#639](https://github.com/Noahlw/efcc/issues/639); see the current repo-wide organization plan.
+> Historical scope note (2026-09-25): D1 identity and the Worker username/password boundary remain current. [ADR-0058](0058-protected-request-session-validation.md) supersedes §2's stateless protected-request and delayed-revocation behavior. The legacy Google Sheets Users/PIN importer, forced-upgrade flow, and PIN-only lockout described below are retired because there are no legacy accounts to migrate. Auth provider/library replacement and password-login brute-force protection remain deferred to [#639](https://github.com/Noahlw/efcc/issues/639); see the current repo-wide organization plan.
 
 
 - **Status**: Proposed — decision locked via grilling and the AUTH-01 (#159) / AUTH-02 (#160) implementation. Local and preview D1 proof is AUTH-01/AUTH-02 implementation evidence; the map goal (deployed D1 auth behind the login landing page, AUTH-04/CF0-08) is the acceptance that flips this ADR to Accepted. A deployed smoke is optional operational evidence under ADR-0029, not the repository-wide `READY` gate.
