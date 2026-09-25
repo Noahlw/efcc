@@ -6,6 +6,34 @@
  * are RFC 9457 Problem Details surfaced as RpcError (shared with api.ts).
  */
 
+import {
+  AccountDirectoryMemberSchema,
+  AccountDirectoryViewSchema,
+  DepartmentDetailSchema,
+  DepartmentsListSchema,
+  ManagementAccessViewSchema,
+  ManagementAttentionViewSchema,
+  ManagementCockpitViewSchema,
+  ManagementDirectoryViewSchema,
+  ManagementHubViewSchema,
+  ManagementNotificationsViewSchema,
+  ManagementProgramWorkspaceViewSchema,
+  MarkedCountSchema,
+  MemberOptionsSchema,
+  MembersSearchResultSchema,
+  NoticeCreateResponseSchema,
+  ParticipantCatalogSchema,
+  ParticipantNoticesViewSchema,
+  ParticipantProgramDetailSchema,
+  ProgramAttendanceArtifactSchema,
+  ProgramGetSchema,
+  ProgramTokenRotationSchema,
+  ProgramsListSchema,
+  parseProblemDetails,
+  parseSuccessEnvelope,
+  problemFallback,
+} from "@efcc/contracts";
+
 import { RpcError } from "@/lib/api";
 import type { ProblemDetails } from "@/lib/api";
 import type {
@@ -620,11 +648,6 @@ export type ProgramPatch = Omit<
   check_in_closes_at_minutes_after_end?: number;
 };
 
-interface ProgramsSuccess<T> {
-  requestId: string;
-  data: T;
-}
-
 function idempotencyHeaders(
   method: "POST" | "GET" | "PATCH" | "DELETE",
   key: string | null | undefined
@@ -674,6 +697,7 @@ async function programsFetch<T>(
   options: {
     idempotencyKey?: string | null;
     cache?: "no-store";
+    schema?: { safeParse: (value: unknown) => { success: boolean } };
   } = {}
 ): Promise<T> {
   let res: Response;
@@ -697,6 +721,7 @@ async function programsFetch<T>(
     });
   }
 
+  const requestId = res.headers.get("X-Request-Id") ?? undefined;
   if (res.ok) {
     let parsed: unknown;
     try {
@@ -707,40 +732,45 @@ async function programsFetch<T>(
         code: "MALFORMED_RESPONSE",
         title: "Malformed success response",
         detail: "伺服器回應格式錯誤。",
+        requestId,
       });
     }
+    const envelope = parseSuccessEnvelope(parsed);
+    // Shared contract gate (#656): malformed 2xx data is
+    // MALFORMED_RESPONSE, never a partial success. Routes whose
+    // schemas land in later #646 tickets keep today's envelope-only
+    // check until their slice wires them.
     if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      (parsed as { data?: unknown }).data === undefined
+      !envelope ||
+      (options.schema && !options.schema.safeParse(envelope.data).success)
     ) {
       throw new RpcError({
         status: res.status,
         code: "MALFORMED_RESPONSE",
         title: "Malformed success envelope",
         detail: "伺服器回應格式錯誤。",
+        requestId,
       });
     }
-    return (parsed as ProgramsSuccess<T>).data as T;
+    return envelope.data as T;
   }
 
-  const requestId = res.headers.get("X-Request-Id") ?? undefined;
-  let problem: ProblemDetails;
+  let parsedError: unknown;
   try {
-    problem = (await res.json()) as ProblemDetails;
+    parsedError = await res.json();
   } catch {
-    problem = { status: res.status, code: "UNAVAILABLE", requestId };
+    parsedError = null;
   }
-  if (typeof problem !== "object" || problem === null) {
-    problem = { status: res.status, code: "UNAVAILABLE", requestId };
-  }
-  if (typeof problem.status !== "number") {
-    problem.status = res.status;
-  }
-  if (requestId && !problem.requestId) {
-    problem.requestId = requestId;
-  }
-  throw new RpcError(problem);
+  const problem =
+    parseProblemDetails(parsedError, res.status, requestId) ??
+    problemFallback(
+      res.status,
+      requestId,
+      "UNAVAILABLE",
+      "Upstream error",
+      "系統暫時無法處理請求，請稍後再試。"
+    );
+  throw new RpcError(problem as ProblemDetails);
 }
 
 /** POST /api/v1/programs/:programId/enrollment-requests */
@@ -919,7 +949,9 @@ export function cancelEnrollment(
 export function listDepartments(): Promise<{
   departments: Department[];
 }> {
-  return programsFetch("/api/v1/programs/departments", "GET");
+  return programsFetch("/api/v1/programs/departments", "GET", undefined, {
+    schema: DepartmentsListSchema,
+  });
 }
 /** GET /api/v1/programs/management-directory — scoped, redacted manager rows. */
 export function getManagementDirectory(): Promise<ManagementDirectory> {
@@ -927,7 +959,7 @@ export function getManagementDirectory(): Promise<ManagementDirectory> {
     "/api/v1/programs/management-directory",
     "GET",
     undefined,
-    { cache: "no-store" }
+    { cache: "no-store", schema: ManagementDirectoryViewSchema }
   );
 }
 
@@ -936,7 +968,14 @@ export function getManagementAttention(
   limit = 5
 ): Promise<ManagementAttention> {
   const query = new URLSearchParams({ limit: String(limit) });
-  return programsFetch(`/api/v1/programs/attention?${query}`, "GET");
+  return programsFetch(
+    `/api/v1/programs/attention?${query}`,
+    "GET",
+    undefined,
+    {
+      schema: ManagementAttentionViewSchema,
+    }
+  );
 }
 
 /** GET /api/v1/programs/notifications — current scoped read-state overlay. */
@@ -944,7 +983,12 @@ export function getManagementNotifications(
   limit = 20
 ): Promise<ManagementNotifications> {
   const query = new URLSearchParams({ limit: String(limit) });
-  return programsFetch(`/api/v1/programs/notifications?${query}`, "GET");
+  return programsFetch(
+    `/api/v1/programs/notifications?${query}`,
+    "GET",
+    undefined,
+    { schema: ManagementNotificationsViewSchema }
+  );
 }
 
 /** POST /api/v1/programs/notifications/read — idempotent read-state write. */
@@ -954,9 +998,12 @@ export function markManagementNotificationsRead(
     source_revision: string;
   }[]
 ): Promise<{ marked_count: number }> {
-  return programsFetch("/api/v1/programs/notifications/read", "POST", {
-    items,
-  });
+  return programsFetch(
+    "/api/v1/programs/notifications/read",
+    "POST",
+    { items },
+    { schema: MarkedCountSchema }
+  );
 }
 
 let accessCache: { data: ProgramsManagementAccess; at: number } | null = null;
@@ -983,7 +1030,9 @@ export function getManagementAccess(): Promise<ProgramsManagementAccess> {
     try {
       const data = await programsFetch<ProgramsManagementAccess>(
         "/api/v1/programs/access",
-        "GET"
+        "GET",
+        undefined,
+        { schema: ManagementAccessViewSchema }
       );
       if (isCurrentAccessRequest(marker)) {
         accessCache = { data, at: Date.now() };
@@ -1012,6 +1061,7 @@ export function clearAccessCache(): void {
 export function getManagementHub(): Promise<ManagementHubView> {
   return programsFetch("/api/v1/programs/hub", "GET", undefined, {
     cache: "no-store",
+    schema: ManagementHubViewSchema,
   });
 }
 
@@ -1050,7 +1100,9 @@ export function listParticipantCatalog(): Promise<{
   }
   return programsFetch<{ catalog: ParticipantCatalogEntry[] }>(
     "/api/v1/programs/catalog",
-    "GET"
+    "GET",
+    undefined,
+    { schema: ParticipantCatalogSchema }
   ).then((data) => {
     primeCatalogCache(data.catalog);
     return data;
@@ -1062,7 +1114,9 @@ export function getParticipantProgramDetail(
 ): Promise<ParticipantProgramDetail> {
   return programsFetch<{ detail: ParticipantProgramDetail }>(
     `/api/v1/programs/${encodeURIComponent(programId)}/participant-detail`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: ParticipantProgramDetailSchema }
   ).then(({ detail }) => detail);
 }
 
@@ -1091,7 +1145,9 @@ export function updateDepartment(
 export function getDepartment(departmentId: string): Promise<DepartmentDetail> {
   return programsFetch(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: DepartmentDetailSchema }
   );
 }
 
@@ -1101,7 +1157,9 @@ export function listPrograms(
 ): Promise<{ programs: Program[] }> {
   return programsFetch(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/programs`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: ProgramsListSchema }
   );
 }
 
@@ -1116,7 +1174,7 @@ export function getManagementProgram(programId: string): Promise<{
     `/api/v1/programs/${encodeURIComponent(programId)}/management`,
     "GET",
     undefined,
-    { cache: "no-store" }
+    { cache: "no-store", schema: ManagementProgramWorkspaceViewSchema }
   );
 }
 
@@ -1128,7 +1186,7 @@ export function getProgramAttendanceArtifact(programId: string): Promise<{
     `/api/v1/programs/${encodeURIComponent(programId)}/attendance-artifact`,
     "GET",
     undefined,
-    { cache: "no-store" }
+    { cache: "no-store", schema: ProgramAttendanceArtifactSchema }
   );
 }
 
@@ -1147,7 +1205,7 @@ export function rotateProgramAttendanceArtifact(
     `/api/v1/programs/${encodeURIComponent(programId)}/attendance-artifact/rotate`,
     "POST",
     {},
-    { idempotencyKey }
+    { idempotencyKey, schema: ProgramTokenRotationSchema }
   );
 }
 
@@ -1159,7 +1217,7 @@ export function getManagementCockpit(
     `/api/v1/programs/${encodeURIComponent(programId)}/cockpit`,
     "GET",
     undefined,
-    { cache: "no-store" }
+    { cache: "no-store", schema: ManagementCockpitViewSchema }
   );
 }
 /** POST /api/v1/programs/departments/:id/programs */
@@ -1214,7 +1272,14 @@ export function searchManagementMembers(
   if (options?.limit !== undefined) {
     params.set("limit", String(options.limit));
   }
-  return programsFetch(`/api/v1/programs/members?${params.toString()}`, "GET");
+  return programsFetch(
+    `/api/v1/programs/members?${params.toString()}`,
+    "GET",
+    undefined,
+    {
+      schema: MembersSearchResultSchema,
+    }
+  );
 }
 
 /** GET /api/v1/programs/accounts?q=...&status=... — Account Directory. */
@@ -1240,7 +1305,14 @@ export function searchAccountDirectory(
   if (options?.status !== undefined) {
     params.set("status", options.status);
   }
-  return programsFetch(`/api/v1/programs/accounts?${params.toString()}`, "GET");
+  return programsFetch(
+    `/api/v1/programs/accounts?${params.toString()}`,
+    "GET",
+    undefined,
+    {
+      schema: AccountDirectoryViewSchema,
+    }
+  );
 }
 
 /** GET /api/v1/programs/accounts/:id — authorized Account Detail. */
@@ -1249,7 +1321,9 @@ export function getAccountDirectoryDetail(
 ): Promise<AccountDirectoryDetail> {
   return programsFetch(
     `/api/v1/programs/accounts/${encodeURIComponent(userId)}`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: AccountDirectoryMemberSchema }
   );
 }
 

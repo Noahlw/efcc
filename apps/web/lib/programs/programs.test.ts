@@ -12283,3 +12283,100 @@ describe("#622 R41/R42: committed writes survive a failing readback", () => {
     assert.strictEqual(durable?.status, "Cancelled");
   }, 120_000);
 });
+
+describe("#656 programs read contracts", () => {
+  test("members limit floors instead of rejecting", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    for (const limit of ["2.5", "abc", "999"]) {
+      const res = await worker.fetch(
+        programsRequest(`/api/v1/programs/members?q=al&limit=${limit}`, {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(res.status, 200);
+    }
+  });
+
+  test("accounts search rejects bad cursor, status, and department", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    for (const query of [
+      "cursor=1.5",
+      "status=Bogus",
+      `department=${"d".repeat(81)}`,
+    ]) {
+      const res = await worker.fetch(
+        programsRequest(`/api/v1/programs/accounts?${query}`, {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(res.status, 422);
+      const problem = await problemOf(res);
+      assert.strictEqual(problem.code, "VALIDATION");
+    }
+  });
+
+  test("notifications limit clamps to its own ceiling", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    for (const limit of ["0", "999", "abc"]) {
+      const res = await worker.fetch(
+        programsRequest(`/api/v1/programs/notifications?limit=${limit}`, {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(res.status, 200);
+    }
+  });
+
+  test("notifications/read rejects oversized and malformed items", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const post = (body: unknown) =>
+      worker.fetch(
+        programsRequest("/api/v1/programs/notifications/read", {
+          method: "POST",
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+          body,
+        }),
+        testEnv()
+      );
+    const tooMany = await post({
+      items: Array.from({ length: 101 }, (_, i) => ({
+        source_key: `k${i}`,
+        source_revision: "1",
+      })),
+    });
+    assert.strictEqual(tooMany.status, 422);
+    const missingRevision = await post({ items: [{ source_key: "k" }] });
+    assert.strictEqual(missingRevision.status, 422);
+    const duplicates = await post({
+      items: [
+        { source_key: "k", source_revision: "1" },
+        { source_key: "k", source_revision: "1" },
+      ],
+    });
+    assert.strictEqual(duplicates.status, 200);
+    const marked = (await duplicates.json()) as {
+      data: { marked_count: number };
+    };
+    assert.strictEqual(typeof marked.data.marked_count, "number");
+  });
+
+  test("rotate rejects an overlong Idempotency-Key before auth", async () => {
+    const res = await worker.fetch(
+      programsRequest(
+        "/api/v1/programs/unknown-program/attendance-artifact/rotate",
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": "k".repeat(201) },
+          body: {},
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 422);
+    const problem = await problemOf(res);
+    assert.strictEqual(problem.code, "VALIDATION");
+  });
+});

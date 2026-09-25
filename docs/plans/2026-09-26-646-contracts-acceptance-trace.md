@@ -255,6 +255,37 @@ clean SHA (#662).
   the involved files (header/panel/s4 test) are touched here.
   Fixing either is a UI/test contract change for the owner.
 
+## #656 record — Programs discovery/management-read/feed
+
+- Scope note: department/program GET reads (list/get/member-options)
+  ship here as reads; all department/program mutations stay in #657.
+- `packages/contracts` `src/programs-reads.ts`: behavior/lifecycle/
+  discoverability/enrollment-mode/department-lifecycle/notice-kind/
+  module-key/viewer-state/access/status enums; capabilities;
+  department/program/management views; hub view; member/account
+  directory; attention/notification unions (kind-discriminated);
+  notices; catalog; participant detail; artifact/rotation/cockpit/
+  workspace views; floor-clamp limit (exact floor semantics, never
+  422 — unlike identity search); search-term trim; cursor/status/
+  department predicates; optional rotate key; notice trim/id
+  predicates; notification-read envelope + bounded items.
+- Worker: response gates on all 18 read routes plus the 5
+  department/program GETs via throw-inside-try (existing worker 500
+  INTERNAL_ERROR); request branches keep orchestration with shared
+  predicates and byte-identical messages (members q≥2, cursor/status/
+  department 422s, read-items cap/dedupe, notice kind/title/body/id
+  rules, optional rotate key). Notices create keeps its 201.
+- Browser: `programsFetch` takes an optional schema (unwired routes
+  keep today's envelope-only check until their ticket); all #656
+  call sites wired; `notices-api` wired with its exact historical
+  error fallbacks (5xx split, non-record always MALFORMED).
+  Signatures keep domain types (`as T` after the gate).
+- Fixture corrections (mock-only): member/account directory mocks
+  gain the always-sent identity `stableKey`.
+- Proof: contracts 34+24+16, workerd programs 196, clients 4,
+  directory/account/hub/home/app panels 185, typechecks/Knip/
+  boundaries clean, feed + browser acceptance pass vs local Worker.
+
 ## Proof plan per slice
 
 Worker/D1 contract tests (valid + invalid request/response,

@@ -1,3 +1,39 @@
+import {
+  AccountDirectoryMemberSchema,
+  AccountDirectoryStatusSchema,
+  AccountDirectoryViewSchema,
+  DepartmentDetailSchema,
+  DepartmentGetSchema,
+  DepartmentsListSchema,
+  MemberOptionsSchema,
+  ProgramGetSchema,
+  ProgramsListSchema,
+  ManagementAccessViewSchema,
+  ManagementAttentionViewSchema,
+  ManagementCockpitViewSchema,
+  ManagementDirectoryViewSchema,
+  ManagementHubViewSchema,
+  ManagementNotificationsViewSchema,
+  ManagementProgramWorkspaceViewSchema,
+  MarkedCountSchema,
+  MembersSearchResultSchema,
+  NoticeCreateResponseSchema,
+  NotificationReadItemSchema,
+  NotificationsReadBodySchema,
+  ParticipantCatalogSchema,
+  ParticipantNoticesViewSchema,
+  ParticipantNoticeKindSchema,
+  ParticipantProgramDetailSchema,
+  ProgramAttendanceArtifactSchema,
+  ProgramTokenRotationSchema,
+  floorClampLimit,
+  isValidAccountCursor,
+  optionalIdField,
+  parseOptionalIdempotencyKey,
+  parseSearchTerm,
+  trimmedField,
+} from "@efcc/contracts";
+
 import type { AccountRow } from "../auth/accounts";
 import { resolveRequestSession } from "../auth/sessions";
 /**
@@ -548,7 +584,14 @@ export async function handleListDepartments(
   const rows = await workspace.listDepartments(
     authorizationContextFor(auth.account)
   );
-  return jsonResponse(200, { departments: rows }, requestId);
+  const data = { departments: rows };
+  if (!DepartmentsListSchema.safeParse(data).success) {
+    console.error(
+      `[programs] departments malformed data requestId=${requestId}`
+    );
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, data, requestId);
 }
 
 /** GET /api/v1/programs/access — capability-only Programs entry projection. */
@@ -566,6 +609,12 @@ export async function handleListManagementAccess(
   const access = await workspace.getManagementAccess(
     authorizationContextFor(auth.account)
   );
+  if (!ManagementAccessViewSchema.safeParse(access).success) {
+    // Shared contract gate (#656): never a malformed 2xx. The throw
+    // reaches the programs catch as the existing 500 INTERNAL_ERROR.
+    console.error(`[programs] access malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
   return jsonResponse(200, access, requestId);
 }
 /** GET /api/v1/programs/hub — capability-filtered Management Hub directory. */
@@ -582,6 +631,10 @@ export async function handleGetManagementHub(
   const hub = await workspace.getManagementHub(
     authorizationContextFor(auth.account)
   );
+  if (!ManagementHubViewSchema.safeParse(hub).success) {
+    console.error(`[programs] hub malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
   return jsonResponse(200, hub, requestId);
 }
 
@@ -599,6 +652,10 @@ export async function handleListManagementDirectory(
   const directory = await workspace.listManagementDirectory(
     authorizationContextFor(auth.account)
   );
+  if (!ManagementDirectoryViewSchema.safeParse(directory).success) {
+    console.error(`[programs] directory malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
   return jsonResponse(200, directory, requestId);
 }
 
@@ -623,15 +680,11 @@ export async function handleSearchManagementMembers(
     return auth;
   }
   const url = new URL(request.url);
-  const query = url.searchParams.get("q")?.trim() ?? "";
+  const query = parseSearchTerm(url.searchParams.get("q"));
   if (query.length < 2) {
     return validation(requestId, "Search requires at least two characters.");
   }
-  const rawLimit = url.searchParams.get("limit");
-  const parsedLimit = rawLimit === null ? 20 : Number(rawLimit);
-  const limit = Number.isFinite(parsedLimit)
-    ? Math.min(50, Math.max(1, Math.floor(parsedLimit)))
-    : 20;
+  const limit = floorClampLimit(url.searchParams.get("limit"), 20, 1, 50);
   const { workspace } = await getModule(env);
   try {
     const members = await workspace.searchManagementMembers(
@@ -639,7 +692,12 @@ export async function handleSearchManagementMembers(
       query,
       limit
     );
-    return jsonResponse(200, { members }, requestId);
+    const data = { members };
+    if (!MembersSearchResultSchema.safeParse(data).success) {
+      console.error(`[programs] members malformed data requestId=${requestId}`);
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, data, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -660,23 +718,18 @@ export async function handleSearchAccountDirectory(
     return auth;
   }
   const url = new URL(request.url);
-  const query = url.searchParams.get("q")?.trim() ?? "";
-  const rawLimit = url.searchParams.get("limit");
-  const parsedLimit = rawLimit === null ? 20 : Number(rawLimit);
-  const limit = Number.isFinite(parsedLimit)
-    ? Math.min(50, Math.max(1, Math.floor(parsedLimit)))
-    : 20;
+  const query = parseSearchTerm(url.searchParams.get("q"));
+  const limit = floorClampLimit(url.searchParams.get("limit"), 20, 1, 50);
   const rawCursor = url.searchParams.get("cursor");
   const cursor = rawCursor === null ? 0 : Number(rawCursor);
   const rawStatus = url.searchParams.get("status");
   const rawDepartment = url.searchParams.get("department")?.trim() || undefined;
-  const statuses = ["Pending", "Active", "Suspended", "Deactivated"] as const;
-  if (!Number.isInteger(cursor) || cursor < 0) {
+  if (!isValidAccountCursor(cursor)) {
     return validation(requestId, "Invalid Account Directory cursor.");
   }
   if (
     rawStatus !== null &&
-    !statuses.includes(rawStatus as (typeof statuses)[number])
+    !AccountDirectoryStatusSchema.safeParse(rawStatus).success
   ) {
     return validation(requestId, "Unknown account status filter.");
   }
@@ -694,10 +747,16 @@ export async function handleSearchAccountDirectory(
         status:
           rawStatus === null
             ? undefined
-            : (rawStatus as (typeof statuses)[number]),
+            : (rawStatus as "Pending" | "Active" | "Suspended" | "Deactivated"),
       },
       cursor
     );
+    if (!AccountDirectoryViewSchema.safeParse(directory).success) {
+      console.error(
+        `[programs] accounts malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
     return jsonResponse(200, directory, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
@@ -725,6 +784,12 @@ export async function handleGetAccountDirectoryDetail(
       authorizationContextFor(auth.account),
       accountId
     );
+    if (!AccountDirectoryMemberSchema.safeParse(account).success) {
+      console.error(
+        `[programs] account detail malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
     return jsonResponse(200, account, requestId);
   } catch (error) {
     if (error instanceof WorkspaceNotFoundError) {
@@ -755,15 +820,20 @@ export async function handleGetManagementAttention(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const rawLimit = new URL(request.url).searchParams.get("limit");
-  const parsedLimit = rawLimit === null ? 5 : Number(rawLimit);
-  const limit = Number.isFinite(parsedLimit)
-    ? Math.min(50, Math.max(1, Math.floor(parsedLimit)))
-    : 5;
+  const limit = floorClampLimit(
+    new URL(request.url).searchParams.get("limit"),
+    5,
+    1,
+    50
+  );
   const attention = await workspace.getManagementAttention(
     authorizationContextFor(auth.account),
     limit
   );
+  if (!ManagementAttentionViewSchema.safeParse(attention).success) {
+    console.error(`[programs] attention malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
   return jsonResponse(200, attention, requestId);
 }
 
@@ -778,16 +848,23 @@ export async function handleGetManagementNotifications(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const rawLimit = new URL(request.url).searchParams.get("limit");
-  const parsedLimit = rawLimit === null ? 20 : Number(rawLimit);
-  const limit = Number.isFinite(parsedLimit)
-    ? Math.min(20, Math.max(1, Math.floor(parsedLimit)))
-    : 20;
+  const limit = floorClampLimit(
+    new URL(request.url).searchParams.get("limit"),
+    20,
+    1,
+    20
+  );
   try {
     const notifications = await workspace.getManagementNotifications(
       authorizationContextFor(auth.account),
       limit
     );
+    if (!ManagementNotificationsViewSchema.safeParse(notifications).success) {
+      console.error(
+        `[programs] notifications malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
     return jsonResponse(200, notifications, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
@@ -809,7 +886,8 @@ export async function handleMarkManagementNotificationsRead(
     return auth;
   }
   const body = await parseJson<{ items?: unknown }>(request);
-  if (!body || !Array.isArray(body.items) || body.items.length > 100) {
+  const parsedEnvelope = NotificationsReadBodySchema.safeParse(body);
+  if (!parsedEnvelope.success) {
     return validation(
       requestId,
       "items must be an array containing at most 100 notification sources."
@@ -817,35 +895,29 @@ export async function handleMarkManagementNotificationsRead(
   }
   const items: NotificationReadStateInput[] = [];
   const seen = new Set<string>();
-  for (const raw of body.items) {
+  for (const raw of parsedEnvelope.data.items) {
     if (typeof raw !== "object" || raw === null) {
       return validation(
         requestId,
         "Each notification source must be an object."
       );
     }
-    const sourceKey = (raw as { source_key?: unknown }).source_key;
-    const sourceRevision = (raw as { source_revision?: unknown })
-      .source_revision;
-    if (
-      typeof sourceKey !== "string" ||
-      sourceKey.length === 0 ||
-      sourceKey.length > 256 ||
-      typeof sourceRevision !== "string" ||
-      sourceRevision.length === 0 ||
-      sourceRevision.length > 512
-    ) {
+    const parsedItem = NotificationReadItemSchema.safeParse(raw);
+    if (!parsedItem.success) {
       return validation(
         requestId,
         "Each notification source requires bounded source_key and source_revision strings."
       );
     }
-    const key = `${sourceKey}\u0000${sourceRevision}`;
+    const key = `${parsedItem.data.source_key}\u0000${parsedItem.data.source_revision}`;
     if (seen.has(key)) {
       continue;
     }
     seen.add(key);
-    items.push({ source_key: sourceKey, source_revision: sourceRevision });
+    items.push({
+      source_key: parsedItem.data.source_key,
+      source_revision: parsedItem.data.source_revision,
+    });
   }
   const { workspace } = await getModule(env);
   try {
@@ -853,7 +925,14 @@ export async function handleMarkManagementNotificationsRead(
       authorizationContextFor(auth.account),
       items
     );
-    return jsonResponse(200, { marked_count: markedCount }, requestId);
+    const data = { marked_count: markedCount };
+    if (!MarkedCountSchema.safeParse(data).success) {
+      console.error(
+        `[programs] notifications read malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, data, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -882,6 +961,12 @@ export async function handleGetManagementProgram(
   if (!result) {
     return notFound(requestId, "Unknown program.");
   }
+  if (!ManagementProgramWorkspaceViewSchema.safeParse(result).success) {
+    console.error(
+      `[programs] management malformed data requestId=${requestId}`
+    );
+    throw new Error("programs contract violation");
+  }
   return jsonResponse(200, result, requestId);
 }
 
@@ -904,7 +989,12 @@ export async function handleGetProgramAttendanceArtifact(
   if (!artifact) {
     return notFound(requestId, "Unknown program.");
   }
-  return jsonResponse(200, { artifact }, requestId);
+  const artifactData = { artifact };
+  if (!ProgramAttendanceArtifactSchema.safeParse(artifactData).success) {
+    console.error(`[programs] artifact malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, artifactData, requestId);
 }
 
 /** POST /api/v1/programs/:id/attendance-artifact/rotate — emergency rotation. */
@@ -914,10 +1004,13 @@ export async function handleRotateProgramAttendanceArtifact(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
-  const idempotencyKey = request.headers.get("Idempotency-Key")?.trim();
-  if (idempotencyKey !== undefined && idempotencyKey.length > 200) {
+  const parsedKey = parseOptionalIdempotencyKey(
+    request.headers.get("Idempotency-Key")
+  );
+  if (parsedKey === null) {
     return validation(requestId, "Idempotency-Key is too long.");
   }
+  const idempotencyKey = parsedKey.key;
   const correlationId = idempotencyKey || requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
@@ -931,7 +1024,14 @@ export async function handleRotateProgramAttendanceArtifact(
       idempotencyKey || requestId,
       correlationId
     );
-    return jsonResponse(200, { rotation }, requestId);
+    const rotationData = { rotation };
+    if (!ProgramTokenRotationSchema.safeParse(rotationData).success) {
+      console.error(
+        `[programs] rotation malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, rotationData, requestId);
   } catch (error) {
     if (error instanceof WorkspaceNotFoundError) {
       return notFound(requestId, "Unknown program.");
@@ -963,7 +1063,12 @@ export async function handleGetManagementCockpit(
   if (!result) {
     return notFound(requestId, "Unknown program.");
   }
-  return jsonResponse(200, { cockpit: result }, requestId);
+  const cockpitData = { cockpit: result };
+  if (!ManagementCockpitViewSchema.safeParse(cockpitData).success) {
+    console.error(`[programs] cockpit malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, cockpitData, requestId);
 }
 
 /**
@@ -985,7 +1090,12 @@ export async function handleListParticipantCatalog(
   const catalog = await workspace.listParticipantCatalog(
     authorizationContextFor(auth.account)
   );
-  return jsonResponse(200, { catalog }, requestId);
+  const catalogData = { catalog };
+  if (!ParticipantCatalogSchema.safeParse(catalogData).success) {
+    console.error(`[programs] catalog malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, catalogData, requestId);
 }
 /**
  * GET /api/v1/programs/:id/participant-detail — privacy-preserving detail
@@ -1009,7 +1119,12 @@ export async function handleGetParticipantProgramDetail(
   if (!detail) {
     return notFound(requestId, "Unknown program.");
   }
-  return jsonResponse(200, { detail }, requestId);
+  const detailData = { detail };
+  if (!ParticipantProgramDetailSchema.safeParse(detailData).success) {
+    console.error(`[programs] detail malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, detailData, requestId);
 }
 
 /** GET /api/v1/programs/departments/:id */
@@ -1050,11 +1165,14 @@ export async function handleGetDepartment(
       enabled_at,
     })
   );
-  return jsonResponse(
-    200,
-    { department: departmentDto(row), modules: safeModules },
-    requestId
-  );
+  const detailData = { department: departmentDto(row), modules: safeModules };
+  if (!DepartmentDetailSchema.safeParse(detailData).success) {
+    console.error(
+      `[programs] department malformed data requestId=${requestId}`
+    );
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, detailData, requestId);
 }
 /** PATCH /api/v1/programs/departments/:id */
 export async function handleUpdateDepartment(
@@ -1301,7 +1419,12 @@ export async function handleListPrograms(
     authorizationContextFor(auth.account),
     departmentId
   );
-  return jsonResponse(200, { programs: rows }, requestId);
+  const programsData = { programs: rows };
+  if (!ProgramsListSchema.safeParse(programsData).success) {
+    console.error(`[programs] programs malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, programsData, requestId);
 }
 
 /** GET /api/v1/programs/:id */
@@ -1330,7 +1453,12 @@ export async function handleGetProgram(
       requestId
     );
   }
-  return jsonResponse(200, { program: row }, requestId);
+  const programData = { program: row };
+  if (!ProgramGetSchema.safeParse(programData).success) {
+    console.error(`[programs] program malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, programData, requestId);
 }
 
 /** PATCH /api/v1/programs/:id */
@@ -1449,7 +1577,7 @@ export async function handleSearchMemberOptions(
       requestId
     );
   }
-  const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
+  const query = parseSearchTerm(new URL(request.url).searchParams.get("q"));
   const excludeEnrolled =
     new URL(request.url).searchParams.get("excludeEnrolled") === "true";
   if (query.length < 2) {
@@ -1466,7 +1594,14 @@ export async function handleSearchMemberOptions(
     20,
     excludeEnrolled ? programId : undefined
   );
-  return jsonResponse(200, { members }, requestId);
+  const optionsData = { members };
+  if (!MemberOptionsSchema.safeParse(optionsData).success) {
+    console.error(
+      `[programs] member options malformed data requestId=${requestId}`
+    );
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, optionsData, requestId);
 }
 
 /** POST /api/v1/programs/departments/:id/modules/:moduleKey/(enable|disable) */
@@ -3176,6 +3311,10 @@ export async function handleListParticipantNotices(
       authorizationContextFor(auth.account),
       auth.account.user_id
     );
+    if (!ParticipantNoticesViewSchema.safeParse(notices).success) {
+      console.error(`[programs] notices malformed data requestId=${requestId}`);
+      throw new Error("programs contract violation");
+    }
     return jsonResponse(200, notices, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
@@ -3202,7 +3341,14 @@ export async function handleMarkParticipantNoticesRead(
       authorizationContextFor(auth.account),
       auth.account.user_id
     );
-    return jsonResponse(200, { marked_count: markedCount }, requestId);
+    const markedData = { marked_count: markedCount };
+    if (!MarkedCountSchema.safeParse(markedData).success) {
+      console.error(
+        `[programs] notices read-all malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, markedData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -3233,13 +3379,12 @@ export async function handleCreateParticipantNotice(
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
   }
-  const memberUserId =
-    typeof body.member_user_id === "string" ? body.member_user_id.trim() : "";
-  const title = typeof body.title === "string" ? body.title.trim() : "";
-  const noticeBody = typeof body.body === "string" ? body.body.trim() : "";
+  const memberUserId = trimmedField(body.member_user_id);
+  const title = trimmedField(body.title);
+  const noticeBody = trimmedField(body.body);
   if (
     !memberUserId ||
-    !isOneOf(body.kind, ["event", "program", "account"] as const) ||
+    !ParticipantNoticeKindSchema.safeParse(body.kind).success ||
     !title ||
     !noticeBody
   ) {
@@ -3262,28 +3407,29 @@ export async function handleCreateParticipantNotice(
   ) {
     return validation(requestId, "event_id must be a string when provided.");
   }
-  const programId =
-    typeof body.program_id === "string" && body.program_id.trim()
-      ? body.program_id.trim()
-      : undefined;
-  const eventId =
-    typeof body.event_id === "string" && body.event_id.trim()
-      ? body.event_id.trim()
-      : undefined;
+  const programId = optionalIdField(body.program_id);
+  const eventId = optionalIdField(body.event_id);
   const { workspace } = await getModule(env);
   try {
     const notice = await workspace.createParticipantNotice(
       authorizationContextFor(auth.account),
       {
         member_user_id: memberUserId,
-        kind: body.kind,
+        kind: body.kind as "event" | "program" | "account",
         title,
         body: noticeBody,
         program_id: programId,
         event_id: eventId,
       }
     );
-    return jsonResponse(201, { notice }, requestId);
+    const noticeData = { notice };
+    if (!NoticeCreateResponseSchema.safeParse(noticeData).success) {
+      console.error(
+        `[programs] notice create malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(201, noticeData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {

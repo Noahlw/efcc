@@ -56,6 +56,7 @@ interface AccountRow {
   identities?: {
     id: string;
     label: string;
+    stableKey: string;
     scopeKind: "Global" | "Department" | "Program";
     scopeId: string | null;
   }[];
@@ -71,7 +72,13 @@ const ROWS: AccountRow[] = [
     username: "dai.man.chan",
     phone: "9123 4567",
     identities: [
-      { id: "id-1", label: "同工", scopeKind: "Global", scopeId: null },
+      {
+        id: "id-1",
+        label: "同工",
+        stableKey: "staff",
+        scopeKind: "Global",
+        scopeId: null,
+      },
     ],
     status: "Active",
     departments: [{ id: "dept-grow", name: "培育部" }],
@@ -83,7 +90,13 @@ const ROWS: AccountRow[] = [
     username: "dai.man.wong",
     phone: null,
     identities: [
-      { id: "id-2", label: "會友基礎", scopeKind: "Global", scopeId: null },
+      {
+        id: "id-2",
+        label: "會友基礎",
+        stableKey: "member",
+        scopeKind: "Global",
+        scopeId: null,
+      },
     ],
     status: "Pending",
     departments: [],
