@@ -357,9 +357,11 @@ const EVENT_DETAIL: EventDetail = {
 const MANUAL_MANAGEMENT_EVENT: ProgramEvent = {
   ...MANAGEMENT_EVENT,
   event_id: "t07-3-manual-event",
-  // Keep this current-filter story fixture in the future as wall-clock dates advance.
-  starts_at: "2099-09-19T10:00:00.000Z",
-  ends_at: "2099-09-19T11:30:00.000Z",
+  // Fixed (never drifts with the wall clock) but safely in the future: the
+  // current-filter story needs an upcoming Active event under the real clock,
+  // and the presentation contract bans far-future demo-year literals.
+  starts_at: "2030-09-19T10:00:00.000Z",
+  ends_at: "2030-09-19T11:30:00.000Z",
   source: "MANUAL",
   name: "門徒分享聚會",
   event_type: "小組",
