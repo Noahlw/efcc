@@ -1,0 +1,409 @@
+[
+  {
+    "type": "dependency",
+    "from": "apps/web/.storybook/attendance-scanner-guest.stories.tsx",
+    "to": "storybook/test",
+    "unresolvedTo": "storybook/test",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/.storybook/controls.stories.tsx",
+    "to": "storybook/test",
+    "unresolvedTo": "storybook/test",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/.storybook/management-hub.stories.tsx",
+    "to": "storybook/test",
+    "unresolvedTo": "storybook/test",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/.storybook/management-identity.stories.tsx",
+    "to": "storybook/test",
+    "unresolvedTo": "storybook/test",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/.storybook/preview.tsx",
+    "to": "msw-storybook-addon/csf3",
+    "unresolvedTo": "msw-storybook-addon/csf3",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/.storybook/programs-material-states.stories.tsx",
+    "to": "storybook/test",
+    "unresolvedTo": "storybook/test",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/.storybook/programs-presentation-contract.ts",
+    "to": "storybook/test",
+    "unresolvedTo": "storybook/test",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/.storybook/public-auth-member-communications.stories.tsx",
+    "to": "storybook/test",
+    "unresolvedTo": "storybook/test",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/attendance-worker.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/auth/account-settings.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/auth/normalized-authority-c487.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/auth/registration-batch.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/auth/registrations.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/auth/test-bootstrap.ts",
+    "to": "cloudflare:test",
+    "unresolvedTo": "cloudflare:test",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/auth/test-bootstrap.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/home-cms-worker.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/home-worker.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/identity/account-access-handlers.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/identity/d1-schema.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/identity/normalized-authority.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/identity/permission-editor-handlers.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/identity/role-handlers.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/identity/role-hierarchy.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/identity/seeds.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/programs/account-directory.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/programs/hub-directory.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/programs/member-directory.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/programs/notices-worker.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/programs/programs-250.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/programs/programs-contract.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/programs/programs.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/lib/use-qr-camera.ts",
+    "to": "barcode-detector/ponyfill",
+    "unresolvedTo": "barcode-detector/ponyfill",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/vitest.components.config.ts",
+    "to": "@vitejs/plugin-react",
+    "unresolvedTo": "@vitejs/plugin-react",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/vitest.storybook.config.ts",
+    "to": "@storybook/addon-vitest/vitest-plugin",
+    "unresolvedTo": "@storybook/addon-vitest/vitest-plugin",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/vitest.t07.config.ts",
+    "to": "@vitejs/plugin-react",
+    "unresolvedTo": "@vitejs/plugin-react",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/worker.auth.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/web/worker.test.ts",
+    "to": "cloudflare:workers",
+    "unresolvedTo": "cloudflare:workers",
+    "dependencyTypes": ["unknown"],
+    "rule": {
+      "severity": "error",
+      "name": "no-unresolved-internal"
+    }
+  }
+]

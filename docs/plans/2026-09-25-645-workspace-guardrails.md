@@ -128,7 +128,31 @@ are separate commands; `treatConfigHintsAsErrors` makes any new hint fail.
   and default mode is the enforcement ratchet. No blanket `ignoreIssues`.
 - Ledger `docs/plans/2026-09-25-650-knip-cleanup-ledger.md` (660 lines):
   259 export findings triaged (157 un-export, 65 barrel-line, 34 code,
-  3 catalog re-export deletes), 8 file deletes (4 ui primitives,
+ 3 catalog re-export deletes), 8 file deletes (4 ui primitives,
   programs-manager, 2 qa runners, screen-foundations), 1 dep delete
-  (shadcn). Keeps proven by entrypoint/import/CSS/config/builtin evidence.
+  (shadcn). Keeps proven by entry/import/CSS/config evidence.
   Deletions execute in #652; the gate turns green there.
+
+## #651 — Source-backed import boundaries with dependency-cruiser
+
+Pinned dev-only `dependency-cruiser@18.4.0` (exact). Context7 quota still
+exhausted; official `doc/rules-reference.md` + `doc/options-reference.md`
+are the cited fallback. Config `.dependency-cruiser.cjs`, resolver mirror
+`tsconfig.depcruise.json` (the real tsconfigs abort every cruise via
+TS18003; v18 schema has no alias-capable resolve option), command
+`pnpm check:boundaries`, wired into `pnpm verify` outside pre-commit.
+
+- Four families, source-backed: `no-prod-to-test-or-story`,
+  `no-browser-to-worker`, `no-browser-to-d1`, `no-worker-to-react`, plus
+  `no-unresolved-internal`. No speculative matrix, no circular rule.
+- Result: the four boundary rules are clean (zero violations); 37
+  `no-unresolved-internal` findings are benign artifacts (24 workerd
+  builtins, 13 export-map-strict but Node-resolvable specifiers, each
+  proven live by passing suites) recorded in the shrink-only
+  `.dependency-cruiser-known-violations.json` baseline
+  (`baseline.mode: shrink-only`, stale entries error).
+- Ratchet proven: temporary `app/page.tsx → worker.ts` import failed the
+  gate with exactly `no-browser-to-worker` (exit 1, 37 known ignored),
+  then removed; gate green again.
+- Owner/review path: config header (`pnpm check:boundaries`); exceptions
+  need a narrow reviewed rule change, never a blanket ignore.
