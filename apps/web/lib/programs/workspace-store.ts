@@ -186,9 +186,9 @@ export interface AccountDirectorySummary {
   pending: number;
 }
 
-export type EventStatus = "Active" | "Cancelled";
+type EventStatus = "Active" | "Cancelled";
 export type EventAvailability = "Active" | "Inactive";
-export type EventSource = "SCHEDULE" | "MANUAL";
+type EventSource = "SCHEDULE" | "MANUAL";
 
 export interface ScheduleRuleInput {
   program_id: string;
@@ -275,7 +275,7 @@ export interface ScheduleExceptionRow {
   created_at: string;
 }
 export type EventType = "崇拜" | "訓練" | "小組" | "排練" | "外展" | "其他";
-export type RecurrenceTag = "無" | "每週" | "每月";
+type RecurrenceTag = "無" | "每週" | "每月";
 
 export interface EventInput {
   /** Optional caller-owned ID for an atomic generated Event + run-item write. */
@@ -412,13 +412,13 @@ export interface GenerateResult {
   unresolved_occurrences: GenerateUnresolvedOccurrence[];
 }
 
-export interface GenerateSkippedOccurrence {
+interface GenerateSkippedOccurrence {
   occurrence_id: string;
   starts_at: string;
   reason: "CANCEL" | "DUPLICATE";
 }
 
-export interface GenerateUnresolvedOccurrence {
+interface GenerateUnresolvedOccurrence {
   occurrence_id: string;
   starts_at: string;
   detail: string | null;
@@ -445,7 +445,7 @@ export interface PreviewPlanRow {
   created_at: string;
 }
 
-export type PreviewSkipReason = "CANCEL" | "DUPLICATE";
+type PreviewSkipReason = "CANCEL" | "DUPLICATE";
 
 export interface PreviewOccurrenceRow {
   occurrence_id: string;
@@ -461,8 +461,8 @@ export interface PreviewOccurrenceRow {
   replacement_date?: string | null;
 }
 
-export type GenerationRunStatus = "completed" | "partial" | "failed";
-export type GenerationRunItemOutcome = "created" | "skipped" | "failed";
+type GenerationRunStatus = "completed" | "partial" | "failed";
+type GenerationRunItemOutcome = "created" | "skipped" | "failed";
 
 export interface GenerationRunRow {
   run_id: string;
@@ -503,7 +503,7 @@ export type EnrollmentRequestStatus =
   | "Approved"
   | "Rejected"
   | "Withdrawn";
-export type EnrollmentStatus = "Active" | "Cancelled";
+type EnrollmentStatus = "Active" | "Cancelled";
 
 export interface EnrollmentRequestRow {
   request_id: string;

@@ -55,7 +55,7 @@ export interface RoleDefinitionPermission {
   lockReason: string | null;
 }
 
-export interface RoleDefinitionAssignedAccount {
+interface RoleDefinitionAssignedAccount {
   assignmentId: string;
   userId: string;
   name: string;
@@ -550,7 +550,7 @@ function parseStoredResponse(
   return null;
 }
 
-export function canonicalPermissionFingerprint(input: {
+function canonicalPermissionFingerprint(input: {
   actor_user_id: string;
   role_definition_id: string;
   base_revision: number;
@@ -1180,10 +1180,3 @@ export async function updateRoleDefinitionGrants(
     responseRequestId: stored?.requestId ?? input.correlation_id,
   };
 }
-
-export const __test = {
-  roleKind,
-  withinActorScope,
-  scopeLabel,
-  lockReasonFor,
-};

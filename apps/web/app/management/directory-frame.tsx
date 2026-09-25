@@ -16,19 +16,19 @@ export type DirectoryFrameState =
   | "error"
   | "forbidden";
 
-export interface DirectorySelection {
+interface DirectorySelection {
   selectedId: string | null;
   onSelect: (id: string) => void;
 }
 
-export interface DirectoryVirtualization {
+interface DirectoryVirtualization {
   /** Number of rows a virtualized caller should render outside the viewport. */
   overscan?: number;
   /** Optional range callback for a caller-owned virtualized list. */
   onVisibleRangeChange?: (range: { start: number; end: number }) => void;
 }
 
-export interface DirectoryFrameFocus {
+interface DirectoryFrameFocus {
   /** Focus target for loading, empty, error, or forbidden slots. */
   stateRef?: RefObject<HTMLElement | null>;
   /** Focus target for the list heading after a successful retry. */
@@ -41,7 +41,7 @@ export interface DirectoryFrameFocus {
   detailKey?: number | string | null;
 }
 
-export interface DirectoryFramePagination {
+interface DirectoryFramePagination {
   hasMore: boolean;
   loading?: boolean;
   label: string;
@@ -57,7 +57,7 @@ export interface DirectoryListSlotContext {
   virtualization: DirectoryVirtualization;
 }
 
-export type DirectoryListSlot =
+type DirectoryListSlot =
   | ReactNode
   | ((context: DirectoryListSlotContext) => ReactNode);
 

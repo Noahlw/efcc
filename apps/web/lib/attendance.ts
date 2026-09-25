@@ -7,7 +7,7 @@ import {
 } from "./identity/role-hierarchy";
 import { resolveProgramAccess } from "./programs/program-resolver";
 
-export type AttendanceMethod =
+type AttendanceMethod =
   | "self_qr_scan"
   | "self_manual_code"
   | "leader_qr_scan"
@@ -16,7 +16,7 @@ export type AttendanceMethod =
   | "guest_manual_code";
 
 /** Guest-name cap shared by check-in and guest correction (UI maxLength). */
-export const GUEST_NAME_MAX_LENGTH = 80;
+const GUEST_NAME_MAX_LENGTH = 80;
 
 export interface AttendanceEnv {
   DB: D1Database;
@@ -66,7 +66,7 @@ export type AttendanceState =
   | "Excused"
   | "Cancelled";
 
-export type AttendanceExpectedSource =
+type AttendanceExpectedSource =
   | "event_start"
   | "early_attendance"
   | "late_approval"
@@ -1112,7 +1112,7 @@ async function listPreviewCandidates(
  * Explicit, retry-safe snapshot materialization. This helper is also called
  * from check-in mutations, but ordinary roster GET never calls it.
  */
-export async function materializeAttendanceSnapshot(
+async function materializeAttendanceSnapshot(
   db: D1Database,
   event: AttendanceEvent
 ): Promise<AttendanceMaterializationResult> {

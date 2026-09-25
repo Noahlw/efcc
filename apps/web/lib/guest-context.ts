@@ -7,7 +7,7 @@
 
 const GUEST_CONTEXT_KEY = "efcc_guest_context";
 
-export type CheckInCredentialKind = "program_token" | "manual_code";
+type CheckInCredentialKind = "program_token" | "manual_code";
 
 export interface CheckInCredential {
   kind: CheckInCredentialKind;

@@ -92,11 +92,7 @@ import { buildProgramsHref } from "./programs-intent";
 import type { ManagementEventAction, ProgramsOrigin } from "./programs-intent";
 import { clearAuthenticatedProgramsRecovery } from "./workspace-context";
 
-export const EventFactIcon = ({
-  name,
-}: {
-  name: "calendar" | "pin" | "back";
-}) => {
+const EventFactIcon = ({ name }: { name: "calendar" | "pin" | "back" }) => {
   const Icon =
     name === "calendar" ? CalendarDays : name === "pin" ? MapPin : ChevronLeft;
   return (

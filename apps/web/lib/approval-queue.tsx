@@ -98,7 +98,7 @@ let preserveSelectionForDetail = false;
 
 let approvalFocusRequestId: string | null = null;
 
-export function preserveApprovalSelectionForDetail(requestId?: string) {
+function preserveApprovalSelectionForDetail(requestId?: string) {
   preserveSelectionForDetail = true;
   approvalFocusRequestId = requestId ?? null;
   try {

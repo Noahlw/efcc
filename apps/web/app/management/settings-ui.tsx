@@ -19,7 +19,7 @@ const settingsRowVariants = cva(
   }
 );
 
-export function BackIcon() {
+function BackIcon() {
   return (
     <svg
       aria-hidden="true"

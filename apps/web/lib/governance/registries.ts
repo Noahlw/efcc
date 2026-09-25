@@ -1102,29 +1102,3 @@ const PRESERVATIONS_BY_ID: Record<string, PreservationReference> =
 
 const NATIVE_EXCEPTIONS_BY_ID: Record<string, NativeException> =
   Object.fromEntries(NATIVE_EXCEPTION_REGISTRY.map((n) => [n.id, n]));
-
-export function getScenario(id: string): RouteScenario | undefined {
-  return SCENARIOS_BY_ID[id];
-}
-
-export function getUIContract(id: string): UIContract | undefined {
-  return CONTRACTS_BY_ID[id];
-}
-
-export function getApprovalPackage(id: string): ApprovalPackage | undefined {
-  return APPROVALS_BY_ID[id];
-}
-
-export function getWaiver(id: string): Waiver | undefined {
-  return WAIVERS_BY_ID[id];
-}
-
-export function getPreservationReference(
-  id: string
-): PreservationReference | undefined {
-  return PRESERVATIONS_BY_ID[id];
-}
-
-export function getNativeException(id: string): NativeException | undefined {
-  return NATIVE_EXCEPTIONS_BY_ID[id];
-}

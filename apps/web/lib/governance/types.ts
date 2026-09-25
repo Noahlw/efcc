@@ -70,11 +70,7 @@ export function isBrowserEngine(value: unknown): value is BrowserEngine {
  * Canonical test viewports (in CSS px width) used across the EFCC design system.
  * Standard W7 matrix: 320, 390, 600, 799, 800, 1024, 1440.
  */
-export type CanonicalViewportWidth = 320 | 390 | 600 | 799 | 800 | 1024 | 1440;
-
-export const CANONICAL_VIEWPORTS: readonly CanonicalViewportWidth[] = [
-  320, 390, 600, 799, 800, 1024, 1440,
-] as const;
+type CanonicalViewportWidth = 320 | 390 | 600 | 799 | 800 | 1024 | 1440;
 
 export interface ViewportDimension {
   readonly width: number;
@@ -102,7 +98,7 @@ export interface RouteScenario {
 /**
  * Individual probe or assertion inside a UI contract.
  */
-export interface UIContractProbe {
+interface UIContractProbe {
   readonly id: string;
   readonly selector: string;
   readonly property: string;
@@ -154,7 +150,7 @@ export interface ApprovalPackage {
 
 export type ApprovalKind = "workshop-fidelity" | "design";
 
-export const APPROVAL_KINDS: readonly ApprovalKind[] = [
+const APPROVAL_KINDS: readonly ApprovalKind[] = [
   "workshop-fidelity",
   "design",
 ] as const;

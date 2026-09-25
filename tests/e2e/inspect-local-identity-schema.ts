@@ -149,7 +149,7 @@ function readLocalSchema(): LocalIdentitySchemaSnapshot {
   return parseSchemaRows(output);
 }
 
-export function main(): void {
+function main(): void {
   const snapshot = readLocalSchema();
   assertRoleFreeIdentitySchema(snapshot);
   console.log(

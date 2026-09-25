@@ -1,5 +1,5 @@
-export type PresentationLifecycle = "active" | "historical" | "planned";
-export type PresentationBaseline = "primary" | "supporting";
+type PresentationLifecycle = "active" | "historical" | "planned";
+type PresentationBaseline = "primary" | "supporting";
 
 interface PresentationMetadataCommon {
   readonly productFamily: string;
@@ -12,7 +12,7 @@ interface PresentationMetadataCommon {
 }
 
 /** Legacy screen metadata may omit subject; discovery normalizes it to screen. */
-export interface ScreenPresentationMetadata extends PresentationMetadataCommon {
+interface ScreenPresentationMetadata extends PresentationMetadataCommon {
   readonly subject?: "screen";
   readonly screenId: string;
   readonly route: string | null;
@@ -38,12 +38,12 @@ export type PresentationMetadata =
   | ControlPresentationMetadata
   | FoundationPresentationMetadata;
 
-export type ResolvedScreenPresentationMetadata = Omit<
+type ResolvedScreenPresentationMetadata = Omit<
   ScreenPresentationMetadata,
   "subject"
 > & { readonly subject: "screen" };
 
-export type ResolvedPresentationMetadata =
+type ResolvedPresentationMetadata =
   | ResolvedScreenPresentationMetadata
   | ControlPresentationMetadata
   | FoundationPresentationMetadata;

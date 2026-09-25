@@ -497,13 +497,3 @@ export async function seedDisposableIdentity(
     assignments: assignmentCount?.c ?? 0,
   };
 }
-
-export const __test = {
-  SYSTEM_DEFINITIONS,
-  ADULT_DEPARTMENT_IDENTITY,
-  YOUTH_BIBLE_STUDY_IDENTITY,
-  YOUTH_BIBLE_STUDY_PROGRAM,
-  DISPOSABLE_ACCOUNTS,
-  CREATED_AT,
-  assignmentIdFor,
-};

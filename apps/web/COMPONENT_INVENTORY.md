@@ -1,12 +1,12 @@
 # EFCC — Component Inventory (S1–S4) — shadcn migration
 
-> **Source:** `web/components/ui/*` (vendored local shadcn primitives, 18 components). Generated 2026-08-27 from `feat/s4-12-shadcn-migration` (waves S1–S4). All shipped S1–S4 common visual elements are replaced by local shadcn primitives except the documented native retains below. Native retains are intentional: radio chooser (GOV.UK contract, ATT-02), selects with test contracts, and domain-row actions where a full Card/Button composition would hide list identity.
+> **Source:** `apps/web/components/ui/*` (vendored local shadcn primitives, 14 components after #652 removed the unwired `Accordion`/`Table`/`ScrollArea`/`Tooltip`). Generated 2026-08-27 from `feat/s4-12-shadcn-migration` (waves S1–S4). All shipped S1–S4 common visual elements are replaced by local shadcn primitives except the documented native retains below. Native retains are intentional: radio chooser (GOV.UK contract, ATT-02), selects with test contracts, and domain-row actions where a full Card/Button composition would hide list identity.
 
 ## S4 Phase A (ticket #477) additions
 
 This section records the Phase A foundation contract: the Civic Minimal token contract, the primitives required by shipped Phase A callers, and the native-exception registry.
 
-### Token contract (`web/app/globals.css`)
+### Token contract (`apps/web/app/globals.css`)
 
 The complete Civic Minimal Tailwind token contract (TK-01) is declared on `:root` and consumed by the shell:
 
@@ -24,11 +24,11 @@ The complete Civic Minimal Tailwind token contract (TK-01) is declared on `:root
 | Motion | `--duration-fast/med`, `--ease-standard` | Reduced-motion-aware transitions |
 | Breakpoint | `--breakpoint-shell: 800px` (`@theme inline`) | Named 800px shell dock/rail transition (TK-06) |
 
-The focused token test (`web/lib/shell/shell-tokens.test.ts`) asserts every family is declared and the named 800px breakpoint exists. The shell breakpoint test (`web/lib/shell/shell-breakpoint.test.ts`) asserts the single 800px transition.
+The focused token test (`apps/web/lib/shell/shell-tokens.test.ts`) asserts every family is declared and the named 800px breakpoint exists. The shell breakpoint test (`apps/web/lib/shell/shell-breakpoint.test.ts`) asserts the single 800px transition.
 
 ### Programs Screen Foundations extension (#587)
 
-`DESIGN.md` and the frozen `docs/design/programs-screen-foundations-v1/00-screen-foundations.html` specimen add the Warm Civic Minimal screen contract. Its runtime values live under the `--screen-*` namespace in `web/app/globals.css`, keeping the foundation-owned geometry explicit while existing Civic Minimal aliases remain available to untouched routes during the later consumer cutover.
+`DESIGN.md` and the frozen `docs/design/programs-screen-foundations-v1/00-screen-foundations.html` specimen add the Warm Civic Minimal screen contract. Its runtime values live under the `--screen-*` namespace in `apps/web/app/globals.css`, keeping the foundation-owned geometry explicit while existing Civic Minimal aliases remain available to untouched routes during the later consumer cutover.
 
 | Family | Token contract | Ownership rule |
 | --- | --- | --- |
@@ -44,14 +44,14 @@ Only primitives needed by at least one shipped Phase A caller are vendored/used;
 
 | Primitive | Owning Phase A caller | Variant in use | Observable contract seam |
 | --- | --- | --- | --- |
-| `Button` (existing) | `lib/nav-bar.tsx` nav actions, `lib/shell-header.tsx` bell/close, `lib/recovery-view.tsx` retry | `ghost` nav item, `outline` close, `default` recovery | `web/lib/shell/authenticated-shell.test.tsx`, `web/lib/app.test.tsx`, `web/lib/components-contract.test.tsx` |
-| `Dialog` (local shadcn/Radix) | `lib/attention-panel.tsx` attention dialog | Controlled `open`/`onOpenChange`; `DialogContent` with `attention-panel` and `attention-panel__overlay` Civic Minimal classes (both use the shell overlay layer above dock/rail) | Role/state (`role="dialog"`, labelled), keyboard (Escape), focus trap/restore, modal overlay — Radix Dialog contract; `web/lib/attention-panel.test.tsx`, `web/lib/shell/authenticated-shell.test.tsx`, `tests/e2e/shell-geometry.test.ts` (fixed overlay inside the viewport) |
-| `Badge` (existing) | `lib/shell-header.tsx` bell count | `default` | `web/lib/app.test.tsx` |
-| `Skeleton` (existing) | `lib/app-shell.tsx` loading shell | `rounded-full bg-[var(--skeleton)]` | `web/lib/app.test.tsx` |
-| `Alert` (existing) | `lib/recovery-view.tsx` recovery state | `destructive` | `web/lib/app.test.tsx` |
-| `LiveRegion` (shell-owned) | `app/layout.tsx` | single `output[role="status"][aria-live="polite"].sr-only` | `web/lib/app.test.tsx` RootLayout suite; `tests/e2e/responsive.test.ts` (one region) |
+| `Button` (existing) | `lib/nav-bar.tsx` nav actions, `lib/shell-header.tsx` bell/close, `lib/recovery-view.tsx` retry | `ghost` nav item, `outline` close, `default` recovery | `apps/web/lib/shell/authenticated-shell.test.tsx`, `apps/web/lib/app.test.tsx`, `apps/web/lib/components-contract.test.tsx` |
+| `Dialog` (local shadcn/Radix) | `lib/attention-panel.tsx` attention dialog | Controlled `open`/`onOpenChange`; `DialogContent` with `attention-panel` and `attention-panel__overlay` Civic Minimal classes (both use the shell overlay layer above dock/rail) | Role/state (`role="dialog"`, labelled), keyboard (Escape), focus trap/restore, modal overlay — Radix Dialog contract; `apps/web/lib/attention-panel.test.tsx`, `apps/web/lib/shell/authenticated-shell.test.tsx`, `tests/e2e/shell-geometry.test.ts` (fixed overlay inside the viewport) |
+| `Badge` (existing) | `lib/shell-header.tsx` bell count | `default` | `apps/web/lib/app.test.tsx` |
+| `Skeleton` (existing) | `lib/app-shell.tsx` loading shell | `rounded-full bg-[var(--skeleton)]` | `apps/web/lib/app.test.tsx` |
+| `Alert` (existing) | `lib/recovery-view.tsx` recovery state | `destructive` | `apps/web/lib/app.test.tsx` |
+| `LiveRegion` (shell-owned) | `app/layout.tsx` | single `output[role="status"][aria-live="polite"].sr-only` | `apps/web/lib/app.test.tsx` RootLayout suite; `tests/e2e/responsive.test.ts` (one region) |
 
-No new primitive file was vendored in Phase A: the Dialog primitive already existed in `web/components/ui/dialog.tsx` and is now consumed by a shipped caller (the attention dialog), which closes the previous inventory note that Dialog was vendored-but-unwired. The attention dialog's tab strip keeps explicit `role="tab"`/`aria-selected` semantics (its two tabs switch one panel; the shadcn `Tabs` primitive is already wired in shipped S2 callers and would duplicate this single-panel switch).
+No new primitive file was vendored in Phase A: the Dialog primitive already existed in `apps/web/components/ui/dialog.tsx` and is now consumed by a shipped caller (the attention dialog), which closes the previous inventory note that Dialog was vendored-but-unwired. The attention dialog's tab strip keeps explicit `role="tab"`/`aria-selected` semantics (its two tabs switch one panel; the shadcn `Tabs` primitive is already wired in shipped S2 callers and would duplicate this single-panel switch).
 
 ### Native-exception registry (TK-11)
 
@@ -74,13 +74,13 @@ Native retains elsewhere in the app (radio chooser GOV.UK ATT-02, selects with o
 - **Safe-area reserve:** dock `bottom: calc(0.625rem + env(safe-area-inset-bottom))`; header/dock respect `viewport-fit=cover`.
 - **Skip link:** first focusable element, targets `#shell-content`.
 - **Offline/recovery:** `OfflineBanner` (shell-owned status) + `RecoveryView` (focus moved in, retry preserves session); one Live Region announces once per transition (TK-08).
-- **Focus order:** skip link → primary nav → main → dock (phone). Tests: `web/lib/shell/authenticated-shell.test.tsx`.
+- **Focus order:** skip link → primary nav → main → dock (phone). Tests: `apps/web/lib/shell/authenticated-shell.test.tsx`.
 
 ## Vendored primitives available
 
-`Button` `Input` `Textarea` `Select` `Checkbox` `Switch` `Badge` `Card` `Tabs` `Accordion` `Dialog` `AlertDialog` `Sheet` `Alert` `Skeleton` `Table` `ScrollArea` `Tooltip`
+`Button` `Input` `Textarea` `Select` `Checkbox` `Switch` `Badge` `Card` `Tabs` `Dialog` `AlertDialog` `Sheet` `Alert` `Skeleton`
 
-Active usage in shipped surfaces is a strict subset (see per-surface). `Select`/`Checkbox`/`AlertDialog`/`Sheet`/`Table`/`ScrollArea`/`Tooltip` are present in `web/components/ui` but not yet wired in shipped S1–S4 flows; native `<select>` and domain-row `<button>` remain where test contracts / a11y contracts require them.
+Active usage in shipped surfaces is a strict subset (see per-surface). `Select`/`Checkbox`/`AlertDialog`/`Sheet` are present in `apps/web/components/ui` but not yet wired in shipped S1–S4 flows; `Table`/`ScrollArea`/`Tooltip`/`Accordion` were removed in #652 as unwired (see the Knip cleanup ledger). Native `<select>` and domain-row `<button>` remain where test contracts / a11y contracts require them.
 
 ---
 
@@ -168,7 +168,7 @@ Active usage in shipped surfaces is a strict subset (see per-surface). `Select`/
 
 ## Summary statement
 
-All shipped S1–S4 **common visual elements** (submit/primary actions, secondary/outline actions, text inputs, textareas, cards, badges, alerts, skeletons, tabs, accordion, switch, lists, and — since Phase A — the attention overlay dialog) are replaced by local shadcn primitives (`web/components/ui/*`) except the native retains documented above and in the Phase A native-exception registry. Native `<select>` remains in management and program filters where tests assert native option semantics; the GOV.UK radio chooser remains in the attendance domain; domain-row `<button>`s (`resultButton`, `roleLink`, `detailAction`, `eventButton`, `row`) remain where a list-identity affordance is required rather than a generic Button variant. Vendored but currently unused primitives — `Select`, `Checkbox`, `AlertDialog`, `Sheet`, `Table`, `ScrollArea`, `Tooltip` — are available for future waves and were not introduced where test or a11y contracts require native semantics.
+All shipped S1–S4 **common visual elements** (submit/primary actions, secondary/outline actions, text inputs, textareas, cards, badges, alerts, skeletons, tabs, accordion, switch, lists, and — since Phase A — the attention overlay dialog) are replaced by local shadcn primitives (`apps/web/components/ui/*`) except the native retains documented above and in the Phase A native-exception registry. Native `<select>` remains in management and program filters where tests assert native option semantics; the GOV.UK radio chooser remains in the attendance domain; domain-row `<button>`s (`resultButton`, `roleLink`, `detailAction`, `eventButton`, `row`) remain where a list-identity affordance is required rather than a generic Button variant. Vendored but currently unused primitives — `Select`, `Checkbox`, `AlertDialog`, `Sheet`, `Table`, `ScrollArea`, `Tooltip` — are available for future waves and were not introduced where test or a11y contracts require native semantics.
 
 ## Layout vs. control split
 
@@ -179,12 +179,12 @@ All shipped S1–S4 **common visual elements** (submit/primary actions, secondar
 | `app/programs/page.tsx`, `lib/programs/*.tsx` | Tailwind page, card, directory, detail, workspace, and task layouts | `Button`, `Badge`, `Card`, `Input`, `Textarea`, `Alert`, `Skeleton`, `Tabs`, `Accordion` |
 | `lib/attendance-panel.tsx`, `lib/attendance-scanner-ui.tsx`, `lib/self-check-in-panel.tsx` etc. | Tailwind page, card, camera, method, confirmation, chooser, roster layout via tokens — `lib/attendance-panel.module.css` deleted in Phase E | `Button`, `Input`, `Card`, `Alert`, `Badge`, `Skeleton` (native retains below) |
 | `app/notices/page.tsx`, `lib/notices-panel.tsx`, `lib/messages-panel.tsx` | Tailwind page/list/detail layout and semantic state slots | `Button`, `Badge`, `Card`, `Alert`, `Skeleton` |
-| `app/management/*` (Hub, Settings, DirectoryFrame, Home CMS) | Tailwind page, header, groupCard, row, workspace, detail, policyLayout via tokens — `app/management/management-hub.module.css` and `app/management/home-cms-editor.module.css` deleted in Phase E; `web/app/globals.css` holds only shell, safe-area and irreducible print/safe-area selectors, no route-specific CSS | `Button`, `Input`, `Select`, `Textarea`, `Switch`, `Sheet`, `AlertDialog`, `ActionSurface`, `RouteHeader`, `DirectoryFrame` via Tailwind |
+| `app/management/*` (Hub, Settings, DirectoryFrame, Home CMS) | Tailwind page, header, groupCard, row, workspace, detail, policyLayout via tokens — `app/management/management-hub.module.css` and `app/management/home-cms-editor.module.css` deleted in Phase E; `apps/web/app/globals.css` holds only shell, safe-area and irreducible print/safe-area selectors, no route-specific CSS | `Button`, `Input`, `Select`, `Textarea`, `Switch`, `Sheet`, `AlertDialog`, `ActionSurface`, `RouteHeader`, `DirectoryFrame` via Tailwind |
 | `lib/approval-queue.tsx`, `lib/approval-detail.tsx` | Tailwind page, tabs, rows, tray, confirm layout via tokens — `lib/approval-queue.module.css` and `lib/approval-detail.module.css` deleted in Phase E | `Button`, `Card`, `Alert`, `ActionSurface`, `Checkbox` |
 
 ## S4 Phase E — shared integration (tickets #492/#493)
 
-Deleted route CSS verified absent via `grep -r "\.module\.css" web --include="*.tsx" --include="*.ts"` (0 hits for `attendance-panel.module.css`, `management-hub.module.css`, `home-cms-editor.module.css`, `approval-queue.module.css`, `approval-detail.module.css`). No route-specific selectors remain in `web/app/globals.css`; only shell, safe-area (`env(safe-area-inset-bottom)`, `calc(84px+env(...))`) and irreducible `@media print` roster visibility (print-media DOM visibility is automated evidence, native print preview/paper remains manual) are global.
+Deleted route CSS verified absent via `grep -r "\.module\.css" web --include="*.tsx" --include="*.ts"` (0 hits for `attendance-panel.module.css`, `management-hub.module.css`, `home-cms-editor.module.css`, `approval-queue.module.css`, `approval-detail.module.css`). No route-specific selectors remain in `apps/web/app/globals.css`; only shell, safe-area (`env(safe-area-inset-bottom)`, `calc(84px+env(...))`) and irreducible `@media print` roster visibility (print-media DOM visibility is automated evidence, native print preview/paper remains manual) are global.
 
 **Native exceptions retained intentionally (reviewable, not auto-generated):**
 
@@ -192,7 +192,7 @@ Deleted route CSS verified absent via `grep -r "\.module\.css" web --include="*.
 | --- | --- | --- |
 | `<video>` + MediaStream/device APIs (`getUserMedia`, `BarcodeDetector`/`wasm` decoder, `MediaStreamTrack.stop`) | `lib/use-qr-camera.ts`, `lib/self-check-in-panel.tsx`, `lib/attendance-scanner-ui.tsx` | Real camera capture and QR decode — browser device capability, not a design primitive; harden tests assert `<video>` presence and denied/unsupported/unavailable callbacks, not decoder quality |
 | Native `<fieldset>`/`<legend>` + `<input type="radio">` chooser (GOV.UK ATT-02) | `lib/attendance-panel.tsx` `ScannerEventChoiceGroup` | Event-choice radio semantics with no preselection or implicit submission — native fieldset/legend + radio contract, harden tests assert fieldset/legend and native radios |
-| Native `window.print()` + `@media print` / `print-color-adjust` | `lib/attendance-roster.tsx`, `web/app/globals.css` (irreducible print selector) | Roster/check-in sheet print-media visibility — `window.print()` is the correct imperative API; print preview/paper is manual evidence, print-media DOM visibility is automated |
+| Native `window.print()` + `@media print` / `print-color-adjust` | `lib/attendance-roster.tsx`, `apps/web/app/globals.css` (irreducible print selector) | Roster/check-in sheet print-media visibility — `window.print()` is the correct imperative API; print preview/paper is manual evidence, print-media DOM visibility is automated |
 | Native `<select>` / `<input type="date">` where test contracts assert native option semantics | `app/management/account-directory-panel.tsx`, `app/management/member-directory-panel.tsx` | Native select/date preserves option-test contracts; shadcn `Select` would break those contracts |
 | Skip link `<a href="#shell-content">`, nav `<a>` links, `output[role="status"]`, `output[role="alert"]` | `lib/app-shell.tsx`, `lib/nav-bar.tsx`, `lib/offline-banner.tsx`, `lib/live-region.tsx` | Document navigation anchor, navigation landmark links, and live-region status/alert semantics — native elements required (Phase A registry, preserved) |
 
@@ -200,7 +200,7 @@ Historical/prototype notes preserved: `src/gas/`, `程式碼.js`, `src/frontend/
 
 ## S4 Phase F — contraction and release ledger (#494 / #495)
 
-- **Shipped CSS ownership:** zero `.module.css` imports remain under the shipped `web/app` and `web/lib` surfaces. The final Auth Shell, Guest Check-In, and Section View ownership islands were migrated to Tailwind/token utilities and their files were deleted. `/prototype` and historical evidence are excluded.
+- **Shipped CSS ownership:** zero `.module.css` imports remain under the shipped `apps/web/app` and `apps/web/lib` surfaces. The final Auth Shell, Guest Check-In, and Section View ownership islands were migrated to Tailwind/token utilities and their files were deleted. `/prototype` and historical evidence are excluded.
 - **Global CSS exceptions:** `globals.css` retains only Civic Minimal tokens, base/document behavior, shell dock/rail and safe-area rules, reduced-motion behavior, and irreducible print/platform selectors. Route-specific layout recipes do not return there.
 - **Native platform/semantic exceptions:** camera/video/device APIs and decoder state, `window.print()`/print media, native selects/date inputs, navigation anchors, live regions, and the attendance fieldset/radio chooser remain documented exceptions. They are not substitutes for shared controls.
 - **Normalized identity modules:** identity hierarchy, permission editing, Account Access, account directory, registration approval, and management projections use Role Categories, Role Definitions, Role Assignments, capabilities, and explicit scope. Account status and domain membership remain directory context; fixed Account-role filters are retired.

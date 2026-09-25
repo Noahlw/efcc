@@ -1,13 +1,13 @@
 import type { Capability as IdentityCapability } from "../identity/capability-catalog";
 
-export const DEPARTMENT_CAPABILITY = {
+const DEPARTMENT_CAPABILITY = {
   MANAGE: "department.manage",
   PUBLISH: "department.publish",
   MODULE_CONFIGURE: "department.module.configure",
   MANAGER_ASSIGN: "department.manager.assign",
 } as const;
 
-export const PROGRAM_CAPABILITY = {
+const PROGRAM_CAPABILITY = {
   MANAGE: "program.manage",
   PUBLISH: "program.publish",
   ENROLL: "program.enroll",

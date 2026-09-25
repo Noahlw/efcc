@@ -1,4 +1,4 @@
-export type ProgramsMode = "participant" | "management";
+type ProgramsMode = "participant" | "management";
 export type ManagementEventAction = "edit" | "reschedule";
 
 export type ProgramsTask =

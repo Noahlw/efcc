@@ -9,7 +9,7 @@
 import { RpcError } from "@/lib/api";
 import type { ProblemDetails } from "@/lib/api";
 
-export interface HomeFeaturedEvent {
+interface HomeFeaturedEvent {
   eventId: string;
   programId: string;
   programTitle: string;
@@ -36,7 +36,7 @@ export interface HomeAnnouncement {
   publishedAt: string | null;
 }
 
-export interface HomeExploreProgram {
+interface HomeExploreProgram {
   programId: string;
   title: string;
   summary: string | null;
@@ -49,11 +49,6 @@ export interface HomeData {
   featuredEvent: HomeFeaturedEvent | null;
   announcement: HomeAnnouncement | null;
   exploreProgram: HomeExploreProgram | null;
-}
-
-export interface HomeResponse {
-  requestId: string;
-  data: HomeData;
 }
 
 function recordFrom(value: unknown): Record<string, unknown> | null {

@@ -10,12 +10,6 @@ import type { PresentationStoryDeclaration } from "./presentation-meta";
 import { programsStoryDeclarations } from "./programs.story-manifest";
 import { publicAuthMemberCommunicationsStoryDeclarations } from "./public-auth-member-communications.story-manifest";
 
-export type {
-  FoundationPresentationMetadata,
-  PresentationMetadata,
-  PresentationStoryDeclaration,
-} from "./presentation-meta";
-
 export type PresentationDeclaration =
   | Omit<Extract<PresentationStoryDeclaration, { subject: "screen" }>, "story">
   | Omit<Extract<PresentationStoryDeclaration, { subject: "control" }>, "story">
@@ -24,7 +18,7 @@ export type PresentationDeclaration =
       "story"
     >;
 
-export function discoverPresentationDeclarations(
+function discoverPresentationDeclarations(
   stories: readonly PresentationStoryDeclaration[]
 ): readonly PresentationDeclaration[] {
   return stories.map(({ story, ...declaration }) => {

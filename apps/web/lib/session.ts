@@ -14,7 +14,7 @@ import { authMe, authRefresh, RpcError } from "@/lib/api";
 import type { Bootstrap, PublicUser, Section } from "@/lib/api";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
-export const DEEP_LINK_KEY = "efcc_deep_link";
+const DEEP_LINK_KEY = "efcc_deep_link";
 const PROGRAMS_NAVIGATION_CONTEXT_KEY = "efcc_programs_navigation_context";
 
 export interface ProgramsNavigationContext {

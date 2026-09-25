@@ -165,5 +165,3 @@ export function AnnouncementDetail({
     </div>
   );
 }
-
-export { announcementDetailVariants };

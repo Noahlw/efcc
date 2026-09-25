@@ -22,17 +22,7 @@ export const ROLE_CATEGORY_KEY = {
 export type RoleCategoryKey =
   (typeof ROLE_CATEGORY_KEY)[keyof typeof ROLE_CATEGORY_KEY];
 
-/** Fixed, non-assignable Role Category (Spec 091 §2). */
-export interface RoleCategoryRow {
-  category_key: RoleCategoryKey;
-  label: string;
-  description: string;
-  is_assignable: 0 | 1;
-  display_order: number;
-  created_at: string;
-}
-
-export const ROLE_SCOPE_KIND = {
+const ROLE_SCOPE_KIND = {
   GLOBAL: "Global",
   DEPARTMENT: "Department",
   PROGRAM: "Program",
@@ -54,66 +44,8 @@ export type RoleScopeKind =
  * transitions a role to archived, and it revokes the existing active
  * assignments atomically (the audit row records the revoked accounts).
  */
-export interface RoleDefinitionRow {
-  role_definition_id: string;
-  category_key: RoleCategoryKey;
-  stable_key: string;
-  label: string;
-  description: string;
-  scope_kind: RoleScopeKind;
-  scope_id: string | null;
-  position: number;
-  is_protected: 0 | 1;
-  is_archived: 0 | 1;
-  created_by: string | null;
-  created_at: string;
-  updated_by: string | null;
-  updated_at: string;
-}
 
-/** A single grant row (Spec 091 §4). */
-export interface RoleDefinitionGrantRow {
-  role_definition_id: string;
-  capability: Capability;
-  granted_by: string | null;
-  granted_at: string;
-}
-
-/** Active or revoked Account → Role Definition assignment (Spec 091 §5). */
-export interface RoleAssignmentRow {
-  assignment_id: string;
-  account_user_id: string;
-  role_definition_id: string;
-  /** Immutable Role Definition scope captured when the assignment was granted. */
-  scope_kind: RoleScopeKind;
-  scope_id: string | null;
-  granted_by: string;
-  granted_at: string;
-  revoked_by: string | null;
-  revoked_at: string | null;
-  revoke_reason: string | null;
-}
-
-/** Singleton revision ledger row (Spec 091 §6). */
-export interface RolePolicyRevisionRow {
-  id: 1;
-  revision: number;
-  updated_at: string;
-}
-
-export type RoleMutationOutcome = "PENDING" | "SUCCESS" | "CONFLICT" | "DENIED";
-
-/** Idempotency record (Spec 091 §6). */
-export interface RolePolicyMutationRecord {
-  idempotency_key: string;
-  request_fingerprint: string;
-  actor_user_id: string;
-  base_revision: number;
-  outcome: RoleMutationOutcome;
-  resulting_revision: number | null;
-  /** Serialized authoritative terminal response projection, when provided. */
-  result_json: string | null;
-}
+type RoleMutationOutcome = "PENDING" | "SUCCESS" | "CONFLICT" | "DENIED";
 
 export type RoleAuditOutcome =
   | "SUCCESS"
@@ -151,7 +83,7 @@ export const PROTECTED_STABLE_KEYS = {
   MEMBER: "member",
 } as const as Record<string, string>;
 
-export const ROLE_AUDIT_ACTION = {
+const ROLE_AUDIT_ACTION = {
   ROLE_DEFINITION_CREATE: "ROLE_DEFINITION_CREATE",
   ROLE_DEFINITION_RENAME: "ROLE_DEFINITION_RENAME",
   ROLE_DEFINITION_RESCOPE: "ROLE_DEFINITION_RESCOPE",
@@ -164,6 +96,3 @@ export const ROLE_AUDIT_ACTION = {
   ROLE_ASSIGNMENT_GRANT: "ROLE_ASSIGNMENT_GRANT",
   ROLE_ASSIGNMENT_REVOKE: "ROLE_ASSIGNMENT_REVOKE",
 } as const;
-
-export type RoleAuditAction =
-  (typeof ROLE_AUDIT_ACTION)[keyof typeof ROLE_AUDIT_ACTION];

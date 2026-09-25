@@ -19,11 +19,7 @@ const screenCardPrimitiveVariants = cva(
   }
 );
 
-export type ScreenCardPrimitiveTone = NonNullable<
-  VariantProps<typeof screenCardPrimitiveVariants>["tone"]
->;
-
-export interface ScreenCardPrimitiveProps
+interface ScreenCardPrimitiveProps
   extends
     React.ComponentPropsWithoutRef<typeof Card>,
     VariantProps<typeof screenCardPrimitiveVariants> {}

@@ -1,4 +1,4 @@
-export const MANAGEMENT_HUB_STORYBOOK_ID = "t07-1-management-hub";
+const MANAGEMENT_HUB_STORYBOOK_ID = "t07-1-management-hub";
 
 export const MANAGEMENT_HUB_STORY_IDS = {
   default: `${MANAGEMENT_HUB_STORYBOOK_ID}--default`,

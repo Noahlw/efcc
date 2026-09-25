@@ -21,11 +21,7 @@ const screenIconButtonPrimitiveVariants = cva(
   }
 );
 
-export type ScreenIconButtonPrimitiveTone = NonNullable<
-  VariantProps<typeof screenIconButtonPrimitiveVariants>["tone"]
->;
-
-export interface ScreenIconButtonPrimitiveProps
+interface ScreenIconButtonPrimitiveProps
   extends
     Omit<React.ComponentProps<typeof Button>, "shape" | "size" | "variant">,
     VariantProps<typeof screenIconButtonPrimitiveVariants> {
@@ -64,7 +60,7 @@ const screenFilterChipPrimitiveVariants = cva(
   }
 );
 
-export type ScreenFilterChipPrimitiveProps = Omit<
+type ScreenFilterChipPrimitiveProps = Omit<
   React.ComponentPropsWithoutRef<typeof Button>,
   "asChild" | "shape" | "size" | "variant"
 > &
@@ -96,7 +92,6 @@ const ScreenFilterChipPrimitive = ({
 
 export {
   ScreenFilterChipPrimitive,
-  screenFilterChipPrimitiveVariants,
   ScreenIconButtonPrimitive,
   screenIconButtonPrimitiveVariants,
 };

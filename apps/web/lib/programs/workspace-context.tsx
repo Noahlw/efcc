@@ -141,22 +141,6 @@ export function useWorkspaceTaskContext(): WorkspaceTaskContextValue {
   return value;
 }
 
-/**
- * A confirmed mutation must not become a false failure when its follow-up
- * workspace read is unavailable. ProgramWorkspace owns the stale indicator;
- * task-level callers only need a safe, non-rejecting invalidation boundary.
- */
-export async function refreshWorkspaceAfterMutation(
-  refresh?: () => void | Promise<Program | void>
-): Promise<Program | void> {
-  try {
-    return await refresh?.();
-  } catch (error) {
-    void error;
-    return undefined;
-  }
-}
-
 export function hasModule(
   modules: readonly DepartmentModule[],
   moduleKey: DepartmentModule["module_key"]

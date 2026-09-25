@@ -141,5 +141,3 @@ export const FeedPresentation = ({
     </div>
   );
 };
-
-export { feedPresentationVariants };

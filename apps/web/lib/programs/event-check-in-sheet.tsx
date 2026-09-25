@@ -15,7 +15,7 @@ import type { ProgramEvent } from "./program-api";
 import { hkWallDateTimeLabel } from "./recurrence";
 import { clearAuthenticatedProgramsRecovery } from "./workspace-context";
 
-export type EventCheckInSheetEvent = Pick<
+type EventCheckInSheetEvent = Pick<
   ProgramEvent,
   | "event_id"
   | "program_id"

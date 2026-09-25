@@ -8,14 +8,14 @@ The current product boundary is a static Next.js export served by a Cloudflare W
 
 | Boundary | Owner | Responsibility |
 | --- | --- | --- |
-| Browser application | `web/` Next.js static export | Routes, screens, navigation, forms, and presentation |
-| HTTP/API runtime | `web/worker.ts` | Auth/session transport, domain routes, authorization, validation, and D1 access |
+| Browser application | `apps/web/` Next.js static export | Routes, screens, navigation, forms, and presentation |
+| HTTP/API runtime | `apps/web/worker.ts` | Auth/session transport, domain routes, authorization, validation, and D1 access |
 | Database | Cloudflare D1 | Accounts, sessions, registrations, role definitions, grants, domain data, and immutable audit records |
-| Static assets | Worker `ASSETS` binding | Serves `web/out/` produced by `pnpm build` |
-| Scanner | `web/app/scanner/` and `web/lib/use-qr-camera.ts` | In-app camera flow with the supported barcode detector and ZXing fallback |
+| Static assets | Worker `ASSETS` binding | Serves `apps/web/out/` produced by `pnpm build` |
+| Scanner | `apps/web/app/scanner/` and `apps/web/lib/use-qr-camera.ts` | In-app camera flow with the supported barcode detector and ZXing fallback |
 | Internal presentation | Storybook | Local design review and isolated UI states; it is not a production runtime |
 
-The application does not use Next.js SSR in production. `web/next.config.ts` uses `output: "export"`; `web/wrangler.jsonc` serves the resulting static directory and sends `/api/*` to the Worker. The repository keeps D1 migrations in `web/migrations/` and does not add a second migration ledger for the bounded Drizzle trial.
+The application does not use Next.js SSR in production. `apps/web/next.config.ts` uses `output: "export"`; `apps/web/wrangler.jsonc` serves the resulting static directory and sends `/api/*` to the Worker. The repository keeps D1 migrations in `web/migrations/` and does not add a second migration ledger for the bounded Drizzle trial.
 
 Apps Script, Google Sheets, the old `/api/v1/rpc` bridge, and the external scanner opener are retired product paths. The current cleanup removes the remaining Users/PIN import and forced-upgrade path because the project has no legacy accounts to migrate. The Auth provider/library replacement is a separate deferred decision under [#639](https://github.com/Noahlw/efcc/issues/639); the editable scoped Role Definition and Grant model remains a product concern.
 
@@ -72,13 +72,13 @@ For a local Worker session, `pnpm dev:local` builds the static export, applies l
 
 | Path | Purpose |
 | --- | --- |
-| [`web/app/`](web/app/) | Next.js routes and route composition |
-| [`web/lib/auth/`](web/lib/auth/) | Authentication/session handlers and account lifecycle |
-| [`web/lib/identity/`](web/lib/identity/) | Editable role definitions, assignments, grants, hierarchy, and audit contracts |
-| [`web/lib/programs/`](web/lib/programs/) | Programs, departments, events, enrollment, and related projections |
-| [`web/lib/attendance.ts`](web/lib/attendance.ts) | Attendance and check-in domain handlers |
-| [`web/worker.ts`](web/worker.ts) | Worker entrypoint and API routing |
-| [`web/migrations/`](web/migrations/) | Wrangler D1 schema ledger |
+| [`web/app/`](apps/web/app/) | Next.js routes and route composition |
+| [`web/lib/auth/`](apps/web/lib/auth/) | Authentication/session handlers and account lifecycle |
+| [`web/lib/identity/`](apps/web/lib/identity/) | Editable role definitions, assignments, grants, hierarchy, and audit contracts |
+| [`web/lib/programs/`](apps/web/lib/programs/) | Programs, departments, events, enrollment, and related projections |
+| [`web/lib/attendance.ts`](apps/web/lib/attendance.ts) | Attendance and check-in domain handlers |
+| [`apps/web/worker.ts`](apps/web/worker.ts) | Worker entrypoint and API routing |
+| [`web/migrations/`](apps/web/migrations/) | Wrangler D1 schema ledger |
 | [`tests/e2e/`](tests/e2e/) | Local Worker/D1 and static-export Playwright journeys |
 | [`scripts/`](scripts/) | Local verification, promotion, governance, and report runners |
 | [`docs/adr/`](docs/adr/) | Durable architecture decisions |

@@ -290,9 +290,3 @@ export async function handleUpdateRoleDefinitionGrants(
     return mapPermissionError(error, requestId);
   }
 }
-
-export const __test = {
-  idempotencyKeyFor,
-  mapPermissionError,
-  isCapability,
-};

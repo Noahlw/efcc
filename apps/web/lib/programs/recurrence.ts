@@ -7,7 +7,7 @@ import { spokenTimeRangeFromHHMM } from "@/lib/hk-time";
  * in Asia/Hong_Kong (UTC+8, no DST) and stored as ISO-8601 UTC instants.
  */
 
-export const HK_TIME_ZONE = "Asia/Hong_Kong";
+const HK_TIME_ZONE = "Asia/Hong_Kong";
 
 // ponytail: HK has no DST, so the offset is a constant. Revisit only if the
 // territory ever adopts DST (Intl with the IANA zone stays the display path).
@@ -45,13 +45,13 @@ export interface ScheduleExceptionLike {
   new_date?: string | null;
 }
 
-export interface Occurrence {
+interface Occurrence {
   starts_at: string;
   ends_at: string;
 }
 
 /** HK wall date ("YYYY-MM-DD") of an ISO-8601 UTC instant. */
-export function hkWallDateOf(iso: string): string {
+function hkWallDateOf(iso: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: HK_TIME_ZONE,
     year: "numeric",
@@ -73,7 +73,7 @@ export function hkWallToUtc(wallDate: string, wallTime: string): string {
 const WALL_DATE_RE = /^\d{4}-\d{2}-\d{2}$/u;
 const WALL_TIME_RE = /^(?:[01]\d|2[0-3]):[0-5]\d$/u;
 
-export function isWallDate(v: unknown): v is string {
+function isWallDate(v: unknown): v is string {
   return typeof v === "string" && WALL_DATE_RE.test(v);
 }
 
@@ -157,46 +157,6 @@ function isWithinRuleLifetime(rule: ScheduleRuleLike, date: string): boolean {
 export function wallWeekday(wallDate: string): number {
   const [y, m, d] = wallDate.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-}
-
-/** Concrete occurrences for a rule over [fromDate, fromDate + horizonDays). */
-export function occurrencesForRule(
-  rule: ScheduleRuleLike,
-  fromDate: string,
-  horizonDays: number,
-  exceptions: ScheduleExceptionLike[]
-): Occurrence[] {
-  const result: Occurrence[] = [];
-  // Rule-scoped lookups: exceptions on one rule never affect another rule
-  // firing on the same wall date.
-  const byRuleDate = new Map(
-    exceptions.map((e) => [`${e.rule_id}:${e.override_date}`, e])
-  );
-  for (let i = 0; i < horizonDays; i += 1) {
-    const date = addWallDays(fromDate, i);
-    if (!isWithinRuleLifetime(rule, date)) {
-      continue;
-    }
-    const matches =
-      rule.recurrence === "WEEKLY"
-        ? wallWeekday(date) === rule.day_of_week
-        : Number(date.slice(8, 10)) === rule.month_day;
-    if (!matches) {
-      continue;
-    }
-    const exception = byRuleDate.get(`${rule.rule_id}:${date}`);
-    if (exception?.action === "CANCEL") {
-      continue;
-    }
-    const occurrenceDate = exception?.new_date ?? date;
-    const start = exception?.new_start_time ?? rule.start_time;
-    const end = exception?.new_end_time ?? rule.end_time;
-    result.push({
-      starts_at: hkWallToUtc(occurrenceDate, start),
-      ends_at: hkWallToUtc(occurrenceDate, end),
-    });
-  }
-  return result;
 }
 
 /**

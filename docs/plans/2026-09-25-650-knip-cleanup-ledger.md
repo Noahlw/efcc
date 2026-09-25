@@ -658,3 +658,27 @@ export dropped on both.
 | `sortEvidenceItems` | function | **UN-EXPORT** | used 2x inside own file only |
 | `validateAttachment` | function | **UN-EXPORT** | used 2x inside own file only |
 | `validateLoopbackUrl` | function | **UN-EXPORT** | used 2x inside own file only |
+
+## Corrections recorded during #652 execution (2026-09-25)
+
+- `shadcn` dependency: ledger said DELETE-DEP; execution found the live
+  CSS import in `apps/web/app/globals.css`. Dependency evidence missed
+  `*.css` imports. Corrected to KEEP; the dep was restored. Lesson:
+  dep-evidence must cover CSS imports alongside JS/TS imports.
+- `apps/web/lib/screen-foundations.tsx`: ledger said DELETE-FILE on a
+  stem-grep claiming zero file references, but the stem computation was
+  wrong (empty match is not proof). Four live importers exist. File
+  RESTORED; its 12 export rows were re-verdict individually. Lesson:
+  never delete on an empty match; file-delete evidence requires a
+  positively reviewed search.
+- Barrel-mediated usage is a Knip blind spot in this repo: exports
+  consumed only through `lib/identity/index.ts` re-exports (both
+  `import type` via `@/` and value imports in tests) were flagged
+  unused. Caught by `tsc` during execution; six exports restored with
+  barrel lines. Lesson: `tsc` is the backstop for every deletion batch;
+  a green Knip report never overrules a red compiler.
+- Cascade rounds 2 and 3 became unused only after earlier deletions;
+  triaged individually in the #652 commit.
+- The `vitest.setup.ts` unresolved notice is a Knip cwd evaluation
+  artifact; fixed at the source with an `import.meta.dirname` fallback.
+  Knip default analysis is now clean (exit 0).

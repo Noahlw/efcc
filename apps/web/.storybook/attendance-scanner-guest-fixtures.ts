@@ -17,7 +17,7 @@ const REQUEST_ID = "t07-5-storybook";
 const envelope = <T>(data: T) =>
   HttpResponse.json({ requestId: REQUEST_ID, data });
 
-export const ATTENDANCE_EVENT_SUMMARY: AttendanceEventSummary = {
+const ATTENDANCE_EVENT_SUMMARY: AttendanceEventSummary = {
   event_id: "t07-5-event",
   program_id: "t07-5-program",
   program_name: "Storybook Attendance",
@@ -31,28 +31,28 @@ export const ATTENDANCE_EVENT_SUMMARY: AttendanceEventSummary = {
   availability: "Active",
 };
 
-export const ATTENDANCE_EVENT: AttendanceEvent = {
+const ATTENDANCE_EVENT: AttendanceEvent = {
   ...ATTENDANCE_EVENT_SUMMARY,
   manual_check_in_code: "570570",
   check_in_window_opens_at: "2020-01-01T00:00:00.000Z",
   check_in_window_closes_at: "2099-12-31T23:59:59.000Z",
 };
 
-export const ATTENDANCE_MEMBER: AttendanceMember = {
+const ATTENDANCE_MEMBER: AttendanceMember = {
   user_id: "t07-5-member",
   name: "Storybook Member",
   phone: "00000000",
   qr_code_string: null,
 };
 
-export const ATTENDANCE_ADDITION_MEMBER: AttendanceMember = {
+const ATTENDANCE_ADDITION_MEMBER: AttendanceMember = {
   user_id: "t07-5-addition-member",
   name: "Storybook Addition",
   phone: "11111111",
   qr_code_string: null,
 };
 
-export const ATTENDANCE_ROW: AttendanceRow = {
+const ATTENDANCE_ROW: AttendanceRow = {
   attendance_id: "t07-5-attendance",
   event_id: ATTENDANCE_EVENT.event_id,
   member_user_id: ATTENDANCE_MEMBER.user_id,
@@ -133,7 +133,7 @@ const ATTENDANCE_EXPECTED_ROWS: AttendanceExpectedRow[] = PARTICIPANT_NAMES.map(
   })
 );
 
-export const ATTENDANCE_POST_EVENT: AttendanceEvent = {
+const ATTENDANCE_POST_EVENT: AttendanceEvent = {
   ...ATTENDANCE_EVENT,
   event_id: "t07-5-post-event",
   name: "Storybook 已結束聚會",
@@ -168,7 +168,7 @@ const postEventDisposition = (
   recorded_at: "2020-09-01T10:10:00.000Z",
 });
 
-export const ATTENDANCE_POST_EVENT_EXPECTED_ROWS: AttendanceExpectedRow[] =
+const ATTENDANCE_POST_EVENT_EXPECTED_ROWS: AttendanceExpectedRow[] =
   ATTENDANCE_EXPECTED_ROWS.map((row, index) => {
     const state = index < 10 ? "Present" : index < 18 ? "Excused" : "Absent";
     return {

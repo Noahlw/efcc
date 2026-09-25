@@ -9,7 +9,7 @@ import type {
 const WORKSPACE_MUTATION_RECOVERY_KEY = "efcc_workspace_mutation_recovery";
 const GUEST_MUTATION_RECOVERY_KEY = "efcc_guest_mutation_recovery";
 
-export interface EventMutationExpected {
+interface EventMutationExpected {
   startsAt?: string;
   endsAt?: string;
   name?: string | null;

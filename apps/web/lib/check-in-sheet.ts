@@ -7,7 +7,7 @@
 
 import { COPY } from "./copy";
 
-export interface CheckInSheetRow {
+interface CheckInSheetRow {
   label: string;
   value: string | null;
 }

@@ -55,7 +55,7 @@ export interface RegistrationDetail {
 }
 
 /** Row shape returned by GET /api/v1/auth/registrations. */
-export interface RegistrationQueueResponse {
+interface RegistrationQueueResponse {
   requestId: string;
   data: {
     registrations: PendingRegistration[];
@@ -130,12 +130,6 @@ export async function fetchRegistrations(
   if (!res.ok) throw await parseError(res);
   const body = (await res.json()) as RegistrationQueueResponse;
   return body.data?.registrations ?? [];
-}
-
-export async function fetchPendingRegistrations(): Promise<
-  PendingRegistration[]
-> {
-  return fetchRegistrations("Pending");
 }
 
 /** POST /api/v1/auth/registrations/approve-batch — atomic selected approval. */

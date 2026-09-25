@@ -2461,9 +2461,9 @@ describe("Static Governance Source Audit Engine", () => {
     );
     const sourceFile = path.join(tempRoot, "source.tsx");
     const explicitLink = path.join(tempRoot, "explicit-link.tsx");
-    const recursiveRoot = path.join(tempRoot, "web");
+    const recursiveRoot = path.join(tempRoot, "apps", "web");
     const recursiveLink = path.join(recursiveRoot, "recursive-link.tsx");
-    fs.mkdirSync(recursiveRoot);
+    fs.mkdirSync(recursiveRoot, { recursive: true });
     fs.writeFileSync(sourceFile, "export const safe = true;", "utf8");
 
     try {

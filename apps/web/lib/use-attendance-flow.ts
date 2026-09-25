@@ -17,9 +17,9 @@ import { resolveAttendance } from "@/lib/programs/program-api";
 import { parseScannerIntent } from "@/lib/scanner-intent";
 import { useQrCamera } from "@/lib/use-qr-camera";
 
-export type StatusTone = "info" | "success" | "error";
-export type AttendanceView = "scan" | "chooser" | "outcome";
-export interface AttendanceOutcome {
+type StatusTone = "info" | "success" | "error";
+type AttendanceView = "scan" | "chooser" | "outcome";
+interface AttendanceOutcome {
   kind: "window-not-open" | "cancelled" | "not-enrolled";
   latest: AttendanceResolveLatest;
 }

@@ -8,10 +8,10 @@ The Worker serves the Next static export and the D1 API surfaces (`/api/v1/auth/
 
 ### 1. Configure Local Secret (`.dev.vars`)
 
-Create `web/.dev.vars` (gitignored) from `web/.dev.vars.example` and set a local-only `EFCC_ACCESS_TOKEN_SECRET` (see the template):
+Create `apps/web/.dev.vars` (gitignored) from `apps/web/.dev.vars.example` and set a local-only `EFCC_ACCESS_TOKEN_SECRET` (see the template):
 
 ```sh
-cp web/.dev.vars.example web/.dev.vars
+cp apps/web/.dev.vars.example apps/web/.dev.vars
 openssl rand -hex 32   # paste into EFCC_ACCESS_TOKEN_SECRET
 ```
 

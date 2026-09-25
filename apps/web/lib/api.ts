@@ -21,7 +21,7 @@ export interface LoginResult {
  * Privacy-safe identity summary returned by the Worker bootstrap projection.
  * Scope labels are human-readable; stable IDs and credentials are omitted.
  */
-export interface PublicIdentitySummary {
+interface PublicIdentitySummary {
   label: string;
   scopeKind: "Global" | "Department" | "Program";
   scopeLabel: string | null;

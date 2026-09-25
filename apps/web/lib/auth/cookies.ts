@@ -24,9 +24,9 @@ export const ACCESS_COOKIE_NAME = "efcc_access";
 export const REFRESH_COOKIE_NAME = "efcc_refresh";
 
 /** Access cookie lifetime matches the ~15-min signed token TTL. */
-export const ACCESS_COOKIE_MAX_AGE_SEC = 15 * 60;
+const ACCESS_COOKIE_MAX_AGE_SEC = 15 * 60;
 /** Refresh cookie lifetime matches the 90-day refresh-session idle expiry. */
-export const REFRESH_COOKIE_MAX_AGE_SEC = 90 * 24 * 60 * 60;
+const REFRESH_COOKIE_MAX_AGE_SEC = 90 * 24 * 60 * 60;
 
 /** Token material read from the request cookies (never from any header). */
 export interface AuthCookies {

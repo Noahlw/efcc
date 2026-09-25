@@ -227,8 +227,6 @@ export const CAPABILITY_CATALOG = [
 
 export type Capability = (typeof CAPABILITY_CATALOG)[number]["capability"];
 export type CapabilityMetadata = (typeof CAPABILITY_CATALOG)[number];
-export type CapabilityRisk = CapabilityMetadata["risk"];
-export type CapabilityGroup = CapabilityMetadata["group"];
 
 const METADATA_BY_CAPABILITY: Record<string, CapabilityMetadata> =
   Object.fromEntries(
@@ -244,7 +242,3 @@ export function capabilityMetadata(
 ): CapabilityMetadata | undefined {
   return METADATA_BY_CAPABILITY[capability];
 }
-
-export const HIGH_RISK_CAPABILITIES = CAPABILITY_CATALOG.filter(
-  (entry) => entry.risk === "high"
-).map((entry) => entry.capability) as readonly Capability[];

@@ -16,7 +16,7 @@ interface BrokenTargetMeasurement {
   };
 }
 
-export const BROKEN_MANAGEMENT_HUB_FIXTURE = {
+const BROKEN_MANAGEMENT_HUB_FIXTURE = {
   route: "/management",
   scenario: "PSN-MGMT-HUB-DEFAULT",
   viewport: { width: 390, height: 844 },

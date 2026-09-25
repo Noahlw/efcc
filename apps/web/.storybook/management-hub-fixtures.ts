@@ -103,7 +103,7 @@ const STORYBOOK_CAPABILITIES = {
   "role.read": true,
 };
 
-export const STORYBOOK_USER: PublicUser = {
+const STORYBOOK_USER: PublicUser = {
   userId: "t07-1-storybook-user",
   name: "T07.1 Storybook Manager",
   username: "t07-1-storybook-manager",
@@ -120,7 +120,7 @@ export const STORYBOOK_USER: PublicUser = {
   qrCodeString: "t07-1-storybook-only",
 };
 
-export const AUTH_ME_RESULT: AuthMeResult = {
+const AUTH_ME_RESULT: AuthMeResult = {
   user: STORYBOOK_USER,
   sections: projectSections(STORYBOOK_CAPABILITIES),
   navigation: projectNavigation(STORYBOOK_CAPABILITIES),

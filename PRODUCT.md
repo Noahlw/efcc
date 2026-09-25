@@ -67,7 +67,7 @@ An internal system built specifically for this church’s roles, workflows, and 
 - Feature roadmap and architecture boundaries: `README.md`
 - Behavioral specs and acceptance traces under `docs/specs/` (including accessibility/shell plans such as Spec 071 / 074)
 - Architecture decisions under `docs/adr/`
-- Runnable web app under `web/` (Next.js static export + Cloudflare Worker)
+- Runnable web app under `apps/web/` (Next.js static export + Cloudflare Worker)
 
 **Must not fabricate:** final logo artwork; third-party testimonials; multi-church case studies; pricing or licensing claims.
 

@@ -46,7 +46,7 @@ export const attendanceButtonVariants = cva(
   }
 );
 
-export const statusOutputVariants = cva(
+const statusOutputVariants = cva(
   "rounded-[var(--radius-sm)] border p-3 text-base min-w-0 [overflow-wrap:anywhere]",
   {
     variants: {
@@ -99,68 +99,6 @@ const CameraIcon = () => (
     <path d="M13 17h4l3-4h8l3 4h4a4 4 0 0 1 4 4v13a4 4 0 0 1-4 4H13a4 4 0 0 1-4-4V21a4 4 0 0 1 4-4Z" />
     <circle cx="24" cy="27" r="7" />
   </svg>
-);
-
-/**
- * Camera start/video/close trio shared by the Self and Guest check-in panels.
- * The frame remains a stable affordance even when the browser cannot provide
- * a camera. `cameraAvailable` is optional so guest/operator callers retain
- * their existing click-to-discover behavior.
- */
-export const ScannerCamera = ({
-  cameraOpen,
-  cameraAvailable = true,
-  videoRef,
-  onStart,
-  onClose,
-}: {
-  cameraOpen: boolean;
-  cameraAvailable?: boolean | null;
-  videoRef: RefObject<HTMLVideoElement | null>;
-  onStart: () => void;
-  onClose: () => void;
-}) => (
-  <div className="grid justify-items-center gap-3.5 w-full">
-    <div
-      className="relative aspect-square w-full max-w-[320px] overflow-hidden rounded-[var(--radius-md)] border border-[var(--line-strong)] bg-[var(--surface)] flex items-center justify-center"
-      aria-label={COPY.attendance.camera}
-    >
-      {cameraOpen && (
-        <video
-          ref={videoRef}
-          className="h-full w-full object-cover"
-          muted
-          playsInline
-          aria-label={COPY.attendance.camera}
-        />
-      )}
-      <span className="absolute top-2 left-2 h-10 w-10 border-[3px] border-[var(--accent)] border-r-0 border-b-0 rounded-tl-[var(--radius-sm)] pointer-events-none" />
-      <span className="absolute top-2 right-2 h-10 w-10 border-[3px] border-[var(--accent)] border-l-0 border-b-0 rounded-tr-[var(--radius-sm)] pointer-events-none" />
-      <span className="absolute bottom-2 right-2 h-10 w-10 border-[3px] border-[var(--accent)] border-l-0 border-t-0 rounded-br-[var(--radius-sm)] pointer-events-none" />
-      <span className="absolute bottom-2 left-2 h-10 w-10 border-[3px] border-[var(--accent)] border-r-0 border-t-0 rounded-bl-[var(--radius-sm)] pointer-events-none" />
-      {!cameraOpen && <CameraIcon />}
-    </div>
-    {!cameraOpen && (
-      <Button
-        className={attendanceButtonVariants({ variant: "primaryFit" })}
-        type="button"
-        data-camera-available={cameraAvailable}
-        onClick={onStart}
-      >
-        {COPY.attendance.startScan}
-      </Button>
-    )}
-    {cameraOpen && (
-      <Button
-        variant="outline"
-        className={attendanceButtonVariants({ variant: "secondary" })}
-        type="button"
-        onClick={onClose}
-      >
-        {COPY.attendance.cameraClose}
-      </Button>
-    )}
-  </div>
 );
 
 export const CameraFirstScanner = ({
@@ -226,16 +164,6 @@ export const CameraFirstScanner = ({
       {COPY.attendance.stopScan}
     </Button>
   </div>
-);
-
-export const ScannerUnavailableNotice = () => (
-  <Alert
-    variant="destructive"
-    className="grid gap-2 border-[var(--error-border)] bg-[var(--error-surface)] text-[var(--error)] p-4 rounded-[var(--radius-sm)]"
-  >
-    <strong>{COPY.attendance.cameraUnavailableTitle}</strong>
-    <p>{COPY.attendance.cameraUnavailableHint}</p>
-  </Alert>
 );
 
 const ScannerEventChoiceGroup = ({

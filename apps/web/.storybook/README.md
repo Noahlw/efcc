@@ -23,7 +23,7 @@ This record is compatibility evidence, not a new runtime authority. Storybook re
 
 ## Worktree-safe local workflow
 
-Run `pnpm storybook` from `web/`. The launcher records the owning worktree and process in a temporary, worktree-keyed marker. A later invocation reuses that process only when the marker still points to a live Storybook launcher from the same worktree; otherwise it selects the preferred `6006` port when free or an ephemeral free port. It never kills a process owned by another worktree.
+Run `pnpm storybook` from `apps/web/`. The launcher records the owning worktree and process in a temporary, worktree-keyed marker. A later invocation reuses that process only when the marker still points to a live Storybook launcher from the same worktree; otherwise it selects the preferred `6006` port when free or an ephemeral free port. It never kills a process owned by another worktree.
 
 Startup prints the actual Storybook URL and the direct Management Hub Story URL. The launched Storybook process remains attached for HMR. The Playwright bridge uses the same selector and reuses only a live current-worktree server.
 

@@ -576,5 +576,3 @@ export const AccountSettings = () => {
     </div>
   );
 };
-
-export { ACCOUNT_UPDATED_KEY };

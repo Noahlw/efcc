@@ -1232,7 +1232,7 @@ export function auditNewPresentationOverrides(
       "--no-color",
       baseRef,
       "--",
-      "web",
+      "apps/web",
     ]);
   } catch (error) {
     return [

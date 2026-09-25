@@ -16,7 +16,7 @@ export interface HomeEnv {
   EFCC_ACCESS_TOKEN_SECRET: string;
 }
 
-export interface HomeFeaturedEventDto {
+interface HomeFeaturedEventDto {
   eventId: string;
   programId: string;
   programTitle: string;
@@ -30,7 +30,7 @@ export interface HomeFeaturedEventDto {
   isEnrolled: boolean;
 }
 
-export interface HomeAnnouncementDto {
+interface HomeAnnouncementDto {
   contentId: string;
   version: number;
   title: string;
@@ -43,7 +43,7 @@ export interface HomeAnnouncementDto {
   publishedAt: string | null;
 }
 
-export interface HomeExploreProgramDto {
+interface HomeExploreProgramDto {
   programId: string;
   title: string;
   summary: string | null;
@@ -52,7 +52,7 @@ export interface HomeExploreProgramDto {
   nextEventStartAt: string | null;
 }
 
-export interface HomeProjectionData {
+interface HomeProjectionData {
   featuredEvent: HomeFeaturedEventDto | null;
   announcement: HomeAnnouncementDto | null;
   exploreProgram: HomeExploreProgramDto | null;

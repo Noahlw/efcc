@@ -133,7 +133,6 @@ export type { EventAvailability } from "./workspace-store";
 
 // Capability flags live in the pure vocabulary module; the domain module
 // re-exports the type so the public surface of this file is unchanged.
-export type { DepartmentCapabilities } from "./capabilities";
 
 export interface ProgramCapabilities {
   manage: boolean;
@@ -177,17 +176,14 @@ export type ManagementProgramSettingsView = ManagementProgramView & {
   check_in_opens_at_minutes_before_start?: number;
   check_in_closes_at_minutes_after_end?: number;
 };
-export type ManagementDepartmentModuleView = Omit<
-  DepartmentModuleRow,
-  "enabled_by"
->;
+type ManagementDepartmentModuleView = Omit<DepartmentModuleRow, "enabled_by">;
 
 export interface ManagementDirectoryView {
   departments: ManagementDepartmentView[];
   programs: ManagementProgramView[];
 }
 
-export interface ManagementAttentionProgramView {
+interface ManagementAttentionProgramView {
   program_id: string;
   department_id: string;
   pending_enrollment_count: number;
@@ -203,7 +199,7 @@ interface ManagementAttentionItemBase {
   department_name: string;
 }
 
-export type ManagementAttentionItem =
+type ManagementAttentionItem =
   | (ManagementAttentionItemBase & {
       kind: "enrollment";
       actionable: true;
@@ -236,7 +232,7 @@ interface ManagementNotificationItemBase {
   department_name: string;
 }
 
-export type ManagementNotificationItem =
+type ManagementNotificationItem =
   | (ManagementNotificationItemBase & {
       kind: "enrollment";
       actionable: true;
@@ -263,7 +259,6 @@ export interface ManagementNotificationsView {
 // 085-07 (#324) — participant Notices. The wire shape omits the member's own
 // user id (the API is strictly self-scoped); read_at/created_at are epoch
 // milliseconds. Notices older than NOTICE_RETENTION_MS are never served.
-export type { ParticipantNoticeKind } from "./workspace-store";
 
 export interface ParticipantNoticeView {
   notice_id: string;
@@ -291,11 +286,11 @@ export interface CreateParticipantNoticeInput {
   read_at?: number | null;
 }
 
-export const NOTICE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+const NOTICE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
-export const MANAGEMENT_ATTENTION_LIMIT = 5;
-export const MANAGEMENT_NOTIFICATION_LIMIT = 20;
-export interface ManagementCockpitNextEvent {
+const MANAGEMENT_ATTENTION_LIMIT = 5;
+const MANAGEMENT_NOTIFICATION_LIMIT = 20;
+interface ManagementCockpitNextEvent {
   event_id: string;
   program_id: string;
   title: string | null;
@@ -356,7 +351,7 @@ export interface ManagementAccessView {
  * contact, role, and the departments of the member's Active enrollments
  * (restricted to the actor's managed departments for a Department Manager).
  */
-export interface ManagementMemberIdentity {
+interface ManagementMemberIdentity {
   id: string;
   label: string;
   stableKey: string;
@@ -402,7 +397,7 @@ export type {
 const HUB_COPY = COPY.management;
 
 /** Fixed group order (spec 087 US 1); keys are stable UI anchors. */
-export const MANAGEMENT_HUB_GROUPS: readonly ManagementHubGroup[] = [
+const MANAGEMENT_HUB_GROUPS: readonly ManagementHubGroup[] = [
   {
     key: "members-and-permissions",
     label: HUB_COPY.groupMemberPermissions,
@@ -466,7 +461,7 @@ export const MANAGEMENT_HUB_GROUPS: readonly ManagementHubGroup[] = [
 ];
 
 /** 另一個工作入口 card, rendered between 事工營運 and 內容與系統. */
-export const MANAGEMENT_HUB_ENTRY_CARD: ManagementHubRow = {
+const MANAGEMENT_HUB_ENTRY_CARD: ManagementHubRow = {
   key: "course-management",
   label: HUB_COPY.goCourseManagement,
   description: HUB_COPY.goCourseManagementHint,
@@ -531,7 +526,7 @@ export interface DepartmentSummary {
   display_order: number;
 }
 
-export type ParticipantCatalogViewerState =
+type ParticipantCatalogViewerState =
   | "active"
   | "pending"
   | "eligible"
@@ -551,7 +546,7 @@ export interface ParticipantCatalogEntry {
   department: DepartmentSummary;
   programs: ParticipantCatalogProgram[];
 }
-export interface ParticipantScheduleRule {
+interface ParticipantScheduleRule {
   rule_id: string;
   recurrence: RecurrenceKind;
   day_of_week: number | null;
@@ -560,7 +555,7 @@ export interface ParticipantScheduleRule {
   end_time: string;
 }
 
-export interface ParticipantEventSummary {
+interface ParticipantEventSummary {
   event_id: string;
   program_id: string;
   starts_at: string;
@@ -608,14 +603,14 @@ export function participantSelfCheckInAvailable(
   );
 }
 
-export interface ParticipantEnrollmentRequest {
+interface ParticipantEnrollmentRequest {
   request_id: string;
   status: EnrollmentRequestRow["status"];
   submitted_at: string;
   decided_at: string | null;
 }
 
-export interface ParticipantEnrollment {
+interface ParticipantEnrollment {
   enrollment_id: string;
   status: EnrollmentRow["status"];
   enrolled_at: string;

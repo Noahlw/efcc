@@ -7,7 +7,9 @@ import { defineConfig } from "vitest/config";
 
 import { parseStorybookPort } from "./scripts/storybook-port.mjs";
 
-const dirname = process.cwd();
+// import.meta.dirname is the config file's own directory (stable under any
+// invoker cwd); fall back to process.cwd() for loaders without dirname.
+const dirname = import.meta.dirname ?? process.cwd();
 const storybookLauncher = path.join(dirname, "scripts/storybook-worktree.mjs");
 const storybookPort = parseStorybookPort(
   process.env.STORYBOOK_PORT ??

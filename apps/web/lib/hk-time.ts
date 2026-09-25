@@ -3,7 +3,7 @@
 // panel's pinned Asia/Hong_Kong rendering (no seconds, hour12 off) so one
 // event never formats two ways depending on which surface shows it.
 
-export const HK_TIME_ZONE = "Asia/Hong_Kong";
+const HK_TIME_ZONE = "Asia/Hong_Kong";
 
 /** HK wall-clock label for an ISO timestamp: 2026/08/07 19:00. */
 export function hkWallLabel(iso: string): string {

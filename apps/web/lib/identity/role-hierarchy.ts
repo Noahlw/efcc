@@ -60,17 +60,17 @@ export const ROLE_HIERARCHY_ACTION = {
   PERMISSIONS: "permissions",
 } as const;
 
-export type RoleHierarchyAction =
+type RoleHierarchyAction =
   (typeof ROLE_HIERARCHY_ACTION)[keyof typeof ROLE_HIERARCHY_ACTION];
 
 /** Server-authorized identity assignment action. */
-export interface RoleAssignmentActionAffordance {
+interface RoleAssignmentActionAffordance {
   action: "assign" | "revoke";
   label: string;
 }
 
 /** Server-authorized lifecycle action for an identity-first entry. */
-export interface RoleLifecycleActionAffordance {
+interface RoleLifecycleActionAffordance {
   action: "archive" | "restore";
   label: string;
 }
@@ -89,7 +89,7 @@ export interface RoleHierarchyActionAffordance {
  * scoped entries carry the Department/Program scope the actor holds below
  * Staff.
  */
-export interface RoleHierarchyScopeOption {
+interface RoleHierarchyScopeOption {
   category_key: RoleCategoryKey;
   scope_kind: RoleScopeKind;
   scope_id: string | null;
@@ -113,7 +113,7 @@ export interface RoleReorderResult {
 }
 
 /** Safe account summary for identity-first Account Access navigation. */
-export interface RoleHierarchyAssignedAccount {
+interface RoleHierarchyAssignedAccount {
   assignmentId: string;
   userId: string;
   name: string;
@@ -151,7 +151,7 @@ export interface RoleHierarchyDefinition {
 }
 
 /** One fixed Role Category heading (H-01). */
-export interface RoleHierarchyCategory {
+interface RoleHierarchyCategory {
   categoryKey: RoleCategoryKey;
   label: string;
   description: string;
@@ -651,7 +651,7 @@ export async function resolveActorCapabilities(
   return capabilities;
 }
 
-export interface BootstrapIdentitySummary {
+interface BootstrapIdentitySummary {
   label: string;
   scopeKind: RoleScopeKind;
   scopeLabel: string | null;
@@ -680,24 +680,6 @@ export async function loadBootstrapIdentity(
     identities,
     capabilities: await resolveActorCapabilities(db, actorUserId),
   };
-}
-
-/**
- * Highest position held by the actor. Every role-management authority rule
- * (Spec 091 §5.1) is relative to this: the actor may manage only identities
- * strictly below it, may not rename its own highest identity, and Admin
- * (position 0) is untouchable for everyone.
- */
-export async function resolveActorHighestPosition(
-  db: D1Database,
-  actorUserId: string
-): Promise<number> {
-  const roles = await loadActorRoles(db, actorUserId);
-  if (roles.length === 0) {
-    // A Member-baseline-only caller manages nothing (H-08 baseline lock).
-    return Number.POSITIVE_INFINITY;
-  }
-  return roles[0]?.position ?? Number.POSITIVE_INFINITY;
 }
 
 interface ScopeNames {
@@ -1633,7 +1615,7 @@ export async function recordRoleDenialForRename(
 }
 
 /** Generic DENIED/CONFLICT/REJECTED audit row for a rejected #479 mutation. */
-export async function recordRoleDenialForCreate(
+async function recordRoleDenialForCreate(
   db: D1Database,
   input: {
     actor_user_id: string;
@@ -1665,7 +1647,7 @@ export async function recordRoleDenialForCreate(
 }
 
 /** Canonical create fingerprint (B-479-16): actor, category, normalized name, scope. */
-export function canonicalCreateFingerprint(input: {
+function canonicalCreateFingerprint(input: {
   actor_user_id: string;
   category_key: string;
   base_revision: number;
@@ -1677,7 +1659,7 @@ export function canonicalCreateFingerprint(input: {
 }
 
 /** Canonical reorder fingerprint (B-479-16): actor, category, targets, base revision. */
-export function canonicalReorderFingerprint(input: {
+function canonicalReorderFingerprint(input: {
   actor_user_id: string;
   category_key: string;
   base_revision: number;
@@ -2650,15 +2632,3 @@ export async function reorderRoleDefinitions(
     throw error;
   }
 }
-
-export const __test = {
-  normalizeName,
-  canonicalRenameFingerprint,
-  canonicalCreateFingerprint,
-  canonicalRescopeFingerprint,
-  canonicalReorderFingerprint,
-  isWithinActorScope,
-  isWithinActorScopeValue,
-  isEligibleRoleManager,
-  roleKind,
-};

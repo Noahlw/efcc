@@ -317,7 +317,7 @@ export function settleEnrollmentApprovalItem(
   return maybeFinish(nextRun, settledAt);
 }
 
-export function reconcileEnrollmentApprovalItem(
+function reconcileEnrollmentApprovalItem(
   item: EnrollmentApprovalRunItem,
   authority: EnrollmentApprovalRunAuthority,
   reconciledAt = nowIso(),

@@ -442,7 +442,7 @@ function resolveTargetFilePath(f: string, repoRoot: string): string {
  * Normalizes file path to repository-relative format (forward slashes, no leading slash/dots).
  * Always starts with "apps/web/..." for web workspace files.
  */
-export function normalizeRepoPath(filePath: string, rootDir?: string): string {
+function normalizeRepoPath(filePath: string, rootDir?: string): string {
   const repoRoot = rootDir ? path.resolve(rootDir) : resolveRepoRoot();
   const absPath = path.isAbsolute(filePath)
     ? path.resolve(filePath)

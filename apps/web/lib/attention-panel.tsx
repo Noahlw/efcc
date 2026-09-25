@@ -6,13 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { COPY } from "@/lib/copy";
 
-export interface AttentionItem {
+interface AttentionItem {
   id: string;
   title: string;
   detail?: string;
 }
 
-export interface AttentionNotice extends AttentionItem {
+interface AttentionNotice extends AttentionItem {
   unread: boolean;
 }
 

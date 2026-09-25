@@ -156,3 +156,34 @@ TS18003; v18 schema has no alias-capable resolve option), command
   then removed; gate green again.
 - Owner/review path: config header (`pnpm check:boundaries`); exceptions
   need a narrow reviewed rule change, never a blanket ignore.
+
+## #652 — Docs convergence and proven-dead removals
+
+- Executed the #650 ledger: 7 files deleted (4 ui primitives,
+  programs-manager, 2 qa runners), ~250 export actions (un-export /
+  barrel-line / code), 2 ledger corrections (shadcn kept on CSS-import
+  evidence; screen-foundations restored on live-importer evidence —
+  see ledger corrections section). No consolidation refactors, no quota.
+- Current guidance converged to `apps/web/`: README, AGENTS.md,
+  CONTRIBUTING.md, PRODUCT.md, DESIGN.md, tests/e2e/README,
+  apps/web/README, .storybook/README, COMPONENT_INVENTORY (also 18→14
+  count plus unwired-primitive note), target inventory, issue template.
+  Historical ADRs/specs/evidence keep snapshot wording.
+- #498 reconciled: closed COMPLETED 2026-09-25; the syntax-debt owner is
+  TESTING.md `pnpm check` discipline + oxlint.config.ts overrides (no
+  live doc links debt to #498; ADR-0014 already superseded, others
+  historical). No sidecar delta found to transfer (BA worktree preserved).
+- Governance fixtures mirror the layout (`apps/web` temp paths, git
+  pathspec, mkdir recursive).
+- Evidence: Knip default exit 0; `verify:fast` clean; production build;
+  workerd 664, components 1184, t07 63/64 (single preserved 2099
+  failure), runners/promotion green, governance unit + fast green.
+- Known boundary (pre-existing, not this ticket): `test:governance`
+  full/release mode reports 259 RULE-NO-NEW-CONTROL-OVERRIDE violations.
+  0 of 518 instances sit on lines changed by this stack (verified by
+  intersection). Cause: the `apps/web` git pathspec fix (required; the
+  old `web` pathspec matched nothing post-move, so the ratchet was
+  blind) exposes the reorganization-stack diff (merge-base b18828d4,
+  ~195k added lines) to the incremental ratchet, which flags
+  pre-existing caller overrides. Fixing 259 styling overrides is out of
+  scope; #653 surfaces it with this evidence.

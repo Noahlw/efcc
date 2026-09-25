@@ -1,4 +1,4 @@
-export type PresentationScreenLifecycle = "active" | "historical" | "planned";
+type PresentationScreenLifecycle = "active" | "historical" | "planned";
 
 export interface PresentationScreenCatalogEntry {
   readonly screenId: string;

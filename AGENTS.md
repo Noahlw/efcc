@@ -15,7 +15,7 @@ EFCC is one domain context with one root `CONTEXT.md`. Keep domain terms there, 
 
 - Inspect callers, routes, scripts, and current tests before editing a shared module.
 - Reuse the standard library, platform behavior, or an existing repository helper before adding a dependency or abstraction.
-- Keep domain logic under `web/lib/<domain>`, route composition under `web/app`, and Worker/API routing in `web/worker.ts`.
+- Keep domain logic under `apps/web/lib/<domain>`, route composition under `apps/web/app`, and Worker/API routing in `apps/web/worker.ts`.
 - Keep authentication/session authority separate from the editable scoped Role Definition, Grant, hierarchy, and audit model.
 - Keep the root workspace and root command entrypoints as the default navigation path. Read `package.json` when a command is needed instead of copying a command list into a new document.
 - When an unfamiliar library, framework, or Cloudflare API is needed, read its current official documentation through Context7 or Firecrawl before choosing an implementation.

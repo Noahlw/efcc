@@ -42,7 +42,7 @@ const screenPageFrameVariants = cva(
   }
 );
 
-export type ScreenPageFrameWidth = NonNullable<
+type ScreenPageFrameWidth = NonNullable<
   VariantProps<typeof screenPageFrameVariants>["width"]
 >;
 
@@ -71,14 +71,7 @@ export const ScreenPageFrame = ({
   </div>
 );
 
-export {
-  screenIconButtonPrimitiveVariants as screenIconButtonVariants,
-  ScreenIconButtonPrimitive as ScreenIconButton,
-} from "@/components/ui/screen-controls";
-export type {
-  ScreenIconButtonPrimitiveProps as ScreenIconButtonProps,
-  ScreenIconButtonPrimitiveTone as ScreenIconButtonTone,
-} from "@/components/ui/screen-controls";
+export { ScreenIconButtonPrimitive as ScreenIconButton } from "@/components/ui/screen-controls";
 
 const screenHeaderVariants = cva("mb-5 grid gap-2", {
   variants: {
@@ -108,7 +101,7 @@ const screenHeadingVariants = cva(
   }
 );
 
-export type ScreenHeaderLevel = NonNullable<
+type ScreenHeaderLevel = NonNullable<
   VariantProps<typeof screenHeaderVariants>["level"]
 >;
 
@@ -385,11 +378,7 @@ export const ScreenFilters = ({ className, ...props }: ScreenFiltersProps) => (
   />
 );
 
-export {
-  screenFilterChipPrimitiveVariants as screenFilterChipVariants,
-  ScreenFilterChipPrimitive as ScreenFilterChip,
-} from "@/components/ui/screen-controls";
-export type { ScreenFilterChipPrimitiveProps as ScreenFilterChipProps } from "@/components/ui/screen-controls";
+export { ScreenFilterChipPrimitive as ScreenFilterChip } from "@/components/ui/screen-controls";
 
 const screenRowVariants = cva(
   "group/screen-row flex min-w-0 w-full items-center gap-3 border-b border-[var(--screen-line)] text-[var(--screen-ink)] no-underline outline-none focus-visible:bg-[var(--screen-surface-soft)] focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-[var(--screen-focus)]",
@@ -417,14 +406,6 @@ const screenRowVariants = cva(
     },
   }
 );
-
-export type ScreenRowDensity = NonNullable<
-  VariantProps<typeof screenRowVariants>["density"]
->;
-
-export type ScreenRowTone = NonNullable<
-  VariantProps<typeof screenRowVariants>["tone"]
->;
 
 export interface ScreenRowProps
   extends
@@ -546,10 +527,6 @@ const screenStatusVariants = cva(
   }
 );
 
-export type ScreenStatusTone = NonNullable<
-  VariantProps<typeof screenStatusVariants>["tone"]
->;
-
 export interface ScreenStatusProps
   extends
     React.ComponentPropsWithoutRef<"span">,
@@ -572,10 +549,6 @@ export const ScreenStatus = ({
     variant="outline"
   />
 );
-
-export type ScreenCardTone = NonNullable<
-  VariantProps<typeof screenCardPrimitiveVariants>["tone"]
->;
 
 export interface ScreenCardProps
   extends
@@ -810,7 +783,7 @@ export const ScreenTab = ({
   );
 };
 
-export type ScreenStateKind =
+type ScreenStateKind =
   | "loading"
   | "empty"
   | "error"

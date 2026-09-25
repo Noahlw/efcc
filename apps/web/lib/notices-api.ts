@@ -8,7 +8,7 @@
 
 import { RpcError, type ProblemDetails } from "@/lib/api";
 
-export type NoticeKind = "event" | "program" | "account";
+type NoticeKind = "event" | "program" | "account";
 
 export interface Notice {
   notice_id: string;

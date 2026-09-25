@@ -53,7 +53,7 @@ export interface RoleMutationInput {
   };
 }
 
-export type RoleDesiredChange =
+type RoleDesiredChange =
   | {
       kind: "create_role_definition";
       role_definition_id: string;
@@ -1127,8 +1127,3 @@ export async function recordRoleDenial(
     )
     .run();
 }
-
-export const __test = {
-  gate,
-  bindGate,
-};
