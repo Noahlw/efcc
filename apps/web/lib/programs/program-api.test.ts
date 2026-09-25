@@ -87,6 +87,45 @@ describe("program-api client", () => {
     }
   });
 
+  test("settings mutations reject malformed data", async () => {
+    const { createDepartment, setDepartmentModule } =
+      await import("@/lib/programs/program-api");
+    const restore = stubFetch(() =>
+      jsonResponse(
+        { requestId: "r-p-5", data: { department: { department_id: "d" } } },
+        201,
+        "r-p-5"
+      )
+    );
+    try {
+      await assert.rejects(
+        createDepartment({ code: "T", name: "x", lifecycle: "Active" }),
+        (error: unknown) => {
+          assert.ok(error instanceof RpcError);
+          assert.strictEqual(error.problem.code, "MALFORMED_RESPONSE");
+          return true;
+        }
+      );
+    } finally {
+      restore();
+    }
+    const restore2 = stubFetch(() =>
+      jsonResponse({ requestId: "r-p-6", data: { module: null } }, 200, "r-p-6")
+    );
+    try {
+      await assert.rejects(
+        setDepartmentModule("d", "attendance", true),
+        (error: unknown) => {
+          assert.ok(error instanceof RpcError);
+          assert.strictEqual(error.problem.code, "MALFORMED_RESPONSE");
+          return true;
+        }
+      );
+    } finally {
+      restore2();
+    }
+  });
+
   test("unvalidated routes keep the envelope-only check until their slice", async () => {
     // getManagementAccess IS validated in #656: a malformed projection
     // must not resolve.

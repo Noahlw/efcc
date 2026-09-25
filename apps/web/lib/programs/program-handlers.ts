@@ -33,6 +33,15 @@ import {
   parseSearchTerm,
   trimmedField,
 } from "@efcc/contracts";
+import {
+  DepartmentCreateResponseSchema,
+  DepartmentLifecycleSchema,
+  DepartmentUpdateResponseSchema,
+  ProgramCreateResponseSchema,
+  ProgramUpdateResponseSchema,
+  SetModuleResponseSchema,
+  parseProgramFields,
+} from "@efcc/contracts";
 
 import type { AccountRow } from "../auth/accounts";
 import { resolveRequestSession } from "../auth/sessions";
@@ -128,69 +137,6 @@ function departmentDto(row: DepartmentView) {
 
 function isOneOf<T extends string>(v: unknown, options: readonly T[]): v is T {
   return typeof v === "string" && (options as readonly string[]).includes(v);
-}
-
-const INVALID_PROGRAM_VALUE = Symbol("invalid program value");
-const PROGRAM_FIELD_PARSERS: Record<string, (value: unknown) => unknown> = {
-  name: (value) =>
-    typeof value === "string" && value.trim()
-      ? value.trim()
-      : INVALID_PROGRAM_VALUE,
-  description: (value) =>
-    value === null || typeof value === "string" ? value : INVALID_PROGRAM_VALUE,
-  category: (value) =>
-    typeof value === "string" && value.trim()
-      ? value.trim()
-      : value === null
-        ? null
-        : INVALID_PROGRAM_VALUE,
-  behavior_type: (value) =>
-    isOneOf(value, ["Recurring", "OneOff"] as const)
-      ? value
-      : INVALID_PROGRAM_VALUE,
-  lifecycle: (value) =>
-    isOneOf(value, ["Draft", "Active", "Archived"] as const)
-      ? value
-      : INVALID_PROGRAM_VALUE,
-  discoverability: (value) =>
-    isOneOf(value, ["Listed", "Unlisted"] as const)
-      ? value
-      : INVALID_PROGRAM_VALUE,
-  enrollment_mode: (value) =>
-    isOneOf(value, ["MemberRequest", "ManagerOnly"] as const)
-      ? value
-      : INVALID_PROGRAM_VALUE,
-  display_order: (value) =>
-    typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-      ? value
-      : INVALID_PROGRAM_VALUE,
-  check_in_opens_at_minutes_before_start: (value) =>
-    typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-      ? value
-      : INVALID_PROGRAM_VALUE,
-  check_in_closes_at_minutes_after_end: (value) =>
-    typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-      ? value
-      : INVALID_PROGRAM_VALUE,
-};
-
-function parseProgramFields(
-  body: Record<string, unknown>,
-  required: readonly string[]
-): Record<string, unknown> | null {
-  const fields: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(body)) {
-    const parser = PROGRAM_FIELD_PARSERS[key];
-    if (!parser) {
-      return null;
-    }
-    const parsed = parser(value);
-    if (parsed === INVALID_PROGRAM_VALUE) {
-      return null;
-    }
-    fields[key] = parsed;
-  }
-  return required.every((key) => key in fields) ? fields : null;
 }
 
 function problem(
@@ -516,12 +462,7 @@ export async function handleCreateDepartment(
   }
   if (
     typeof body.lifecycle !== "string" ||
-    !isOneOf(body.lifecycle, [
-      "Draft",
-      "PendingDevelopment",
-      "Active",
-      "Archived",
-    ] as const)
+    !DepartmentLifecycleSchema.safeParse(body.lifecycle).success
   ) {
     return problem(
       422,
@@ -553,13 +494,24 @@ export async function handleCreateDepartment(
         name,
         description:
           typeof body.description === "string" ? body.description : undefined,
-        lifecycle: body.lifecycle,
+        lifecycle: body.lifecycle as
+          | "Draft"
+          | "PendingDevelopment"
+          | "Active"
+          | "Archived",
         display_order:
           typeof body.display_order === "number" ? body.display_order : 0,
       },
       correlationId
     );
-    return jsonResponse(201, { department: row }, requestId);
+    const createdData = { department: row };
+    if (!DepartmentCreateResponseSchema.safeParse(createdData).success) {
+      console.error(
+        `[programs] department create malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(201, createdData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -1224,12 +1176,7 @@ export async function handleUpdateDepartment(
   }
   if (
     body.lifecycle !== undefined &&
-    !isOneOf(body.lifecycle, [
-      "Draft",
-      "PendingDevelopment",
-      "Active",
-      "Archived",
-    ] as const)
+    !DepartmentLifecycleSchema.safeParse(body.lifecycle).success
   ) {
     return problem(
       422,
@@ -1263,14 +1210,14 @@ export async function handleUpdateDepartment(
     update.description = body.description;
   }
   if (
-    isOneOf(body.lifecycle, [
-      "Draft",
-      "PendingDevelopment",
-      "Active",
-      "Archived",
-    ] as const)
+    body.lifecycle !== undefined &&
+    DepartmentLifecycleSchema.safeParse(body.lifecycle).success
   ) {
-    update.lifecycle = body.lifecycle;
+    update.lifecycle = body.lifecycle as
+      | "Draft"
+      | "PendingDevelopment"
+      | "Active"
+      | "Archived";
   }
   if (typeof body.display_order === "number") {
     update.display_order = body.display_order;
@@ -1283,7 +1230,14 @@ export async function handleUpdateDepartment(
       update,
       correlationId
     );
-    return jsonResponse(200, { department: row }, requestId);
+    const updatedData = { department: row };
+    if (!DepartmentUpdateResponseSchema.safeParse(updatedData).success) {
+      console.error(
+        `[programs] department update malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, updatedData, requestId);
   } catch (error) {
     if (
       error instanceof AuthorizationDeniedError ||
@@ -1380,7 +1334,14 @@ export async function handleCreateProgram(
       },
       correlationId
     );
-    return jsonResponse(201, { program: row }, requestId);
+    const createdProgramData = { program: row };
+    if (!ProgramCreateResponseSchema.safeParse(createdProgramData).success) {
+      console.error(
+        `[programs] program create malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(201, createdProgramData, requestId);
   } catch (error) {
     if (
       error instanceof AuthorizationDeniedError ||
@@ -1530,7 +1491,14 @@ export async function handleUpdateProgram(
       update,
       correlationId
     );
-    return jsonResponse(200, { program: row }, requestId);
+    const updatedProgramData = { program: row };
+    if (!ProgramUpdateResponseSchema.safeParse(updatedProgramData).success) {
+      console.error(
+        `[programs] program update malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, updatedProgramData, requestId);
   } catch (error) {
     if (
       error instanceof AuthorizationDeniedError ||
@@ -1630,7 +1598,12 @@ export async function handleSetModule(
       },
       correlationId
     );
-    return jsonResponse(200, { module }, requestId);
+    const moduleData = { module };
+    if (!SetModuleResponseSchema.safeParse(moduleData).success) {
+      console.error(`[programs] module malformed data requestId=${requestId}`);
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, moduleData, requestId);
   } catch (error) {
     if (
       error instanceof AuthorizationDeniedError ||

@@ -12380,3 +12380,94 @@ describe("#656 programs read contracts", () => {
     assert.strictEqual(problem.code, "VALIDATION");
   });
 });
+
+describe("#657 department and program settings mutations", () => {
+  test("department PATCH ignores unknown keys", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const created = await worker.fetch(
+      programsRequest("/api/v1/programs/departments", {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        body: { code: "T657", name: "合約測試部", lifecycle: "Active" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(created.status, 201);
+    const createdBody = (await created.json()) as {
+      data: { department: { department_id: string } };
+    };
+    const departmentId = createdBody.data.department.department_id;
+    const patched = await worker.fetch(
+      programsRequest(`/api/v1/programs/departments/${departmentId}`, {
+        method: "PATCH",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        body: { nickname: "ignored", name: "合約測試部改名" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(patched.status, 200);
+    const patchedBody = (await patched.json()) as {
+      data: { department: { name: string } };
+    };
+    assert.strictEqual(patchedBody.data.department.name, "合約測試部改名");
+  });
+
+  test("program create rejects unknown keys", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const res = await worker.fetch(
+      programsRequest("/api/v1/programs/departments/T657-invalid/programs", {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        body: {
+          name: "x",
+          description: "y",
+          behavior_type: "Recurring",
+          lifecycle: "Active",
+          nickname: "nope",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 422);
+  });
+
+  test("program PATCH rejects empty and unknown-key bodies", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const empty = await worker.fetch(
+      programsRequest("/api/v1/programs/unknown-program", {
+        method: "PATCH",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        body: {},
+      }),
+      testEnv()
+    );
+    assert.strictEqual(empty.status, 422);
+    const unknownKey = await worker.fetch(
+      programsRequest("/api/v1/programs/unknown-program", {
+        method: "PATCH",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        body: { nickname: "x" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(unknownKey.status, 422);
+  });
+
+  test("department create rejects a non-numeric display_order", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const res = await worker.fetch(
+      programsRequest("/api/v1/programs/departments", {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        body: {
+          code: "T657B",
+          name: "x",
+          lifecycle: "Active",
+          display_order: "3",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 422);
+  });
+});

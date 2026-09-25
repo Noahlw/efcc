@@ -286,6 +286,33 @@ clean SHA (#662).
   directory/account/hub/home/app panels 185, typechecks/Knip/
   boundaries clean, feed + browser acceptance pass vs local Worker.
 
+## #657 record — Department/Program settings mutations
+
+- Scope: POST departments, PATCH departments/:id, POST
+  departments/:id/programs, POST modules/:key/:action, PATCH :id.
+  (Reads shipped in #656.)
+- `packages/contracts` `src/programs-settings.ts`: department/program
+  row schemas, settings-view and module-row schemas, the five result
+  envelopes, and an exact port of `parseProgramFields` (known-key
+  rejection, per-field trims/enums/safe-int parsers, required lists).
+  Unknown-key policy mirrored per endpoint: program create/update
+  REJECT unknown fields; department update IGNORES them.
+- Worker: lifecycle enums via shared schemas with identical messages;
+  `parseProgramFields` adopted (local copy deleted); response gates
+  on all five mutations (201s included) via throw-inside-try to the
+  existing 500. Row-vs-view discovery: mutation responses carry
+  plain rows (no capabilities) — gates use row schemas, not views.
+- Browser: all five call sites wired. Post-commit output failure is
+  unresolved through the existing settings recovery
+  (`isRetryableSettingsMutation` already treats MALFORMED_RESPONSE
+  as unknown: ambiguous-transport UI + reload, no auto-replay).
+- TDD: unknown-key/empty-body/type locks; client malformed tests.
+- Proof: contracts 39+34+24+16, workerd programs 170, clients 5,
+  typechecks/Knip/boundaries clean, static export builds, full
+  programs-management browser file 35/35 vs local Worker/disposable
+  +demo D1 (two initial failures were a missing demo seed in the
+  harness, re-proven passing).
+
 ## Proof plan per slice
 
 Worker/D1 contract tests (valid + invalid request/response,

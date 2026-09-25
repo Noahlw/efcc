@@ -9,7 +9,9 @@
 import {
   AccountDirectoryMemberSchema,
   AccountDirectoryViewSchema,
+  DepartmentCreateResponseSchema,
   DepartmentDetailSchema,
+  DepartmentUpdateResponseSchema,
   DepartmentsListSchema,
   ManagementAccessViewSchema,
   ManagementAttentionViewSchema,
@@ -26,9 +28,12 @@ import {
   ParticipantNoticesViewSchema,
   ParticipantProgramDetailSchema,
   ProgramAttendanceArtifactSchema,
+  ProgramCreateResponseSchema,
   ProgramGetSchema,
   ProgramTokenRotationSchema,
+  ProgramUpdateResponseSchema,
   ProgramsListSchema,
+  SetModuleResponseSchema,
   parseProblemDetails,
   parseSuccessEnvelope,
   problemFallback,
@@ -1124,7 +1129,9 @@ export function getParticipantProgramDetail(
 export function createDepartment(
   input: DepartmentInput
 ): Promise<{ department: Department }> {
-  return programsFetch("/api/v1/programs/departments", "POST", input);
+  return programsFetch("/api/v1/programs/departments", "POST", input, {
+    schema: DepartmentCreateResponseSchema,
+  });
 }
 
 /** PATCH /api/v1/programs/departments/:id */
@@ -1137,7 +1144,7 @@ export function updateDepartment(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}`,
     "PATCH",
     patch,
-    { idempotencyKey }
+    { idempotencyKey, schema: DepartmentUpdateResponseSchema }
   );
 }
 
@@ -1230,7 +1237,7 @@ export function createProgram(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/programs`,
     "POST",
     input,
-    { idempotencyKey }
+    { idempotencyKey, schema: ProgramCreateResponseSchema }
   );
 }
 
@@ -1244,7 +1251,7 @@ export function updateProgram(
     `/api/v1/programs/${encodeURIComponent(programId)}`,
     "PATCH",
     patch,
-    { idempotencyKey }
+    { idempotencyKey, schema: ProgramUpdateResponseSchema }
   );
 }
 
@@ -1338,7 +1345,7 @@ export function setDepartmentModule(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/modules/${encodeURIComponent(moduleKey)}/${enabled ? "enable" : "disable"}`,
     "POST",
     undefined,
-    { idempotencyKey }
+    { idempotencyKey, schema: SetModuleResponseSchema }
   );
 }
 
