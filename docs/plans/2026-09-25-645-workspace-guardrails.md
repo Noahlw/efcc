@@ -112,3 +112,23 @@ Mechanical updates (all `web/` → `apps/web/` live refs):
 - workerd `worker.auth.test.ts`: 47 pass (moved `wrangler.jsonc` resolves).
 - Note: port 8787 is held by an unrelated pre-existing python process; smoke
   used :18787 instead and left the holder untouched.
+
+## #650 — Trusted Knip reports and evidence-based cleanup ledger
+
+Pinned dev-only `knip@6.38.0` (exact). Context7 quota still exhausted, so
+knip.dev official docs are the cited fallback. `pnpm knip` (default, gated
+in `pnpm verify` outside pre-commit) and `pnpm knip:production` (advisory)
+are separate commands; `treatConfigHintsAsErrors` makes any new hint fail.
+
+- Resolved: dynamic-config load blockers (env shims in scripts;
+  `main.ts` `import.meta.dirname` fallback — Node behavior unchanged),
+  workspace/entry/project design per knip.dev, all configuration hints.
+- Empirical scope finding: user `!` production entries only register
+  outside Next/Wrangler plugin-claimed paths, so production stays advisory
+  and default mode is the enforcement ratchet. No blanket `ignoreIssues`.
+- Ledger `docs/plans/2026-09-25-650-knip-cleanup-ledger.md` (660 lines):
+  259 export findings triaged (157 un-export, 65 barrel-line, 34 code,
+  3 catalog re-export deletes), 8 file deletes (4 ui primitives,
+  programs-manager, 2 qa runners, screen-foundations), 1 dep delete
+  (shadcn). Keeps proven by entrypoint/import/CSS/config/builtin evidence.
+  Deletions execute in #652; the gate turns green there.
