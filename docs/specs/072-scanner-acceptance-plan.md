@@ -1,6 +1,8 @@
 # F5 Scanner Acceptance Plan
 
-**Status:** Proposed / blocked on manual `Attendances` setup and fresh `/exec` proof
+> Historical / retired plan (2026-09-25). This proposal targets the Apps Script `/exec`, Google Sheets, and external HTTPS scanner flow, which are no longer current product paths. EFCC's current scanner is served by the Worker-backed app and uses the in-app camera/decoder path; see [ADR-0028](../adr/0028-public-guest-check-in-entry.md), [Spec 081](081-qr-attendance-and-guest-check-in.md), and the [repo-wide organization plan](../plans/2026-09-23-repo-wide-organization.md). Keep this document as historical design evidence; do not provision the retired Apps Script or `/exec` acceptance target.
+
+**Status:** Historical / retired; no active Apps Script scanner acceptance remains
 **Parent:** #83, #96. **Spec:** #93. **Architecture:** ADR-0015, ADR-0016
 **Date:** 2026-08-01
 
