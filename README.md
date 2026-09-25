@@ -15,7 +15,7 @@ The current product boundary is a static Next.js export served by a Cloudflare W
 | Scanner | `apps/web/app/scanner/` and `apps/web/lib/use-qr-camera.ts` | In-app camera flow with the supported barcode detector and ZXing fallback |
 | Internal presentation | Storybook | Local design review and isolated UI states; it is not a production runtime |
 
-The application does not use Next.js SSR in production. `apps/web/next.config.ts` uses `output: "export"`; `apps/web/wrangler.jsonc` serves the resulting static directory and sends `/api/*` to the Worker. The repository keeps D1 migrations in `web/migrations/` and does not add a second migration ledger for the bounded Drizzle trial.
+The application does not use Next.js SSR in production. `apps/web/next.config.ts` uses `output: "export"`; `apps/web/wrangler.jsonc` serves the resulting static directory and sends `/api/*` to the Worker. The repository keeps D1 migrations in `apps/web/migrations/` and does not add a second migration ledger for the bounded Drizzle trial.
 
 Apps Script, Google Sheets, the old `/api/v1/rpc` bridge, and the external scanner opener are retired product paths. The current cleanup removes the remaining Users/PIN import and forced-upgrade path because the project has no legacy accounts to migrate. The Auth provider/library replacement is a separate deferred decision under [#639](https://github.com/Noahlw/efcc/issues/639); the editable scoped Role Definition and Grant model remains a product concern.
 

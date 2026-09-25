@@ -44,7 +44,6 @@ export default defineConfig({
       files: [
         "apps/web/lib/programs/program-workspace.tsx",
         "apps/web/lib/programs/program-settings.tsx",
-        "apps/web/lib/programs/programs-manager.tsx",
         "apps/web/lib/programs/management-directory.tsx",
         "apps/web/lib/programs/department-settings-panel.tsx",
         "apps/web/lib/self-check-in-panel.tsx",

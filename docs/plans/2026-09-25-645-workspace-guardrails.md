@@ -183,7 +183,39 @@ TS18003; v18 schema has no alias-capable resolve option), command
   0 of 518 instances sit on lines changed by this stack (verified by
   intersection). Cause: the `apps/web` git pathspec fix (required; the
   old `web` pathspec matched nothing post-move, so the ratchet was
-  blind) exposes the reorganization-stack diff (merge-base b18828d4,
+  blind)   exposes the reorganization-stack diff (merge-base b18828d4,
   ~195k added lines) to the incremental ratchet, which flags
   pre-existing caller overrides. Fixing 259 styling overrides is out of
   scope; #653 surfaces it with this evidence.
+
+## #653 — Qualification and review
+
+- Parent revalidated: PR #644 head still
+  `a3da16daa8ce3ddb79a9fb402f58e4a4fd8855d7` (OPEN, base main); no
+  rebase needed. Branch stays `refactor/workspace-organization` per
+  owner direction (tickets named `codex/645-workspace-guardrails`).
+- Exact-SHA evidence on `2d00826` (plus review fixes): frozen install,
+  `verify:fast`, production build, Knip exit 0, boundaries 0-new,
+  workerd 664, components 1184, identity 99, t07 63/64 (one preserved
+  2099 failure), scope 13, canary 5, runners 10, promotion 31,
+  storybook index 95/36/7/14, `verify:programs` functional-passed
+  (browser/home/responsive/feed), shell-responsive 92, shell-geometry
+  35, role-hierarchy-geometry 49, governance unit + fast green.
+- Full `pnpm verify` chain halts at `test:governance` full/release on
+  the known 259-violation boundary above; all later seams qualified
+  individually with identical results.
+- Ratchet demo (ticket evidence): temporary `app/page.tsx → worker.ts`
+  import failed the gate with exactly `no-browser-to-worker` (exit 1,
+  37 known ignored), then removed; gate green again.
+- Code review (repo skill, Standards + Spec axes): fixed README
+  `web/migrations` leftover and the oxlint override for deleted
+  `programs-manager.tsx`. Dispositioned: wrong-branch (owner-directed),
+  no-PR-yet (awaiting owner push approval), ratchet-demo (recorded
+  here), production-advisory (reasoned reading, documented), export
+  hygiene (is the #650/#652 ledger execution, not creep), baseline
+  (entries verified benign one by one; new specifiers still fail),
+  T05-ledgers (live gate inputs, not snapshots), census reflow (hook
+  formatter), permissions-panel overrides (pre-existing, preserved).
+- Limits: owner spot-check, independent review, device/AT checks, and
+  deployment evidence are separate seams (TESTING.md). No merge,
+  deploy, remote D1, or credential actions taken.
