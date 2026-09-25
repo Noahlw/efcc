@@ -43,6 +43,19 @@ import {
   parseProgramFields,
 } from "@efcc/contracts";
 import {
+  ApprovalRunActionResponseSchema,
+  ApprovalRunResponseSchema,
+  ApprovalRunStartBodySchema,
+  ApprovalRunStartResponseSchema,
+  ApprovalRunsSchema,
+  AssistedEnrollResponseSchema,
+  CancelEnrollmentResponseSchema,
+  EnrollmentDecisionResponseSchema,
+  EnrollmentRequestCreateResponseSchema,
+  EnrollmentRequestsSchema,
+  EnrollmentSnapshotSchema,
+  EnrollmentWithdrawResponseSchema,
+  EnrollmentsSchema,
   EventCreateResponseSchema,
   EventTypeSchema,
   EventDetailResponseSchema,
@@ -57,6 +70,11 @@ import {
   ScheduleRuleCreateResponseSchema,
   ScheduleRuleResponseSchema,
   ScheduleRulesSchema,
+  parseAssistedMemberId,
+  parseCancelReason,
+  parseDecideAction,
+  parseDecideNote,
+  parseDecideRequestVersion,
   parseExceptionBody,
   parseRuleBody,
   parseRulePatch,
@@ -2665,7 +2683,14 @@ export async function handleCreateEnrollmentRequest(
       programId,
       correlationId
     );
-    return jsonResponse(201, { request: row }, requestId);
+    const requestData = { request: row };
+    if (!EnrollmentRequestCreateResponseSchema.safeParse(requestData).success) {
+      console.error(
+        `[programs] enrollment submit malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(201, requestData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2694,7 +2719,14 @@ export async function handleListEnrollmentRequests(
   if (rows === null) {
     return notFound(requestId, "Unknown program.");
   }
-  return jsonResponse(200, { requests: rows }, requestId);
+  const requestsData = { requests: rows };
+  if (!EnrollmentRequestsSchema.safeParse(requestsData).success) {
+    console.error(
+      `[programs] enrollment requests malformed data requestId=${requestId}`
+    );
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, requestsData, requestId);
 }
 /** GET /api/v1/programs/:programId/enrollment-snapshot */
 export async function handleListEnrollmentSnapshot(
@@ -2715,6 +2747,12 @@ export async function handleListEnrollmentSnapshot(
   if (snapshot === null) {
     return notFound(requestId, "Unknown program.");
   }
+  if (!EnrollmentSnapshotSchema.safeParse(snapshot).success) {
+    console.error(
+      `[programs] enrollment snapshot malformed data requestId=${requestId}`
+    );
+    throw new Error("programs contract violation");
+  }
   return jsonResponse(200, snapshot, requestId);
 }
 
@@ -2731,11 +2769,8 @@ export async function handleStartEnrollmentApprovalRun(
     return auth;
   }
   const body = await parseJson<{ request_ids?: unknown }>(request);
-  if (
-    body === null ||
-    !Array.isArray(body.request_ids) ||
-    !body.request_ids.every((id): id is string => typeof id === "string")
-  ) {
+  const parsedStart = ApprovalRunStartBodySchema.safeParse(body);
+  if (!parsedStart.success) {
     return validation(requestId, "request_ids must be an array of strings.");
   }
   const { workspace } = await getModule(env);
@@ -2746,9 +2781,15 @@ export async function handleStartEnrollmentApprovalRun(
     const result = await workspace.startEnrollmentApprovalRun(
       authorizationContextFor(auth.account),
       programId,
-      body.request_ids,
+      parsedStart.data.request_ids,
       correlationId
     );
+    if (!ApprovalRunStartResponseSchema.safeParse(result).success) {
+      console.error(
+        `[programs] approval run start malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
     return jsonResponse(201, result, requestId);
   } catch (error) {
     const mapped =
@@ -2781,7 +2822,14 @@ export async function handleListEnrollmentApprovalRuns(
       authorizationContextFor(auth.account),
       programId
     );
-    return jsonResponse(200, { runs }, requestId);
+    const runsData = { runs };
+    if (!ApprovalRunsSchema.safeParse(runsData).success) {
+      console.error(
+        `[programs] approval runs malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, runsData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2817,9 +2865,17 @@ async function handleEnrollmentApprovalRunAction(
         runId,
         correlationId
       );
-      return run
-        ? jsonResponse(200, { run }, requestId)
-        : notFound(requestId, "Unknown Enrollment Approval Run.");
+      if (!run) {
+        return notFound(requestId, "Unknown Enrollment Approval Run.");
+      }
+      const reconcileData = { run };
+      if (!ApprovalRunResponseSchema.safeParse(reconcileData).success) {
+        console.error(
+          `[programs] approval reconcile malformed data requestId=${requestId}`
+        );
+        throw new Error("programs contract violation");
+      }
+      return jsonResponse(200, reconcileData, requestId);
     }
     if (action === "continue") {
       const result = await workspace.continueEnrollmentApprovalRun(
@@ -2828,9 +2884,16 @@ async function handleEnrollmentApprovalRunAction(
         runId,
         correlationId
       );
-      return result
-        ? jsonResponse(200, result, requestId)
-        : notFound(requestId, "Unknown Enrollment Approval Run.");
+      if (!result) {
+        return notFound(requestId, "Unknown Enrollment Approval Run.");
+      }
+      if (!ApprovalRunActionResponseSchema.safeParse(result).success) {
+        console.error(
+          `[programs] approval continue malformed data requestId=${requestId}`
+        );
+        throw new Error("programs contract violation");
+      }
+      return jsonResponse(200, result, requestId);
     }
     const run = await workspace.cancelEnrollmentApprovalRun(
       ctx,
@@ -2838,9 +2901,17 @@ async function handleEnrollmentApprovalRunAction(
       runId,
       correlationId
     );
-    return run
-      ? jsonResponse(200, { run }, requestId)
-      : notFound(requestId, "Unknown Enrollment Approval Run.");
+    if (!run) {
+      return notFound(requestId, "Unknown Enrollment Approval Run.");
+    }
+    const cancelRunData = { run };
+    if (!ApprovalRunResponseSchema.safeParse(cancelRunData).success) {
+      console.error(
+        `[programs] approval cancel malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, cancelRunData, requestId);
   } catch (error) {
     const mapped =
       mapEnrollmentApprovalRunError(error, requestId) ??
@@ -2921,22 +2992,15 @@ export async function handleDecideEnrollmentRequest(
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
   }
-  if (body.action !== "Approved" && body.action !== "Rejected") {
+  const decideAction = parseDecideAction(body.action);
+  if (decideAction === null) {
     return validation(requestId, "action must be Approved or Rejected.");
   }
-  const requestVersion =
-    body.request_version === undefined || body.request_version === null
-      ? undefined
-      : body.request_version;
-  if (
-    requestVersion !== undefined &&
-    (typeof requestVersion !== "number" ||
-      !Number.isSafeInteger(requestVersion) ||
-      requestVersion < 1)
-  ) {
+  const requestVersion = parseDecideRequestVersion(body.request_version);
+  if (requestVersion === "invalid") {
     return validation(requestId, "request_version must be a positive integer.");
   }
-  const note = typeof body.note === "string" ? body.note.trim() : null;
+  const note = parseDecideNote(body.note);
   const { workspace } = await getModule(env);
   const existing = await workspace.getEnrollmentRequest(
     authorizationContextFor(auth.account),
@@ -2954,12 +3018,16 @@ export async function handleDecideEnrollmentRequest(
       programId,
       enrollmentRequestId,
       {
-        action: body.action,
+        action: decideAction,
         note,
         expectedRequestVersion: requestVersion,
       },
       correlationId
     );
+    if (!EnrollmentDecisionResponseSchema.safeParse(result).success) {
+      console.error(`[programs] decide malformed data requestId=${requestId}`);
+      throw new Error("programs contract violation");
+    }
     return jsonResponse(200, result, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
@@ -3001,7 +3069,14 @@ export async function handleWithdrawEnrollmentRequest(
       enrollmentRequestId,
       correlationId
     );
-    return jsonResponse(200, { request: row }, requestId);
+    const withdrawData = { request: row };
+    if (!EnrollmentWithdrawResponseSchema.safeParse(withdrawData).success) {
+      console.error(
+        `[programs] withdraw malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, withdrawData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -3027,8 +3102,7 @@ export async function handleAssistedEnroll(
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
   }
-  const memberUserId =
-    typeof body.member_user_id === "string" ? body.member_user_id : "";
+  const memberUserId = parseAssistedMemberId(body.member_user_id);
   if (!memberUserId) {
     return validation(requestId, "member_user_id is required.");
   }
@@ -3043,7 +3117,14 @@ export async function handleAssistedEnroll(
       { memberUserId },
       correlationId
     );
-    return jsonResponse(201, { enrollment: row }, requestId);
+    const assistedData = { enrollment: row };
+    if (!AssistedEnrollResponseSchema.safeParse(assistedData).success) {
+      console.error(
+        `[programs] assisted enroll malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(201, assistedData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -3072,7 +3153,14 @@ export async function handleListEnrollments(
   if (rows === null) {
     return notFound(requestId, "Unknown program.");
   }
-  return jsonResponse(200, { enrollments: rows }, requestId);
+  const enrollmentsData = { enrollments: rows };
+  if (!EnrollmentsSchema.safeParse(enrollmentsData).success) {
+    console.error(
+      `[programs] enrollments malformed data requestId=${requestId}`
+    );
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, enrollmentsData, requestId);
 }
 
 /** POST /api/v1/programs/:programId/enrollments/:enrollmentId/cancel */
@@ -3092,8 +3180,8 @@ export async function handleCancelEnrollment(
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
   }
-  const reason = typeof body.reason === "string" ? body.reason.trim() : null;
-  if (reason !== null && reason.length > 500) {
+  const reason = parseCancelReason(body.reason);
+  if (reason === "invalid") {
     return validation(requestId, "reason must be 500 characters or fewer.");
   }
   const { workspace } = await getModule(env);
@@ -3115,7 +3203,14 @@ export async function handleCancelEnrollment(
       correlationId,
       reason
     );
-    return jsonResponse(200, { enrollment: row }, requestId);
+    const cancelData = { enrollment: row };
+    if (!CancelEnrollmentResponseSchema.safeParse(cancelData).success) {
+      console.error(
+        `[programs] cancel enrollment malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, cancelData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {

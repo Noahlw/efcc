@@ -12603,3 +12603,118 @@ describe("#658 schedule and event request policies", () => {
     assert.strictEqual(res.status, 404);
   });
 });
+
+describe("#659 enrollment request policies", () => {
+  test("approval-run start rejects non-string request_ids", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    for (const body of [{ request_ids: "x" }, { request_ids: [42] }]) {
+      const res = await worker.fetch(
+        programsRequest(
+          "/api/v1/programs/unknown-program/enrollment-approval-runs",
+          {
+            method: "POST",
+            headers: {
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+              "Content-Type": "application/json",
+            },
+            body,
+          }
+        ),
+        testEnv()
+      );
+      assert.strictEqual(res.status, 422);
+    }
+  });
+
+  test("decide rejects bad action and version", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const stamp = Date.now();
+    const department = await createDepartment(adminAccess, {
+      code: `T659-${stamp}`,
+      name: "合約報名部",
+    });
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: `合約報名課程-${stamp}`,
+      behavior_type: "OneOff",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    const submitted = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/enrollment-requests`,
+        {
+          method: "POST",
+          headers: {
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {},
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(submitted.status, 201);
+    const submittedBody = (await submitted.json()) as {
+      data: { request: { request_id: string } };
+    };
+    const requestId = submittedBody.data.request.request_id;
+    for (const body of [
+      { action: "Maybe" },
+      { action: "Approved", request_version: 0 },
+      { action: "Approved", request_version: "3" },
+    ]) {
+      const res = await worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${program.program_id}/enrollment-requests/${requestId}/decision`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+              "Content-Type": "application/json",
+            },
+            body,
+          }
+        ),
+        testEnv()
+      );
+      assert.strictEqual(res.status, 422);
+    }
+  });
+
+  test("assisted enroll rejects a non-string member id", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const res = await worker.fetch(
+      programsRequest("/api/v1/programs/unknown-program/enrollments", {
+        method: "POST",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { member_user_id: 42 },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 422);
+  });
+
+  test("cancel enrollment rejects an overlong reason", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const res = await worker.fetch(
+      programsRequest(
+        "/api/v1/programs/unknown-program/enrollments/unknown-enrollment/cancel",
+        {
+          method: "POST",
+          headers: {
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "x".repeat(501) },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 422);
+  });
+});

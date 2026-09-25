@@ -341,6 +341,30 @@ clean SHA (#662).
   clean, static export builds, full programs-management browser
   file 35/35 vs local Worker/disposable+demo D1.
 
+## #659 record — Enrollment/approval-run contracts
+
+- `packages/contracts` `src/programs-enrollment.ts`: request/decide/
+  withdraw/enroll/list/cancel row shapes; run/item/authority shapes;
+  start/decide/assist/cancel predicates with exact semantics
+  (assisted id has no trim; version null-pass; reason 500-cap).
+  Approval unknown-outcome/idempotency/no-duplicate semantics stay
+  in the R44-tested seams; malformed acks stay unresolved via the
+  existing unknown-outcome classification (no blind replay).
+- Worker: shared start/decide/assist/cancel predicates with
+  identical messages; response gates on all 12 routes via
+  throw-inside-try to the existing 500.
+- Browser: all 13 call sites wired (incl. a shared
+  ApprovalRunResponse for reconcile/cancel).
+- Fixture corrections (mock-only): decision mocks carry the
+  always-sent `enrollment` key (null when no enrollment).
+- TDD: shape-422 locks (array/string/version/reason), client
+  malformed tests. Member submit needs Active+Listed+MemberRequest
+  with modules (helper-encoded; recorded, unchanged).
+- Proof: contracts 57+51+39+34+24+16, workerd programs 183,
+  clients 7, enrollment panels 61, t07 64/64, typechecks/Knip/
+  boundaries clean, static export builds, participant browser file
+  12/12 vs local Worker/disposable+demo D1.
+
 ## Proof plan per slice
 
 Worker/D1 contract tests (valid + invalid request/response,

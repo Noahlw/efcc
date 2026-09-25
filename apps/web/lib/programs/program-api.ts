@@ -9,7 +9,19 @@
 import {
   AccountDirectoryMemberSchema,
   AccountDirectoryViewSchema,
+  ApprovalRunActionResponseSchema,
+  ApprovalRunResponseSchema,
+  ApprovalRunStartResponseSchema,
+  ApprovalRunsSchema,
+  AssistedEnrollResponseSchema,
+  CancelEnrollmentResponseSchema,
   DepartmentCreateResponseSchema,
+  EnrollmentDecisionResponseSchema,
+  EnrollmentRequestCreateResponseSchema,
+  EnrollmentRequestsSchema,
+  EnrollmentSnapshotSchema,
+  EnrollmentWithdrawResponseSchema,
+  EnrollmentsSchema,
   EventCreateResponseSchema,
   EventDetailResponseSchema,
   EventResponseSchema,
@@ -802,7 +814,7 @@ export function submitEnrollmentRequest(
     `/api/v1/programs/${programId}/enrollment-requests`,
     "POST",
     {},
-    { idempotencyKey }
+    { idempotencyKey, schema: EnrollmentRequestCreateResponseSchema }
   );
 }
 /** GET /api/v1/programs/:programId/enrollment-requests */
@@ -811,7 +823,9 @@ export function listEnrollmentRequests(
 ): Promise<{ requests: EnrollmentRequest[] }> {
   return programsFetch(
     `/api/v1/programs/${programId}/enrollment-requests`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: EnrollmentRequestsSchema }
   );
 }
 
@@ -821,7 +835,9 @@ export function listEnrollmentSnapshot(
 ): Promise<EnrollmentSnapshot> {
   return programsFetch(
     `/api/v1/programs/${programId}/enrollment-snapshot`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: EnrollmentSnapshotSchema }
   );
 }
 
@@ -835,7 +851,7 @@ export function startEnrollmentApprovalRun(
     `/api/v1/programs/${programId}/enrollment-approval-runs`,
     "POST",
     { request_ids: requestIds },
-    { idempotencyKey }
+    { idempotencyKey, schema: ApprovalRunStartResponseSchema }
   );
 }
 
@@ -847,7 +863,7 @@ export function listEnrollmentApprovalRuns(
     `/api/v1/programs/${programId}/enrollment-approval-runs`,
     "GET",
     undefined,
-    { cache: "no-store" }
+    { cache: "no-store", schema: ApprovalRunsSchema }
   );
 }
 
@@ -861,7 +877,7 @@ export function reconcileEnrollmentApprovalRun(
     `/api/v1/programs/${programId}/enrollment-approval-runs/${runId}/reconcile`,
     "POST",
     {},
-    { idempotencyKey }
+    { idempotencyKey, schema: ApprovalRunResponseSchema }
   );
 }
 
@@ -878,7 +894,7 @@ export function continueEnrollmentApprovalRun(
     `/api/v1/programs/${programId}/enrollment-approval-runs/${runId}/continue`,
     "POST",
     {},
-    { idempotencyKey }
+    { idempotencyKey, schema: ApprovalRunActionResponseSchema }
   );
 }
 
@@ -892,7 +908,7 @@ export function cancelEnrollmentApprovalRun(
     `/api/v1/programs/${programId}/enrollment-approval-runs/${runId}/cancel`,
     "POST",
     {},
-    { idempotencyKey }
+    { idempotencyKey, schema: ApprovalRunResponseSchema }
   );
 }
 
@@ -916,7 +932,7 @@ export function decideEnrollmentRequest(
       note: note?.trim() ? note.trim() : null,
       request_version: requestVersion ?? null,
     },
-    { idempotencyKey }
+    { idempotencyKey, schema: EnrollmentDecisionResponseSchema }
   );
 }
 
@@ -930,7 +946,7 @@ export function withdrawEnrollmentRequest(
     `/api/v1/programs/${programId}/enrollment-requests/${requestId}/withdraw`,
     "POST",
     {},
-    { idempotencyKey }
+    { idempotencyKey, schema: EnrollmentWithdrawResponseSchema }
   );
 }
 
@@ -939,16 +955,24 @@ export function assistedEnroll(
   programId: string,
   memberUserId: string
 ): Promise<{ enrollment: Enrollment }> {
-  return programsFetch(`/api/v1/programs/${programId}/enrollments`, "POST", {
-    member_user_id: memberUserId,
-  });
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollments`,
+    "POST",
+    { member_user_id: memberUserId },
+    { schema: AssistedEnrollResponseSchema }
+  );
 }
 
 /** GET /api/v1/programs/:programId/enrollments */
 export function listEnrollments(
   programId: string
 ): Promise<{ enrollments: Enrollment[] }> {
-  return programsFetch(`/api/v1/programs/${programId}/enrollments`, "GET");
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollments`,
+    "GET",
+    undefined,
+    { schema: EnrollmentsSchema }
+  );
 }
 
 export function cancelEnrollment(
@@ -961,7 +985,7 @@ export function cancelEnrollment(
     `/api/v1/programs/${programId}/enrollments/${enrollmentId}/cancel`,
     "POST",
     { reason: cancellationReason?.trim() || null },
-    { idempotencyKey }
+    { idempotencyKey, schema: CancelEnrollmentResponseSchema }
   );
 }
 
