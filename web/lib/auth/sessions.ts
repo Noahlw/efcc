@@ -3,12 +3,10 @@
  *
  * Session architecture per ADR-0020 §2:
  *   * A short-lived (~15 min) HMAC-signed access token is issued on login /
- *     refresh and verified STATELESSLY on ordinary protected requests — zero
- *     D1 reads on the common path.
- *   * The D1 `sessions` row is read only on token refresh or explicit
- *     revocation (logout, credential change, admin suspend). It uses a 90-day
- *     idle expiry, touched on each successful refresh, and supports multiple
- *     concurrent devices per member.
+ *     refresh. Protected requests verify its signature before one D1 lookup
+ *     joins the live session and account.
+ *   * The D1 `sessions` row uses a 90-day idle expiry, touched on each
+ *     successful refresh, and supports multiple concurrent devices per member.
  *
  * Access token format: `payload.signature` where payload is base64url JSON
  * `{ sid, uid, iat, exp }` and signature is HMAC-SHA256(payload, secret). The
@@ -20,8 +18,9 @@
  * session identity.
  */
 
-import type { AccountRow } from "./accounts";
+import type { AccountRow, AccountStatus } from "./accounts";
 import { findAccountByUserId } from "./accounts";
+import { readAuthCookies } from "./cookies";
 import {
   ACCESS_TOKEN_TTL_MS,
   REFRESH_IDLE_TTL_MS,
@@ -63,6 +62,18 @@ export class AuthError extends Error {
     this.code = code;
   }
 }
+
+type RequestSessionRow = Omit<AccountRow, "account_status"> & {
+  account_status: AccountStatus | null;
+  session_revoked_at: number | null;
+  session_expires_at: number;
+};
+
+export type RequestSessionResolution =
+  | { status: "missing" }
+  | { status: "invalid" }
+  | { status: "unknown_account" }
+  | { status: "authenticated"; claims: AccessTokenClaims; account: AccountRow };
 
 function b64urlEncode(bytes: Uint8Array): string {
   let bin = "";
@@ -116,8 +127,8 @@ export async function signAccessToken(
 }
 
 /**
- * Verify a signed access token STATELESSLY (no D1 read). Returns the claims
- * on success, or null for malformed / tampered / expired tokens (fail closed).
+ * Verify the HMAC and token claims without a D1 read. Protected requests use
+ * `resolveRequestSession` after this cryptographic check.
  */
 export async function verifyAccessToken(
   secret: string,
@@ -157,6 +168,51 @@ export async function verifyAccessToken(
     return null;
   }
   return claims;
+}
+
+/** Verify the access cookie, then confirm its live D1 session and account. */
+export async function resolveRequestSession(
+  request: Request,
+  db: D1Database,
+  secret: string,
+  now: number = Date.now()
+): Promise<RequestSessionResolution> {
+  const { accessToken } = readAuthCookies(request.headers);
+  if (!accessToken) return { status: "missing" };
+
+  const claims = await verifyAccessToken(secret, accessToken, now);
+  if (!claims) return { status: "invalid" };
+
+  const row = await db
+    .prepare(
+      `SELECT s.revoked_at AS session_revoked_at,
+              s.expires_at AS session_expires_at,
+              a.*
+         FROM sessions s
+         LEFT JOIN accounts a ON a.user_id = s.user_id
+        WHERE s.session_id = ? AND s.user_id = ?
+        LIMIT 1`
+    )
+    .bind(claims.sid, claims.uid)
+    .first<RequestSessionRow>();
+  if (!row) return { status: "invalid" };
+
+  const {
+    session_revoked_at: revokedAt,
+    session_expires_at: sessionExpiresAt,
+    account_status: accountStatus,
+    ...account
+  } = row;
+  if (revokedAt !== null || now >= sessionExpiresAt) {
+    return { status: "invalid" };
+  }
+  if (accountStatus === null) return { status: "unknown_account" };
+
+  return {
+    status: "authenticated",
+    claims,
+    account: { ...account, account_status: accountStatus },
+  };
 }
 
 /** Assert an account may hold a session: Active. */
@@ -338,8 +394,7 @@ export async function revokeSession(
 
 /**
  * Revoke every active session for a member (credential change / admin
- * suspend). Outstanding access tokens keep working only until their remaining
- * lifetime (≤ ~15 min) and can never be silently renewed.
+ * suspend). The next protected request rejects every token bound to them.
  */
 export async function revokeAllUserSessions(
   db: D1Database,

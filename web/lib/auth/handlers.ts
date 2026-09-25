@@ -61,7 +61,7 @@ import {
   issueSession,
   refreshSession,
   revokeSession,
-  verifyAccessToken,
+  resolveRequestSession,
 } from "./sessions";
 
 export interface AuthEnv {
@@ -241,8 +241,12 @@ async function resolveAuthenticatedAccount(
   env: AuthEnv,
   requestId: string
 ): Promise<{ account: AccountRow } | Response> {
-  const access = readCookie(request.headers, ACCESS_COOKIE_NAME);
-  if (!access) {
+  const resolved = await resolveRequestSession(
+    request,
+    env.DB,
+    env.EFCC_ACCESS_TOKEN_SECRET
+  );
+  if (resolved.status === "missing") {
     return problem(
       401,
       "AUTH_REQUIRED",
@@ -251,8 +255,7 @@ async function resolveAuthenticatedAccount(
       requestId
     );
   }
-  const claims = await verifyAccessToken(env.EFCC_ACCESS_TOKEN_SECRET, access);
-  if (!claims) {
+  if (resolved.status === "invalid") {
     return problem(
       401,
       "AUTH_REQUIRED",
@@ -261,8 +264,7 @@ async function resolveAuthenticatedAccount(
       requestId
     );
   }
-  const account = await findAccountByUserId(env.DB, claims.uid);
-  if (!account) {
+  if (resolved.status === "unknown_account") {
     return problem(
       401,
       "AUTH_REQUIRED",
@@ -271,7 +273,7 @@ async function resolveAuthenticatedAccount(
       requestId
     );
   }
-  return { account };
+  return { account: resolved.account };
 }
 
 /** Resolve an authenticated caller through the D1 Role-to-Capability policy. */
@@ -596,7 +598,7 @@ export async function handleLogout(
 /**
  * GET /api/v1/auth/me (preserved from AUTH-02 #160)
  *
- * Reads the access cookie, verifies statelessly, and returns the public user
+ * Validates the access cookie's live D1 session and returns the public user
  * alongside server-authorized sections and stable navigation metadata.
  */
 export async function handleMe(

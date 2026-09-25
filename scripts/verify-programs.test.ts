@@ -74,23 +74,35 @@ function syntheticPlaywrightReport(
 describe("T05.7 Programs promotion gate", () => {
   test("aggregates the independent layers in dependency order", () => {
     expect(PROMOTION_STAGES.map(({ name }) => name)).toStrictEqual([
-      "worker-contract",
       "browser-acceptance",
       "home-browser-acceptance",
       "responsive-matrix",
       "feed-browser-acceptance",
-      "non-browser-precommit",
     ]);
     expect(
       PROMOTION_STAGES.map(({ name, expectedTests }) => [name, expectedTests])
     ).toStrictEqual([
-      ["worker-contract", undefined],
       ["browser-acceptance", 70],
       ["home-browser-acceptance", 5],
       ["responsive-matrix", 21],
       ["feed-browser-acceptance", 7],
-      ["non-browser-precommit", undefined],
     ]);
+  });
+
+  test("root aggregate owns shared Worker and pre-commit checks once", () => {
+    const rootPackage = JSON.parse(
+      readFileSync(path.join(repoRoot, "package.json"), "utf-8")
+    ) as { scripts: Record<string, string> };
+    const rootStages = rootPackage.scripts.verify.split(" && ");
+
+    expect(
+      rootStages.filter((stage) => stage === "pnpm test:workerd")
+    ).toHaveLength(1);
+    expect(
+      rootStages.filter((stage) => stage === "pnpm verify:precommit")
+    ).toHaveLength(1);
+    expect(rootStages).not.toContain("pnpm verify:identity");
+    expect(rootStages).not.toContain("pnpm test:programs:contract");
   });
 
   test("requires all five exact PUI-05 Home mapping rows", () => {
@@ -871,18 +883,15 @@ describe("T05.7 Programs promotion gate", () => {
   test("pins each stage artifact to the current promotion run", () => {
     const artifactDirectory = "/tmp/t05-promotion/run-1";
     expect(stageArtifactPath(PROMOTION_STAGES[0], artifactDirectory)).toBe(
-      "/tmp/t05-promotion/run-1/worker-contract.log"
-    );
-    expect(stageArtifactPath(PROMOTION_STAGES[1], artifactDirectory)).toBe(
       "/tmp/t05-promotion/run-1/browser-results.json"
     );
-    expect(stageArtifactPath(PROMOTION_STAGES[2], artifactDirectory)).toBe(
+    expect(stageArtifactPath(PROMOTION_STAGES[1], artifactDirectory)).toBe(
       "/tmp/t05-promotion/run-1/home-results.json"
     );
-    expect(stageArtifactPath(PROMOTION_STAGES[3], artifactDirectory)).toBe(
+    expect(stageArtifactPath(PROMOTION_STAGES[2], artifactDirectory)).toBe(
       "/tmp/t05-promotion/run-1/responsive-results.json"
     );
-    expect(stageArtifactPath(PROMOTION_STAGES[4], artifactDirectory)).toBe(
+    expect(stageArtifactPath(PROMOTION_STAGES[3], artifactDirectory)).toBe(
       "/tmp/t05-promotion/run-1/feed-results.json"
     );
   });

@@ -79,6 +79,15 @@ function authProblemResponse(
   );
 }
 
+function authNotConfiguredResponse(): Response {
+  return authProblemResponse(
+    503,
+    "AUTH_NOT_CONFIGURED",
+    "Service unavailable",
+    "Auth signing secret is not configured."
+  );
+}
+
 /**
  * Decode a percent-encoded path segment without throwing on malformed
  * encoding (e.g. a lone `%` or a truncated `%E4`). Returns null for
@@ -172,12 +181,7 @@ export default {
             return guard;
           }
           if (!env.EFCC_ACCESS_TOKEN_SECRET) {
-            return authProblemResponse(
-              503,
-              "AUTH_NOT_CONFIGURED",
-              "Service unavailable",
-              "Auth signing secret is not configured."
-            );
+            return authNotConfiguredResponse();
           }
           const authEnv = {
             DB: env.DB,
@@ -304,12 +308,7 @@ export default {
     if (url.pathname.startsWith("/api/v1/programs/")) {
       try {
         if (!env.EFCC_ACCESS_TOKEN_SECRET) {
-          return authProblemResponse(
-            503,
-            "AUTH_NOT_CONFIGURED",
-            "Service unavailable",
-            "Auth signing secret is not configured."
-          );
+          return authNotConfiguredResponse();
         }
         const programEnv = {
           DB: env.DB,
@@ -857,12 +856,7 @@ export default {
 
     if (url.pathname.startsWith("/api/v1/attendance")) {
       if (!env.EFCC_ACCESS_TOKEN_SECRET) {
-        return authProblemResponse(
-          503,
-          "AUTH_NOT_CONFIGURED",
-          "Service unavailable",
-          "Auth signing secret is not configured."
-        );
+        return authNotConfiguredResponse();
       }
       const attendanceEnv = {
         DB: env.DB,
@@ -1024,12 +1018,7 @@ export default {
       url.pathname.startsWith("/api/v1/home/")
     ) {
       if (!env.EFCC_ACCESS_TOKEN_SECRET) {
-        return authProblemResponse(
-          503,
-          "AUTH_NOT_CONFIGURED",
-          "Service unavailable",
-          "Auth signing secret is not configured."
-        );
+        return authNotConfiguredResponse();
       }
       const homeEnv = {
         DB: env.DB,
@@ -1103,12 +1092,7 @@ export default {
         );
       }
       if (!env.EFCC_ACCESS_TOKEN_SECRET) {
-        return authProblemResponse(
-          503,
-          "AUTH_NOT_CONFIGURED",
-          "Service unavailable",
-          "Auth signing secret is not configured."
-        );
+        return authNotConfiguredResponse();
       }
       const roleEnv = {
         DB: env.DB,

@@ -47,7 +47,7 @@
     "test:storybook:scope": "vitest run scripts/storybook-affected-scope.test.mjs",
     "verify:storybook:affected": "node scripts/storybook-affected-scope.mjs",
     "verify:precommit": "pnpm verify:fast",
-    "verify": "pnpm verify:precommit && pnpm test:storybook:scope && pnpm test:governance && pnpm verify:identity && pnpm test:programs:canary:unit && pnpm test:programs:runners:unit && pnpm test:programs:promotion && pnpm test:workerd && pnpm test:components && pnpm verify:governance && pnpm storybook:verify-index && pnpm verify:programs && pnpm test:shell-responsive && pnpm test:shell-geometry && pnpm test:role-hierarchy-geometry",
+    "verify": "pnpm verify:precommit && pnpm test:storybook:scope && pnpm test:governance && pnpm test:programs:canary:unit && pnpm test:programs:runners:unit && pnpm test:programs:promotion && pnpm test:workerd && pnpm test:components && pnpm verify:governance && pnpm storybook:verify-index && pnpm verify:programs && pnpm test:shell-responsive && pnpm test:shell-geometry && pnpm test:role-hierarchy-geometry",
     "test:shell-responsive": "node scripts/run-shell-responsive.mjs",
     "test:shell-geometry": "playwright test --config=tests/e2e/shell-geometry.config.ts",
     "test:role-hierarchy-geometry": "playwright test --config=tests/e2e/role-hierarchy-geometry.config.ts",

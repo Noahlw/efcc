@@ -4,8 +4,8 @@
  * The Worker's auth endpoints exchange credentials and session state ONLY
  * through two separate `httpOnly` cookies:
  *
- *   * `efcc_access`  — the short-lived (~15 min) HMAC-signed access token,
- *                      verified statelessly on the common path.
+ *   * `efcc_access`  — the short-lived (~15 min) HMAC-signed access token;
+ *                      protected requests also check its live D1 session.
  *   * `efcc_refresh` — the high-entropy opaque D1 refresh-session key
  *                      (a UUID), read only on refresh/revocation.
  *
@@ -35,7 +35,9 @@ export interface AuthCookies {
 }
 
 /** Parse a raw `Cookie` header value into a name -> value map. */
-export function parseCookies(cookieHeader: string | null): Record<string, string> {
+export function parseCookies(
+  cookieHeader: string | null
+): Record<string, string> {
   const out: Record<string, string> = {};
   if (!cookieHeader) return out;
   for (const pair of cookieHeader.split(";")) {

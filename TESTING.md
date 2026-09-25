@@ -15,9 +15,9 @@ The five-minute Programs runtime canary is a separate diagnostic. It may expose 
 | Seam | Owns | Command |
 | --- | --- | --- |
 | Fast type/static gate | Root and web typechecking used by pre-commit | `pnpm verify:fast` / `pnpm verify:precommit` |
-| Worker/D1 runtime | Worker routes, authorization, D1 state, validation, audit, and projections | `pnpm test:workerd` |
-| Identity | Role definitions, assignments, grants, hierarchy, seeds, constraints, and audit immutability | `pnpm verify:identity` |
-| Programs contract | Programs domain request/response and persistence contract | `pnpm test:programs:contract` |
+| Worker/D1 runtime | Worker routes, authorization, D1 state, validation, audit, and projections; includes Identity and Programs contract tests | `pnpm test:workerd` |
+| Identity | Focused Role definitions, assignments, grants, hierarchy, seeds, constraints, and audit checks; included in `test:workerd` | `pnpm verify:identity` |
+| Programs contract | Focused Programs request/response and persistence checks; included in `test:workerd` | `pnpm test:programs:contract` |
 | Components | React component behavior in the component environment | `pnpm test:components` |
 | Storybook scope/index | Affected story scope and catalog obligations | `pnpm test:storybook:scope` and `pnpm storybook:verify-index` |
 | Governance | CVA/control and repository governance rules | `pnpm test:governance` and `pnpm verify:governance` |
@@ -25,7 +25,9 @@ The five-minute Programs runtime canary is a separate diagnostic. It may expose 
 | Home browser | The five current Home-origin parity journeys | `pnpm test:programs:home` |
 | Responsive browser | Programs responsive behavior and viewport contracts | `pnpm test:programs:responsive` |
 | Shell geometry | Static-export shell and role hierarchy geometry | `pnpm test:shell-responsive`, `pnpm test:shell-geometry`, `pnpm test:role-hierarchy-geometry` |
-| Full promotion composition | Programs stages, evidence, and parity manifest | `pnpm verify:programs` |
+| Full promotion composition | Browser journeys, report evidence, and parity manifest | `pnpm verify:programs` |
+
+`pnpm verify` owns shared checks: it runs `pnpm verify:precommit` and `pnpm test:workerd` once. The Worker/D1 suite already includes Identity and Programs contract tests, so their standalone commands are focused diagnostics. `pnpm verify:programs` owns Browser, Home, Responsive, Feed, and parity evidence; it does not rerun Worker/D1 or pre-commit checks.
 
 Each behavior has one primary seam. Higher-level checks retain only the cross-boundary proof that a cheaper seam cannot provide. A duplicate test selection is removed after its environment owner is confirmed.
 

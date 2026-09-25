@@ -12,20 +12,18 @@ pnpm verify:programs
 
 Run it from a clean worktree after creating the ignored local `web/.dev.vars`. Browser Acceptance and Responsive Matrix each own a `wrangler dev --local` process using `web/wrangler.jsonc`, an isolated per-run D1 persistence directory, and deterministic fixture setup. Migrations and fixture SQL use explicit `--local --persist-to` arguments against the same directory. Direct Responsive config invocation may use `PROGRAMS_TARGET_URL` for diagnostics, but the canonical runner provisions its own loopback Worker. The Runtime Reliability Canary owns a separate local Worker process and disposable D1.
 
-The finite aggregate runs these required stages once and in order:
+The finite aggregate runs these Browser stages once and in order:
 
-1. `pnpm test:programs:contract` — Worker/D1 contract.
-2. `pnpm test:programs:browser` — 70 cases: management at `phone-390`, participant flows at `phone-360`/`phone-390`/`phone-402`, and navigation at `phone-390`; zero retries.
-3. `pnpm test:programs:home` — five Home-origin cases, including long-copy checks at 320, 390, 799, and 800 CSS pixels; zero retries.
-4. `pnpm test:programs:responsive` — 21 cases across the configured responsive projects (320, 360, 390, 402, 600, 799, 800, 1024, and 1440 CSS pixels); zero retries.
-5. `pnpm test:programs:feed` — seven Notices/Messages browser cases; zero retries.
-6. `pnpm verify:precommit` — root/e2e and Worker TypeScript checks.
+1. `pnpm test:programs:browser` — 70 cases: management at `phone-390`, participant flows at `phone-360`/`phone-390`/`phone-402`, and navigation at `phone-390`; zero retries.
+2. `pnpm test:programs:home` — five Home-origin cases, including long-copy checks at 320, 390, 799, and 800 CSS pixels; zero retries.
+3. `pnpm test:programs:responsive` — 21 cases across the configured responsive projects (320, 360, 390, 402, 600, 799, 800, 1024, and 1440 CSS pixels); zero retries.
+4. `pnpm test:programs:feed` — seven Notices/Messages browser cases; zero retries.
 
-The aggregate validates all four Playwright JSON reports, including expected counts, zero skipped/unexpected/flaky results, zero result retries, passed result statuses, and each runner's local Worker/D1 manifest. It does not require a canary artifact; the final `promotion.json` records the canary as independent `not_run` diagnostic evidence and carries the open B-003 risk disclosure. The wider repository gate is `pnpm verify`, which runs this promotion command with the rest of the local checks. Every stage log and the final `promotion.json` live under the ignored `test-results/programs-promotion/<run-id>/` directory.
+The aggregate validates all four Playwright JSON reports, including expected counts, zero skipped/unexpected/flaky results, zero result retries, passed result statuses, and each runner's local Worker/D1 manifest. The root `pnpm verify` gate owns Worker/D1 contract and pre-commit checks once; standalone `pnpm verify:programs` does not repeat them. It does not require a canary artifact; the final `promotion.json` records the canary as independent `not_run` diagnostic evidence and carries the open B-003 risk disclosure. The wider repository gate is `pnpm verify`, which runs this promotion command with the rest of the local checks. Every stage log and the final `promotion.json` live under the ignored `test-results/programs-promotion/<run-id>/` directory.
 
 ## Amended rescue-development contract
 
-Under the owner-approved [T05 rescue qualification amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5550498028), `pnpm verify:programs` is the finite Programs aggregate. It runs Worker Contract, real local Worker/D1 Browser Acceptance, Home-origin Acceptance, Responsive Matrix, feed Acceptance, and the fast local pre-commit typechecks. The wider `pnpm verify` command owns comprehensive repository-local verification. The promotion manifest records the unchanged five-minute canary as independent `not_run` diagnostic evidence and includes the explicit open B-003 residual-risk disclosure; it does not require a canary artifact.
+Under the owner-approved [T05 rescue qualification amendment](https://github.com/Noahlw/efcc/issues/505#issuecomment-5550498028), `pnpm verify:programs` is the finite Programs browser aggregate. It runs Browser Acceptance, Home-origin Acceptance, Responsive Matrix, feed Acceptance, and parity/report checks. The wider `pnpm verify` command owns Worker/D1 contract and the fast local pre-commit checks once. The promotion manifest records the unchanged five-minute canary as independent `not_run` diagnostic evidence and includes the explicit open B-003 residual-risk disclosure; it does not require a canary artifact.
 
 The canary remains independently runnable through `pnpm test:programs:canary` with its existing five-minute and zero-retry semantics. A red canary remains visible and non-zero, but does not become green or change finite-stage results. A failed finite functional scenario still blocks qualification. The machine result `functional-passed` is not T05 `STACK_GREEN`; ledger reconciliation, current-revision evidence, separate Standards/Spec review, one replacement PR, and the scoped risk record remain required.
 
