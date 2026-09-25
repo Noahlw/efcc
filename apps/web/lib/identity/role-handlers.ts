@@ -1,3 +1,20 @@
+import {
+  CreateBodySchema,
+  RenameBodySchema,
+  ReorderBodySchema,
+  ReorderTargetSchema,
+  RescopeBodySchema,
+  RoleCategoryKeySchema,
+  RoleCreateResultSchema,
+  RoleHierarchyViewSchema,
+  RoleRenameResultSchema,
+  RoleReorderResultSchema,
+  RoleRescopeResultSchema,
+  RoleScopeKindSchema,
+  isValidRoleLabel,
+  parseIdempotencyKey,
+} from "@efcc/contracts";
+
 /**
  * #478/#479 — S5-A03 Worker/HTTP seam for the 身份組 hierarchy and identity
  * mutations (Spec 091 §9.2/§9.3, ADR-0042).
@@ -41,7 +58,6 @@ import {
 } from "./mutations";
 import {
   loadRoleHierarchy,
-  normalizeName,
   renameRoleDefinition,
   createRoleDefinition,
   rescopeRoleDefinition,
@@ -72,36 +88,6 @@ import type {
 export interface RoleEnv {
   DB: D1Database;
   EFCC_ACCESS_TOKEN_SECRET: string;
-}
-
-/** A rename request body; every field is validated before any D1 call. */
-interface RenameBody {
-  label?: unknown;
-  base_revision?: unknown;
-}
-
-/** #479 create request body (B-479-01/B-479-14). */
-interface CreateBody {
-  category_key?: unknown;
-  label?: unknown;
-  description?: unknown;
-  scope_kind?: unknown;
-  scope_id?: unknown;
-  base_revision?: unknown;
-}
-
-/** #479 reorder request body (B-479-07/B-479-08). */
-interface ReorderBody {
-  category_key?: unknown;
-  targets?: unknown;
-  base_revision?: unknown;
-}
-/** #479 rescope request body (Spec 091 §9.2). */
-interface RescopeBody {
-  category_key?: unknown;
-  scope_kind?: unknown;
-  scope_id?: unknown;
-  base_revision?: unknown;
 }
 
 export function roleProblem(
@@ -496,6 +482,14 @@ export async function handleGetRoleHierarchy(
   }
   try {
     const view = await loadRoleHierarchy(env.DB, auth.account.user_id);
+    if (!RoleHierarchyViewSchema.safeParse(view).success) {
+      // Shared contract gate (#655): never a malformed 2xx. The throw
+      // routes through the identical 500 below.
+      console.error(
+        `[identity] GET /api/v1/identity/roles malformed data requestId=${requestId}`
+      );
+      throw new Error("identity contract violation");
+    }
     return roleSuccess(200, view, requestId);
   } catch (error) {
     // A caller without the effective `role.read` capability receives the
@@ -536,9 +530,10 @@ export async function handleRenameRoleDefinition(
     return auth;
   }
 
-  const rawKey = request.headers.get("Idempotency-Key");
-  const idempotencyKey = rawKey?.trim() ?? "";
-  if (!idempotencyKey || idempotencyKey.length > 200) {
+  const idempotencyKey = parseIdempotencyKey(
+    request.headers.get("Idempotency-Key")
+  );
+  if (idempotencyKey === null) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -548,9 +543,9 @@ export async function handleRenameRoleDefinition(
     );
   }
 
-  let body: RenameBody;
+  let rawBody: unknown;
   try {
-    body = (await request.json()) as RenameBody;
+    rawBody = (await request.json()) as unknown;
   } catch {
     return roleProblem(
       422,
@@ -560,14 +555,8 @@ export async function handleRenameRoleDefinition(
       requestId
     );
   }
-  if (
-    typeof body !== "object" ||
-    body === null ||
-    typeof body.label !== "string" ||
-    typeof body.base_revision !== "number" ||
-    !Number.isInteger(body.base_revision) ||
-    body.base_revision < 1
-  ) {
+  const parsedBody = RenameBodySchema.safeParse(rawBody);
+  if (!parsedBody.success) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -577,11 +566,8 @@ export async function handleRenameRoleDefinition(
     );
   }
 
-  const label = body.label.trim();
-  if (
-    normalizeName(label).length === 0 ||
-    label.length > ROLE_NAME_MAX_LENGTH
-  ) {
+  const label = parsedBody.data.label.trim();
+  if (!isValidRoleLabel(label)) {
     return roleProblem(
       400,
       "INVALID_NAME",
@@ -595,13 +581,17 @@ export async function handleRenameRoleDefinition(
     const result: RoleRenameResult = await renameRoleDefinition(env.DB, {
       actor_user_id: auth.account.user_id,
       idempotency_key: idempotencyKey,
-      base_revision: body.base_revision,
+      base_revision: parsedBody.data.base_revision,
       role_definition_id: roleDefinitionId,
       label,
       now: new Date().toISOString(),
       audit_id: crypto.randomUUID(),
       correlation_id: requestId,
     });
+    if (!RoleRenameResultSchema.safeParse(result).success) {
+      console.error(`[identity] rename malformed data requestId=${requestId}`);
+      throw new Error("identity contract violation");
+    }
     return roleSuccess(200, result, requestId);
   } catch (error) {
     return mapRenameError(error, requestId);
@@ -625,9 +615,10 @@ export async function handleCreateRoleDefinition(
     return auth;
   }
 
-  const rawKey = request.headers.get("Idempotency-Key");
-  const idempotencyKey = rawKey?.trim() ?? "";
-  if (!idempotencyKey || idempotencyKey.length > 200) {
+  const idempotencyKey = parseIdempotencyKey(
+    request.headers.get("Idempotency-Key")
+  );
+  if (idempotencyKey === null) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -637,9 +628,9 @@ export async function handleCreateRoleDefinition(
     );
   }
 
-  let body: CreateBody;
+  let rawBody: unknown;
   try {
-    body = (await request.json()) as CreateBody;
+    rawBody = (await request.json()) as unknown;
   } catch {
     return roleProblem(
       422,
@@ -649,19 +640,8 @@ export async function handleCreateRoleDefinition(
       requestId
     );
   }
-  if (
-    typeof body !== "object" ||
-    body === null ||
-    typeof body.label !== "string" ||
-    typeof body.base_revision !== "number" ||
-    !Number.isInteger(body.base_revision) ||
-    body.base_revision < 1 ||
-    typeof body.category_key !== "string" ||
-    typeof body.scope_kind !== "string" ||
-    (body.scope_id !== null &&
-      body.scope_id !== undefined &&
-      typeof body.scope_id !== "string")
-  ) {
+  const parsedBody = CreateBodySchema.safeParse(rawBody);
+  if (!parsedBody.success) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -670,13 +650,9 @@ export async function handleCreateRoleDefinition(
       requestId
     );
   }
+  const body = parsedBody.data;
 
-  const categoryKey = body.category_key;
-  if (
-    categoryKey !== "Global" &&
-    categoryKey !== "Department" &&
-    categoryKey !== "Program"
-  ) {
+  if (!RoleCategoryKeySchema.safeParse(body.category_key).success) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -685,12 +661,7 @@ export async function handleCreateRoleDefinition(
       requestId
     );
   }
-  const scopeKind = body.scope_kind;
-  if (
-    scopeKind !== "Global" &&
-    scopeKind !== "Department" &&
-    scopeKind !== "Program"
-  ) {
+  if (!RoleScopeKindSchema.safeParse(body.scope_kind).success) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -701,10 +672,7 @@ export async function handleCreateRoleDefinition(
   }
 
   const label = body.label.trim();
-  if (
-    normalizeName(label).length === 0 ||
-    label.length > ROLE_NAME_MAX_LENGTH
-  ) {
+  if (!isValidRoleLabel(label)) {
     return roleProblem(
       400,
       "INVALID_NAME",
@@ -719,15 +687,19 @@ export async function handleCreateRoleDefinition(
       actor_user_id: auth.account.user_id,
       idempotency_key: idempotencyKey,
       base_revision: body.base_revision,
-      category_key: categoryKey,
+      category_key: body.category_key as "Global" | "Department" | "Program",
       label,
       description: typeof body.description === "string" ? body.description : "",
-      scope_kind: scopeKind,
+      scope_kind: body.scope_kind as "Global" | "Department" | "Program",
       scope_id: body.scope_id ?? null,
       now: new Date().toISOString(),
       audit_id: crypto.randomUUID(),
       correlation_id: requestId,
     });
+    if (!RoleCreateResultSchema.safeParse(result).success) {
+      console.error(`[identity] create malformed data requestId=${requestId}`);
+      throw new Error("identity contract violation");
+    }
     return roleSuccess(200, result, requestId);
   } catch (error) {
     return mapIdentityError(error, requestId);
@@ -750,9 +722,10 @@ export async function handleRescopeRoleDefinition(
     return auth;
   }
 
-  const rawKey = request.headers.get("Idempotency-Key");
-  const idempotencyKey = rawKey?.trim() ?? "";
-  if (!idempotencyKey || idempotencyKey.length > 200) {
+  const idempotencyKey = parseIdempotencyKey(
+    request.headers.get("Idempotency-Key")
+  );
+  if (idempotencyKey === null) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -762,9 +735,9 @@ export async function handleRescopeRoleDefinition(
     );
   }
 
-  let body: RescopeBody;
+  let rawBody: unknown;
   try {
-    body = (await request.json()) as RescopeBody;
+    rawBody = (await request.json()) as unknown;
   } catch {
     return roleProblem(
       422,
@@ -774,18 +747,8 @@ export async function handleRescopeRoleDefinition(
       requestId
     );
   }
-  if (
-    typeof body !== "object" ||
-    body === null ||
-    typeof body.scope_kind !== "string" ||
-    typeof body.base_revision !== "number" ||
-    !Number.isInteger(body.base_revision) ||
-    body.base_revision < 1 ||
-    (body.scope_id !== null &&
-      body.scope_id !== undefined &&
-      typeof body.scope_id !== "string") ||
-    (body.category_key !== undefined && typeof body.category_key !== "string")
-  ) {
+  const parsedBody = RescopeBodySchema.safeParse(rawBody);
+  if (!parsedBody.success) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -794,12 +757,8 @@ export async function handleRescopeRoleDefinition(
       requestId
     );
   }
-  const scopeKind = body.scope_kind;
-  if (
-    scopeKind !== "Global" &&
-    scopeKind !== "Department" &&
-    scopeKind !== "Program"
-  ) {
+  const body = parsedBody.data;
+  if (!RoleScopeKindSchema.safeParse(body.scope_kind).success) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -810,9 +769,7 @@ export async function handleRescopeRoleDefinition(
   }
   if (
     body.category_key !== undefined &&
-    body.category_key !== "Global" &&
-    body.category_key !== "Department" &&
-    body.category_key !== "Program"
+    !RoleCategoryKeySchema.safeParse(body.category_key).success
   ) {
     return roleProblem(
       422,
@@ -822,6 +779,7 @@ export async function handleRescopeRoleDefinition(
       requestId
     );
   }
+  const scopeKind = body.scope_kind as "Global" | "Department" | "Program";
 
   try {
     const result: RoleRescopeResult = await rescopeRoleDefinition(env.DB, {
@@ -840,6 +798,10 @@ export async function handleRescopeRoleDefinition(
       audit_id: crypto.randomUUID(),
       correlation_id: requestId,
     });
+    if (!RoleRescopeResultSchema.safeParse(result).success) {
+      console.error(`[identity] rescope malformed data requestId=${requestId}`);
+      throw new Error("identity contract violation");
+    }
     return roleSuccess(200, result, requestId);
   } catch (error) {
     return mapIdentityError(error, requestId);
@@ -862,9 +824,10 @@ export async function handleReorderRoleDefinitions(
     return auth;
   }
 
-  const rawKey = request.headers.get("Idempotency-Key");
-  const idempotencyKey = rawKey?.trim() ?? "";
-  if (!idempotencyKey || idempotencyKey.length > 200) {
+  const idempotencyKey = parseIdempotencyKey(
+    request.headers.get("Idempotency-Key")
+  );
+  if (idempotencyKey === null) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -874,9 +837,9 @@ export async function handleReorderRoleDefinitions(
     );
   }
 
-  let body: ReorderBody;
+  let rawBody: unknown;
   try {
-    body = (await request.json()) as ReorderBody;
+    rawBody = (await request.json()) as unknown;
   } catch {
     return roleProblem(
       422,
@@ -886,15 +849,8 @@ export async function handleReorderRoleDefinitions(
       requestId
     );
   }
-  if (
-    typeof body !== "object" ||
-    body === null ||
-    typeof body.base_revision !== "number" ||
-    !Number.isInteger(body.base_revision) ||
-    body.base_revision < 1 ||
-    !Array.isArray(body.targets) ||
-    body.targets.length !== 2
-  ) {
+  const parsedBody = ReorderBodySchema.safeParse(rawBody);
+  if (!parsedBody.success) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -903,12 +859,8 @@ export async function handleReorderRoleDefinitions(
       requestId
     );
   }
-  const categoryKey = body.category_key;
-  if (
-    categoryKey !== "Global" &&
-    categoryKey !== "Department" &&
-    categoryKey !== "Program"
-  ) {
+  const body = parsedBody.data;
+  if (!RoleCategoryKeySchema.safeParse(body.category_key).success) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -920,14 +872,7 @@ export async function handleReorderRoleDefinitions(
 
   const { targets } = body;
   for (const target of targets) {
-    if (
-      typeof target !== "object" ||
-      target === null ||
-      typeof target.role_definition_id !== "string" ||
-      typeof target.position !== "number" ||
-      !Number.isInteger(target.position) ||
-      target.position < 0
-    ) {
+    if (!ReorderTargetSchema.safeParse(target).success) {
       return roleProblem(
         422,
         "VALIDATION",
@@ -943,12 +888,16 @@ export async function handleReorderRoleDefinitions(
       actor_user_id: auth.account.user_id,
       idempotency_key: idempotencyKey,
       base_revision: body.base_revision,
-      category_key: categoryKey,
+      category_key: body.category_key as "Global" | "Department" | "Program",
       targets: targets as { role_definition_id: string; position: number }[],
       now: new Date().toISOString(),
       audit_id: crypto.randomUUID(),
       correlation_id: requestId,
     });
+    if (!RoleReorderResultSchema.safeParse(result).success) {
+      console.error(`[identity] reorder malformed data requestId=${requestId}`);
+      throw new Error("identity contract violation");
+    }
     return roleSuccess(200, result, requestId);
   } catch (error) {
     return mapIdentityError(error, requestId);

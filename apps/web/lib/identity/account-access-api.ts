@@ -1,3 +1,15 @@
+import type { EligibleAccountSearch } from "@efcc/contracts";
+import {
+  AccountAccessMutationResultSchema,
+  AccountAccessViewSchema,
+  EligibleAccountSearchSchema,
+  RoleDefinitionLifecyclePreviewSchema,
+  RoleDefinitionLifecycleResultSchema,
+  parseProblemDetails,
+  parseSuccessEnvelope,
+  problemFallback,
+} from "@efcc/contracts";
+
 import { RpcError } from "@/lib/api";
 import type { ProblemDetails } from "@/lib/api";
 
@@ -8,11 +20,10 @@ import type {
   RoleDefinitionLifecycleResult,
 } from "./account-access";
 
-type AccountSuccess<T> = { requestId: string; data: T };
-
 async function accountFetch<T>(
   path: string,
   method: "GET" | "POST",
+  payloadSchema: { safeParse: (value: unknown) => { success: boolean } },
   body?: unknown,
   idempotencyKey?: string
 ): Promise<T> {
@@ -38,6 +49,7 @@ async function accountFetch<T>(
       detail: "無法連接伺服器，請檢查網路後再試。",
     });
   }
+  const requestId = response.headers.get("X-Request-Id") ?? undefined;
   if (response.ok) {
     let parsed: unknown;
     try {
@@ -48,50 +60,42 @@ async function accountFetch<T>(
         code: "MALFORMED_RESPONSE",
         title: "Malformed success response",
         detail: "伺服器回應格式錯誤。",
+        requestId,
       });
     }
-    if (typeof parsed !== "object" || parsed === null || !("data" in parsed)) {
+    const envelope = parseSuccessEnvelope(parsed);
+    // Shared contract gate (#655): malformed 2xx data is
+    // MALFORMED_RESPONSE, never a partial success.
+    if (!envelope || !payloadSchema.safeParse(envelope.data).success) {
       throw new RpcError({
         status: response.status,
         code: "MALFORMED_RESPONSE",
         title: "Malformed success envelope",
         detail: "伺服器回應格式錯誤。",
+        requestId,
       });
     }
-    return (parsed as AccountSuccess<T>).data;
+    return envelope.data as T;
   }
-  const requestId = response.headers.get("X-Request-Id") ?? undefined;
-  let problem: ProblemDetails;
+  let parsedError: unknown;
   try {
-    problem = (await response.json()) as ProblemDetails;
+    parsedError = await response.json();
   } catch {
-    problem = { status: response.status, code: "UNAVAILABLE", requestId };
+    parsedError = null;
   }
-  if (typeof problem !== "object" || problem === null) {
-    problem = { status: response.status, code: "UNAVAILABLE", requestId };
-  }
-  if (typeof problem.status !== "number") {
-    problem.status = response.status;
-  }
-  if (requestId && !problem.requestId) {
-    problem.requestId = requestId;
-  }
-  throw new RpcError(problem);
+  const problem =
+    parseProblemDetails(parsedError, response.status, requestId) ??
+    problemFallback(
+      response.status,
+      requestId,
+      "UNAVAILABLE",
+      "Upstream error",
+      "系統暫時無法處理請求，請稍後再試。"
+    );
+  throw new RpcError(problem as ProblemDetails);
 }
 
-export interface EligibleAccountSearchResult {
-  accounts: readonly {
-    userId: string;
-    name: string;
-    username: string;
-    identities: readonly {
-      roleDefinitionId: string;
-      label: string;
-      scopeLabel: string | null;
-    }[];
-  }[];
-  nextOffset: number | null;
-}
+export type EligibleAccountSearchResult = EligibleAccountSearch;
 
 export function searchEligibleAccounts(
   query: string,
@@ -101,15 +105,20 @@ export function searchEligibleAccounts(
   if (options?.offset !== undefined)
     params.set("offset", String(options.offset));
   if (options?.limit !== undefined) params.set("limit", String(options.limit));
-  return accountFetch(`/api/v1/identity/accounts?${params.toString()}`, "GET");
+  return accountFetch<EligibleAccountSearchResult>(
+    `/api/v1/identity/accounts?${params.toString()}`,
+    "GET",
+    EligibleAccountSearchSchema
+  );
 }
 
 export function getAccountAccess(
   accountUserId: string
 ): Promise<AccountAccessView> {
-  return accountFetch(
+  return accountFetch<AccountAccessView>(
     `/api/v1/identity/accounts/${encodeURIComponent(accountUserId)}/assignments`,
-    "GET"
+    "GET",
+    AccountAccessViewSchema
   );
 }
 
@@ -118,9 +127,10 @@ export function mutateAccountAssignments(
   input: { baseRevision: number; roleDefinitionIds: readonly string[] },
   idempotencyKey?: string
 ): Promise<AccountAccessMutationResult> {
-  return accountFetch(
+  return accountFetch<AccountAccessMutationResult>(
     `/api/v1/identity/accounts/${encodeURIComponent(accountUserId)}/assignments`,
     "POST",
+    AccountAccessMutationResultSchema,
     {
       base_revision: input.baseRevision,
       role_definition_ids: input.roleDefinitionIds,
@@ -134,9 +144,10 @@ export function revokeAccountAssignments(
   input: { baseRevision: number; roleDefinitionIds: readonly string[] },
   idempotencyKey?: string
 ): Promise<AccountAccessMutationResult> {
-  return accountFetch(
+  return accountFetch<AccountAccessMutationResult>(
     `/api/v1/identity/accounts/${encodeURIComponent(accountUserId)}/assignments/revoke`,
     "POST",
+    AccountAccessMutationResultSchema,
     {
       base_revision: input.baseRevision,
       role_definition_ids: input.roleDefinitionIds,
@@ -150,9 +161,10 @@ export function getRoleDefinitionLifecyclePreview(
   action: "archive" | "restore"
 ): Promise<RoleDefinitionLifecyclePreview> {
   const params = new URLSearchParams({ action });
-  return accountFetch(
+  return accountFetch<RoleDefinitionLifecyclePreview>(
     `/api/v1/identity/role-definitions/${encodeURIComponent(roleDefinitionId)}/lifecycle?${params.toString()}`,
-    "GET"
+    "GET",
+    RoleDefinitionLifecyclePreviewSchema
   );
 }
 export function updateRoleDefinitionLifecycle(
@@ -164,9 +176,10 @@ export function updateRoleDefinitionLifecycle(
   },
   idempotencyKey?: string
 ): Promise<RoleDefinitionLifecycleResult> {
-  return accountFetch(
+  return accountFetch<RoleDefinitionLifecycleResult>(
     `/api/v1/identity/role-definitions/${encodeURIComponent(roleDefinitionId)}/lifecycle`,
     "POST",
+    RoleDefinitionLifecycleResultSchema,
     {
       action: input.action,
       base_revision: input.baseRevision,

@@ -4,5 +4,6 @@
  */
 export * from "./envelope";
 export * from "./home";
+export * from "./identity";
 export * from "./primitives";
 export * from "./problem";

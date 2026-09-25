@@ -1293,7 +1293,7 @@ function isWithinActorScope(
  * the canonical rename fingerprint; display labels are stored verbatim
  * (trimmed only) so the operator's chosen casing/spelling is preserved.
  */
-export function normalizeName(label: string): string {
+function normalizeName(label: string): string {
   return label.trim().normalize("NFC").toLowerCase();
 }
 

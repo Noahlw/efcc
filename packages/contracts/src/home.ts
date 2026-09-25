@@ -14,12 +14,7 @@
  */
 import * as z from "zod";
 
-import {
-  firstPresent,
-  nonEmptyString,
-  nullableString,
-  optionalString,
-} from "./primitives";
+import { firstPresent, nonEmptyString, nullableString } from "./primitives";
 
 export const HomeTemplateTypeSchema = z.enum(["A", "B"]);
 export type HomeTemplateType = z.infer<typeof HomeTemplateTypeSchema>;
@@ -41,8 +36,8 @@ export const HomeFeaturedEventSchema = z.object({
   title: nonEmptyString,
   startsAt: nonEmptyString,
   endsAt: nonEmptyString,
-  startAt: optionalString,
-  endAt: optionalString,
+  startAt: z.string().nullish(),
+  endAt: z.string().nullish(),
   location: z.string(),
   status: nonEmptyString,
   isEnrolled: z.boolean(),

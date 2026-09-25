@@ -200,6 +200,61 @@ clean SHA (#662).
   + stale-reject journey passed vs local Worker/disposable D1
   (home-cms config keeps its own `retries: 1`; passed first attempt).
 
+## #654 follow-up — Home alias nullability
+
+- `startAt`/`endAt` compatibility aliases accept explicit null
+  (`.nullish()`): JSON distinguishes absent from null and the wire
+  may carry either. Same hardening applied to all optional
+  object/array identity fields.
+
+## #655 record — Identity Role/Grant/Account contracts
+
+- `packages/contracts` `src/identity.ts`: category/scope/lifecycle/
+  kind/state enums, H-11 label rule (`normalizeRoleName` port),
+  Idempotency-Key rule, loose rename/create/rescope/reorder shapes,
+  STRICT grants/assignments/lifecycle bodies (actor echo rejected,
+  per-change {capability, value}), search-query parser (422, never
+  clamped — unlike CMS audit), lifecycle-preview action, and all 13
+  response projections (hierarchy, rename/create/rescope/reorder
+  results, detail view, account access + mutation result, eligible
+  search, lifecycle result/preview). Catalog membership stays
+  server-side (no catalog copy to drift); capability is a non-empty
+  string on the wire.
+- Worker: response gates on all 13 routes via throw-inside-try so
+  failures take the byte-identical existing 500 paths; request
+  branches keep orchestration with shared atomic predicates and
+  byte-identical 422/400/409 messages. `normalizeName` de-exported
+  (last external use moved to the shared label rule; Knip-clean).
+- Browser: both identity fetch cores gate 2xx shapes to
+  `MALFORMED_RESPONSE` (now carrying the header requestId) and parse
+  errors through the shared parser (codes/extensions preserved,
+  e.g. `currentRevision`, nested `data.authoritativeRevision`).
+  Signatures keep domain types (generic `as T` after the gate, as in
+  #654); `EligibleAccountSearchResult` is now the inferred contract
+  alias. No UI/pre-validation changes.
+- Unresolved Identity mutations settle by readback/audit as before
+  (replay returns the original `responseRequestId`; no blind replay
+  added or removed) — verified in existing replay tests.
+- TDD: request-policy locks (key length, reorder pair, scope_id
+  type, pagination 422s, strict-key and >100-change rejections) plus
+  client malformed tests (2 red-then-green); response schemas proven
+  in package tests (D1 STRICT/CHECK + derived enums leave no
+  reachable worker-level corruption vector, as established in #654).
+- Fixture corrections (mock-only): transport mock serves per-route
+  valid shapes.
+- Proof: contracts 24+16, workerd identity 19+13+9, clients 7,
+  identity panels 53, typechecks clean, Knip + boundaries clean,
+  static export builds, hierarchy/detail/search/projection
+  responses validated live against local D1, zero Worker gate
+  firings across all local traffic.
+- Known unrelated pre-existing failure (preserved, not fixed):
+  S4 `Identity Tree → …` asserts a text match on the icon-only
+  RouteHeader back link (empty text, `aria-label` only) and one
+  roles-list loading timeout under suite load — 58 other S4 checks
+  pass, the pages render correctly with this change, and none of
+  the involved files (header/panel/s4 test) are touched here.
+  Fixing either is a UI/test contract change for the owner.
+
 ## Proof plan per slice
 
 Worker/D1 contract tests (valid + invalid request/response,
