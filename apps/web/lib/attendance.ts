@@ -1558,6 +1558,9 @@ export async function handleResolve(
   if (events.length === 0) {
     return resolveNoEvents(env.DB, latest, memberUserId, id);
   }
+  if (!ResolveEventsSchema.safeParse({ events }).success) {
+    return contractUnavailable(id, "resolve");
+  }
   return json(200, { events }, id);
 }
 
