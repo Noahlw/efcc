@@ -137,7 +137,6 @@ function inputFrom(values: FormValues): ProgramInput {
     description: values.description.trim() || undefined,
     category: values.category.trim() || undefined,
     behavior_type: values.behaviorType,
-    lifecycle: "Draft",
     discoverability: "Unlisted",
     enrollment_mode: values.enrollmentMode,
   };
@@ -193,7 +192,7 @@ function programMatchesInput(
     program.description === (input.description ?? null) &&
     program.category === (input.category ?? null) &&
     program.behavior_type === input.behavior_type &&
-    program.lifecycle === input.lifecycle &&
+    program.lifecycle === "Draft" &&
     program.discoverability === (input.discoverability ?? "Unlisted") &&
     program.enrollment_mode === input.enrollment_mode &&
     program.display_order === (input.display_order ?? 0)

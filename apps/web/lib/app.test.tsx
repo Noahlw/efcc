@@ -177,10 +177,13 @@ const PROGRAMS_MANAGEMENT_ACCESS: ProgramsManagementAccess = {
 };
 
 function programsAccessResponse(data: ProgramsManagementAccess) {
-  return HttpResponse.json({
-    requestId: "r-programs-access",
-    data,
-  });
+  return HttpResponse.json(
+    {
+      requestId: "r-programs-access",
+      data,
+    },
+    { headers: { "X-Request-Id": "r-programs-access" } }
+  );
 }
 
 function programsAccessErrorResponse() {
@@ -214,14 +217,17 @@ const DEFAULT_HANDLER = [
       password?: string;
     };
     if (body.username === "test" && body.password === "pw-pass") {
-      return HttpResponse.json({
-        requestId: "r-login",
-        data: {
-          userId: "U-test",
-          name: "測試用",
-          status: "Active",
+      return HttpResponse.json(
+        {
+          requestId: "r-login",
+          data: {
+            userId: "U-test",
+            name: "測試用",
+            status: "Active",
+          },
         },
-      });
+        { headers: { "X-Request-Id": "r-login" } }
+      );
     }
     return HttpResponse.json(
       {
@@ -236,32 +242,41 @@ const DEFAULT_HANDLER = [
   }),
   http.post("/api/v1/auth/refresh", () => {
     authCalls.push("/api/v1/auth/refresh");
-    return HttpResponse.json({ requestId: "r-refresh", data: {} });
+    return HttpResponse.json(
+      { requestId: "r-refresh", data: {} },
+      { headers: { "X-Request-Id": "r-refresh" } }
+    );
   }),
   http.get("/api/v1/auth/me", () => {
     authCalls.push("/api/v1/auth/me");
-    return HttpResponse.json({
-      requestId: "r-me",
-      data: {
-        user: PUBLIC_USER,
-        sections: MEMBER_SECTIONS,
-        navigation: NAVIGATION,
+    return HttpResponse.json(
+      {
+        requestId: "r-me",
+        data: {
+          user: PUBLIC_USER,
+          sections: MEMBER_SECTIONS,
+          navigation: NAVIGATION,
+        },
       },
-    });
+      { headers: { "X-Request-Id": "r-me" } }
+    );
   }),
   http.post("/api/v1/auth/logout", () => {
     authCalls.push("/api/v1/auth/logout");
     return new HttpResponse(null, { status: 204 });
   }),
   http.get("/api/v1/home", () =>
-    HttpResponse.json({
-      requestId: "r-home",
-      data: {
-        featuredEvent: null,
-        announcement: null,
-        exploreProgram: null,
+    HttpResponse.json(
+      {
+        requestId: "r-home",
+        data: {
+          featuredEvent: null,
+          announcement: null,
+          exploreProgram: null,
+        },
       },
-    })
+      { headers: { "X-Request-Id": "r-home" } }
+    )
   ),
   http.get("/api/v1/programs/access", () =>
     programsAccessResponse(NO_PROGRAMS_MANAGEMENT_ACCESS)
@@ -461,18 +476,24 @@ describe("Shell", () => {
               }
             );
           }
-          return HttpResponse.json({
-            requestId: "r-me",
-            data: {
-              user: PUBLIC_USER,
-              sections: MEMBER_SECTIONS,
-              navigation: NAVIGATION,
+          return HttpResponse.json(
+            {
+              requestId: "r-me",
+              data: {
+                user: PUBLIC_USER,
+                sections: MEMBER_SECTIONS,
+                navigation: NAVIGATION,
+              },
             },
-          });
+            { headers: { "X-Request-Id": "r-me" } }
+          );
         }),
         http.post("/api/v1/auth/refresh", () => {
           refreshCalls += 1;
-          return HttpResponse.json({ requestId: "r-refresh", data: {} });
+          return HttpResponse.json(
+            { requestId: "r-refresh", data: {} },
+            { headers: { "X-Request-Id": "r-refresh" } }
+          );
         })
       );
       render(<LoginPage />);
@@ -617,14 +638,17 @@ describe("Shell", () => {
       expect(submit).toHaveAttribute("aria-busy", "true");
       expect(screen.getByRole("form")).toHaveAttribute("aria-busy", "true");
       release?.(
-        HttpResponse.json({
-          requestId: "r-login-busy",
-          data: {
-            userId: "U-test",
-            name: "測試用",
-            status: "Active",
+        HttpResponse.json(
+          {
+            requestId: "r-login-busy",
+            data: {
+              userId: "U-test",
+              name: "測試用",
+              status: "Active",
+            },
           },
-        })
+          { headers: { "X-Request-Id": "r-login-busy" } }
+        )
       );
       await waitFor(() => {
         expect(replaceMock).toHaveBeenCalledWith("/profile");
@@ -758,17 +782,23 @@ describe("Shell", () => {
         ),
         // me still succeeds so the shell reaches the profile content.
         http.get("/api/v1/auth/me", () =>
-          HttpResponse.json({
-            requestId: "r-me",
-            data: {
-              user: PUBLIC_USER,
-              sections: MEMBER_SECTIONS,
-              navigation: NAVIGATION,
+          HttpResponse.json(
+            {
+              requestId: "r-me",
+              data: {
+                user: PUBLIC_USER,
+                sections: MEMBER_SECTIONS,
+                navigation: NAVIGATION,
+              },
             },
-          })
+            { headers: { "X-Request-Id": "r-me" } }
+          )
         ),
         http.post("/api/v1/auth/refresh", () =>
-          HttpResponse.json({ requestId: "r-refresh", data: {} })
+          HttpResponse.json(
+            { requestId: "r-refresh", data: {} },
+            { headers: { "X-Request-Id": "r-refresh" } }
+          )
         )
       );
 
@@ -800,14 +830,17 @@ describe("Shell", () => {
       setAuthHint();
       server.use(
         http.get("/api/v1/auth/me", () =>
-          HttpResponse.json({
-            requestId: "r-me-local-id",
-            data: {
-              user: { ...PUBLIC_USER, userId: "local-noah" },
-              sections: MEMBER_SECTIONS,
-              navigation: NAVIGATION,
+          HttpResponse.json(
+            {
+              requestId: "r-me-local-id",
+              data: {
+                user: { ...PUBLIC_USER, userId: "local-noah" },
+                sections: MEMBER_SECTIONS,
+                navigation: NAVIGATION,
+              },
             },
-          })
+            { headers: { "X-Request-Id": "r-me-local-id" } }
+          )
         )
       );
       const user = userEvent.setup();
@@ -903,17 +936,23 @@ describe("Shell", () => {
     test("renders the empty state when the profile carries no QR data", async () => {
       server.use(
         http.post("/api/v1/auth/refresh", () =>
-          HttpResponse.json({ requestId: "r-refresh", data: {} })
+          HttpResponse.json(
+            { requestId: "r-refresh", data: {} },
+            { headers: { "X-Request-Id": "r-refresh" } }
+          )
         ),
         http.get("/api/v1/auth/me", () =>
-          HttpResponse.json({
-            requestId: "r-me",
-            data: {
-              user: { ...PUBLIC_USER, qrCodeString: "" },
-              sections: MEMBER_SECTIONS,
-              navigation: NAVIGATION,
+          HttpResponse.json(
+            {
+              requestId: "r-me",
+              data: {
+                user: { ...PUBLIC_USER, qrCodeString: "" },
+                sections: MEMBER_SECTIONS,
+                navigation: NAVIGATION,
+              },
             },
-          })
+            { headers: { "X-Request-Id": "r-me" } }
+          )
         )
       );
       renderRestoredProfile();
@@ -927,14 +966,17 @@ describe("Shell", () => {
     test("does not create an identity section when the server returns none", async () => {
       server.use(
         http.get("/api/v1/auth/me", () =>
-          HttpResponse.json({
-            requestId: "r-me-no-identities",
-            data: {
-              user: { ...PUBLIC_USER, identities: [], qrCodeString: "" },
-              sections: MEMBER_SECTIONS,
-              navigation: NAVIGATION,
+          HttpResponse.json(
+            {
+              requestId: "r-me-no-identities",
+              data: {
+                user: { ...PUBLIC_USER, identities: [], qrCodeString: "" },
+                sections: MEMBER_SECTIONS,
+                navigation: NAVIGATION,
+              },
             },
-          })
+            { headers: { "X-Request-Id": "r-me-no-identities" } }
+          )
         )
       );
       renderRestoredProfile();
@@ -947,14 +989,17 @@ describe("Shell", () => {
     test("preserves non-active status copy with an inactive status projection", async () => {
       server.use(
         http.get("/api/v1/auth/me", () =>
-          HttpResponse.json({
-            requestId: "r-me-inactive",
-            data: {
-              user: { ...PUBLIC_USER, status: "Suspended" },
-              sections: MEMBER_SECTIONS,
-              navigation: NAVIGATION,
+          HttpResponse.json(
+            {
+              requestId: "r-me-inactive",
+              data: {
+                user: { ...PUBLIC_USER, status: "Suspended" },
+                sections: MEMBER_SECTIONS,
+                navigation: NAVIGATION,
+              },
             },
-          })
+            { headers: { "X-Request-Id": "r-me-inactive" } }
+          )
         )
       );
       renderRestoredProfile();
@@ -1142,14 +1187,17 @@ describe("Shell", () => {
               }
             );
           }
-          return HttpResponse.json({
-            requestId: "r-me",
-            data: {
-              user: PUBLIC_USER,
-              sections: MEMBER_SECTIONS,
-              navigation: NAVIGATION,
+          return HttpResponse.json(
+            {
+              requestId: "r-me",
+              data: {
+                user: PUBLIC_USER,
+                sections: MEMBER_SECTIONS,
+                navigation: NAVIGATION,
+              },
             },
-          });
+            { headers: { "X-Request-Id": "r-me" } }
+          );
         })
       );
       render(<LoginPage />);
@@ -1679,73 +1727,82 @@ describe("Shell", () => {
     ) {
       server.use(
         http.post("/api/v1/auth/refresh", () =>
-          HttpResponse.json({ requestId: "r-refresh", data: {} })
+          HttpResponse.json(
+            { requestId: "r-refresh", data: {} },
+            { headers: { "X-Request-Id": "r-refresh" } }
+          )
         ),
         http.get("/api/v1/auth/me", () =>
-          HttpResponse.json({
-            requestId: "r-me",
-            data: { user, sections, navigation: NAVIGATION },
-          })
+          HttpResponse.json(
+            {
+              requestId: "r-me",
+              data: { user, sections, navigation: NAVIGATION },
+            },
+            { headers: { "X-Request-Id": "r-me" } }
+          )
         ),
         // Management page now renders the 087-01 hub, which fetches the
         // server-projected directory. Full-staff projection so the title
         // test exercises the real fetch path without capability surprises.
         http.get("/api/v1/programs/hub", () =>
-          HttpResponse.json({
-            requestId: "r-hub",
-            data: {
-              groups: [
-                {
-                  key: "members-and-permissions",
-                  label: COPY.management.groupMemberPermissions,
-                  rows: [
-                    {
-                      key: "approvals",
-                      label: COPY.management.approvalsRow,
-                      description: COPY.management.approvalsRowHint,
-                      href: "/management?module=approvals",
-                    },
-                    {
-                      key: "permissions",
-                      label: COPY.management.permissionsRow,
-                      description: COPY.management.permissionsRowHint,
-                      href: "/management?module=permissions",
-                    },
-                  ],
+          HttpResponse.json(
+            {
+              requestId: "r-hub",
+              data: {
+                groups: [
+                  {
+                    key: "members-and-permissions",
+                    label: COPY.management.groupMemberPermissions,
+                    rows: [
+                      {
+                        key: "approvals",
+                        label: COPY.management.approvalsRow,
+                        description: COPY.management.approvalsRowHint,
+                        href: "/management?module=approvals",
+                      },
+                      {
+                        key: "permissions",
+                        label: COPY.management.permissionsRow,
+                        description: COPY.management.permissionsRowHint,
+                        href: "/management?module=permissions",
+                      },
+                    ],
+                  },
+                  {
+                    key: "ministry-operations",
+                    label: COPY.management.groupOperations,
+                    rows: [
+                      {
+                        key: "departments",
+                        label: COPY.management.departmentsRow,
+                        description: COPY.management.departmentsRowHint,
+                        href: "/management?module=departments",
+                      },
+                      {
+                        key: "attendance",
+                        label: COPY.management.attendanceRow,
+                        description: COPY.management.attendanceRowHint,
+                        href: "/management?module=attendance",
+                      },
+                      {
+                        key: "members",
+                        label: COPY.management.membersRow,
+                        description: COPY.management.membersRowHint,
+                        href: "/management?module=members",
+                      },
+                    ],
+                  },
+                ],
+                entryCard: {
+                  key: "course-management",
+                  label: COPY.management.goCourseManagement,
+                  description: COPY.management.goCourseManagementHint,
+                  href: "/programs?mode=management",
                 },
-                {
-                  key: "ministry-operations",
-                  label: COPY.management.groupOperations,
-                  rows: [
-                    {
-                      key: "departments",
-                      label: COPY.management.departmentsRow,
-                      description: COPY.management.departmentsRowHint,
-                      href: "/management?module=departments",
-                    },
-                    {
-                      key: "attendance",
-                      label: COPY.management.attendanceRow,
-                      description: COPY.management.attendanceRowHint,
-                      href: "/management?module=attendance",
-                    },
-                    {
-                      key: "members",
-                      label: COPY.management.membersRow,
-                      description: COPY.management.membersRowHint,
-                      href: "/management?module=members",
-                    },
-                  ],
-                },
-              ],
-              entryCard: {
-                key: "course-management",
-                label: COPY.management.goCourseManagement,
-                description: COPY.management.goCourseManagementHint,
-                href: "/programs?mode=management",
               },
             },
-          })
+            { headers: { "X-Request-Id": "r-hub" } }
+          )
         )
       );
     }
@@ -2339,14 +2396,17 @@ describe("Shell", () => {
               }
             );
           }
-          return HttpResponse.json({
-            requestId: "r-me",
-            data: {
-              user: PUBLIC_USER,
-              sections: MEMBER_SECTIONS,
-              navigation: NAVIGATION,
+          return HttpResponse.json(
+            {
+              requestId: "r-me",
+              data: {
+                user: PUBLIC_USER,
+                sections: MEMBER_SECTIONS,
+                navigation: NAVIGATION,
+              },
             },
-          });
+            { headers: { "X-Request-Id": "r-me" } }
+          );
         })
       );
       render(

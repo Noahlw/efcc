@@ -241,10 +241,13 @@ describe(ProfileSettingsPage, () => {
             { status: 409 }
           );
         }
-        return HttpResponse.json({
-          requestId: "req-u1",
-          data: { username: body.username, sessionRevoked: true },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "req-u1",
+            data: { username: body.username, sessionRevoked: true },
+          },
+          { headers: { "X-Request-Id": "req-u1" } }
+        );
       })
     );
 
@@ -296,10 +299,13 @@ describe(ProfileSettingsPage, () => {
   test("unchanged username shows a live notice and keeps the session live", async () => {
     server.use(
       http.post("/api/v1/auth/username", () =>
-        HttpResponse.json({
-          requestId: "req-u3",
-          data: { username: PROFILE.username, sessionRevoked: false },
-        })
+        HttpResponse.json(
+          {
+            requestId: "req-u3",
+            data: { username: PROFILE.username, sessionRevoked: false },
+          },
+          { headers: { "X-Request-Id": "req-u3" } }
+        )
       )
     );
 
@@ -325,10 +331,13 @@ describe(ProfileSettingsPage, () => {
     server.use(
       http.post("/api/v1/auth/password", () => {
         calls += 1;
-        return HttpResponse.json({
-          requestId: "req-p1",
-          data: { sessionRevoked: true },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "req-p1",
+            data: { sessionRevoked: true },
+          },
+          { headers: { "X-Request-Id": "req-p1" } }
+        );
       })
     );
 
@@ -362,10 +371,13 @@ describe(ProfileSettingsPage, () => {
   test("password success revokes the session and routes through sign-in", async () => {
     server.use(
       http.post("/api/v1/auth/password", () =>
-        HttpResponse.json({
-          requestId: "req-p2",
-          data: { sessionRevoked: true },
-        })
+        HttpResponse.json(
+          {
+            requestId: "req-p2",
+            data: { sessionRevoked: true },
+          },
+          { headers: { "X-Request-Id": "req-p2" } }
+        )
       )
     );
 
@@ -479,10 +491,13 @@ describe(ProfileSettingsPage, () => {
         if (calls === 1) {
           return HttpResponse.error();
         }
-        return HttpResponse.json({
-          requestId: "req-u4",
-          data: { username: "member.retry", sessionRevoked: false },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "req-u4",
+            data: { username: "member.retry", sessionRevoked: false },
+          },
+          { headers: { "X-Request-Id": "req-u4" } }
+        );
       })
     );
 
@@ -664,10 +679,13 @@ describe(ProfileSettingsPage, () => {
     });
     server.use(
       http.post("/api/v1/auth/username", () =>
-        HttpResponse.json({
-          requestId: "req-u6",
-          data: { username: "member.focus", sessionRevoked: true },
-        })
+        HttpResponse.json(
+          {
+            requestId: "req-u6",
+            data: { username: "member.focus", sessionRevoked: true },
+          },
+          { headers: { "X-Request-Id": "req-u6" } }
+        )
       )
     );
     await fillUsername(user, "member.focus");

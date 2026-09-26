@@ -338,4 +338,104 @@ describe("Home Content CMS Worker routes", () => {
     assert.strictEqual(row.action, "HOME_PUBLISH");
     assert.strictEqual(row.templateType, "B");
   });
+
+  test("accepts camelCase draft aliases and ignores unknown fields", async () => {
+    const response = await worker.fetch(
+      request("/api/v1/home/draft", {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}` },
+        body: JSON.stringify({
+          contentId: "cms-draft-alias",
+          templateType: "B",
+          title: "Alias title",
+          unknownFutureField: { nested: true },
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 200);
+    const payload = await json(response);
+    assert.strictEqual(payload.data.templateType, "B");
+    assert.strictEqual(payload.data.title, "Alias title");
+  });
+
+  test("rejects a string expected_version with 422 VALIDATION", async () => {
+    const response = await saveDraft(adminCookie, "cms-draft-strver", {
+      expected_version: "3",
+    });
+    assert.strictEqual(response.status, 422);
+    const payload = await json(response);
+    assert.strictEqual(payload.code, "VALIDATION");
+  });
+
+  test("returns 503 when stored draft content is malformed", async () => {
+    const created = await saveDraft(adminCookie, "cms-draft-malformed");
+    assert.strictEqual(created.status, 200);
+    try {
+      // D1 STRICT tables and CHECK constraints already enforce the
+      // integer/enum columns; the reachable hole is a blanked timestamp
+      // TEXT column, which the shared contract rejects.
+      await testDb()
+        .prepare(
+          "UPDATE home_content SET updated_at = '' WHERE content_id = 'cms-draft-malformed'"
+        )
+        .run();
+      const response = await worker.fetch(
+        request("/api/v1/home/content", {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}` },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(response.status, 503);
+      const payload = await json(response);
+      assert.strictEqual(payload.code, "HOME_UNAVAILABLE");
+      assert.ok(typeof payload.requestId === "string");
+    } finally {
+      await testDb()
+        .prepare(
+          "DELETE FROM home_content WHERE content_id = 'cms-draft-malformed'"
+        )
+        .run();
+    }
+  });
+
+  test("clamps the audit limit instead of rejecting it", async () => {
+    for (const limit of ["999", "not-a-number", "0"]) {
+      const response = await worker.fetch(
+        request(`/api/v1/home/audit?limit=${limit}`, {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}` },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(response.status, 200);
+      const payload = await json(response);
+      assert.ok(Array.isArray(payload.data.items));
+      assert.ok(payload.data.items.length <= 100);
+    }
+  });
+
+  test("returns 404 for a blank featured-event id", async () => {
+    const response = await worker.fetch(
+      request("/api/v1/home/cms/featured-event/%20", {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 404);
+    const payload = await json(response);
+    assert.strictEqual(payload.code, "NOT_FOUND");
+  });
+
+  test("returns 404 Problem Details for malformed percent-encoding", async () => {
+    const response = await worker.fetch(
+      request("/api/v1/home/cms/featured-event/%E4%B8", {
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 404);
+    const payload = await json(response);
+    assert.strictEqual(payload.code, "NOT_FOUND");
+    assert.ok(typeof payload.requestId === "string");
+  });
 });

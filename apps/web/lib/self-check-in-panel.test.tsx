@@ -87,10 +87,13 @@ function resolveHandler(options: {
 }) {
   const { events = [], latest = null, enrolled = true } = options;
   return http.get("/api/v1/attendance/resolve", () =>
-    HttpResponse.json({
-      requestId: "rid-resolve",
-      data: { events, latest, enrolled },
-    })
+    HttpResponse.json(
+      {
+        requestId: "rid-resolve",
+        data: { events, latest, enrolled },
+      },
+      { headers: { "X-Request-Id": "rid-resolve" } }
+    )
   );
 }
 
@@ -117,15 +120,18 @@ describe(SelfCheckInPanel, () => {
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     server.use(
       http.get("/api/v1/attendance/events/:eventId/me", () =>
-        HttpResponse.json({
-          requestId: "rid-own-attendance",
-          data: {
-            event: EVENT,
-            state: null,
-            attendance: null,
-            disposition: null,
+        HttpResponse.json(
+          {
+            requestId: "rid-own-attendance",
+            data: {
+              event: EVENT,
+              state: "Not Yet",
+              attendance: null,
+              disposition: null,
+            },
           },
-        })
+          { headers: { "X-Request-Id": "rid-own-attendance" } }
+        )
       )
     );
   });
@@ -246,10 +252,13 @@ describe(SelfCheckInPanel, () => {
     server.use(
       http.get("/api/v1/attendance/resolve", ({ request }) => {
         resolveRequest.url = new URL(request.url);
-        return HttpResponse.json({
-          requestId: "rid-resolve-event",
-          data: { events: [EVENT], latest: null, enrolled: true },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-resolve-event",
+            data: { events: [EVENT], latest: null, enrolled: true },
+          },
+          { headers: { "X-Request-Id": "rid-resolve-event" } }
+        );
       })
     );
     window.history.pushState({}, "", "/scanner?event=evt-1");
@@ -275,31 +284,37 @@ describe(SelfCheckInPanel, () => {
       http.get("/api/v1/attendance/resolve", () => {
         resolveCalls += 1;
         if (resolveCalls === 1) {
-          return HttpResponse.json({
-            requestId: "rid-resolve-event-context",
-            data: { events: [EVENT], latest: null, enrolled: true },
-          });
-        }
-        return HttpResponse.json({
-          requestId: "rid-resolve-closed-other",
-          data: {
-            events: [],
-            latest: {
-              event_id: CLOSED_OTHER_EVENT.event_id,
-              event_name: CLOSED_OTHER_EVENT.name,
-              location: CLOSED_OTHER_EVENT.location,
-              ends_at: CLOSED_OTHER_EVENT.ends_at,
-              status: "Active",
-              availability: "Active",
-              starts_at: CLOSED_OTHER_EVENT.starts_at,
-              check_in_window_opens_at:
-                CLOSED_OTHER_EVENT.check_in_window_opens_at,
-              program_id: CLOSED_OTHER_EVENT.program_id,
-              program_name: CLOSED_OTHER_EVENT.program_name,
+          return HttpResponse.json(
+            {
+              requestId: "rid-resolve-event-context",
+              data: { events: [EVENT], latest: null, enrolled: true },
             },
-            enrolled: true,
+            { headers: { "X-Request-Id": "rid-resolve-event-context" } }
+          );
+        }
+        return HttpResponse.json(
+          {
+            requestId: "rid-resolve-closed-other",
+            data: {
+              events: [],
+              latest: {
+                event_id: CLOSED_OTHER_EVENT.event_id,
+                event_name: CLOSED_OTHER_EVENT.name,
+                location: CLOSED_OTHER_EVENT.location,
+                ends_at: CLOSED_OTHER_EVENT.ends_at,
+                status: "Active",
+                availability: "Active",
+                starts_at: CLOSED_OTHER_EVENT.starts_at,
+                check_in_window_opens_at:
+                  CLOSED_OTHER_EVENT.check_in_window_opens_at,
+                program_id: CLOSED_OTHER_EVENT.program_id,
+                program_name: CLOSED_OTHER_EVENT.program_name,
+              },
+              enrolled: true,
+            },
           },
-        });
+          { headers: { "X-Request-Id": "rid-resolve-closed-other" } }
+        );
       })
     );
     window.history.pushState({}, "", "/scanner?event=evt-1");
@@ -333,10 +348,13 @@ describe(SelfCheckInPanel, () => {
     const previousUrl = new URL(window.location.href);
     server.use(
       http.get("/api/v1/attendance/resolve", () =>
-        HttpResponse.json({
-          requestId: "rid-resolve-deep-link",
-          data: { events: [EVENT], latest: null, enrolled: true },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-resolve-deep-link",
+            data: { events: [EVENT], latest: null, enrolled: true },
+          },
+          { headers: { "X-Request-Id": "rid-resolve-deep-link" } }
+        )
       )
     );
 
@@ -421,14 +439,17 @@ describe(SelfCheckInPanel, () => {
       http.post("/api/v1/attendance/self", async ({ request }) => {
         selfCalls += 1;
         checkInBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({
-          requestId: "rid-self",
-          data: {
-            outcome: "success",
-            attendance_id: "att-1",
-            checked_in_at: "2026-08-13T11:31:00.000Z",
+        return HttpResponse.json(
+          {
+            requestId: "rid-self",
+            data: {
+              outcome: "success",
+              attendance_id: "att-1",
+              checked_in_at: "2026-08-13T11:31:00.000Z",
+            },
           },
-        });
+          { headers: { "X-Request-Id": "rid-self" } }
+        );
       })
     );
 
@@ -513,10 +534,17 @@ describe(SelfCheckInPanel, () => {
       resolveHandler({ events: [EVENT] }),
       http.post("/api/v1/attendance/self", async () => {
         selfCalls += 1;
-        return HttpResponse.json({
-          requestId: "rid-self",
-          data: { outcome: "success", attendance_id: "att-1" },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-self",
+            data: {
+              outcome: "success",
+              attendance_id: "att-1",
+              checked_in_at: "2026-08-13T11:35:00.000Z",
+            },
+          },
+          { headers: { "X-Request-Id": "rid-self" } }
+        );
       })
     );
 
@@ -556,10 +584,17 @@ describe(SelfCheckInPanel, () => {
       resolveHandler({ events: [EVENT, EVENT_TWO] }),
       http.post("/api/v1/attendance/self", async () => {
         selfCalls += 1;
-        return HttpResponse.json({
-          requestId: "rid-self",
-          data: { outcome: "success", attendance_id: "att-1" },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-self",
+            data: {
+              outcome: "success",
+              attendance_id: "att-1",
+              checked_in_at: "2026-08-13T11:35:00.000Z",
+            },
+          },
+          { headers: { "X-Request-Id": "rid-self" } }
+        );
       })
     );
 
@@ -893,10 +928,13 @@ describe(SelfCheckInPanel, () => {
     server.use(
       resolveHandler({ events: [EVENT] }),
       http.post("/api/v1/attendance/self", () =>
-        HttpResponse.json({
-          requestId: "rid-dup",
-          data: { outcome: "duplicate", attendance_id: "att-1" },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-dup",
+            data: { outcome: "duplicate" },
+          },
+          { headers: { "X-Request-Id": "rid-dup" } }
+        )
       )
     );
 
@@ -982,10 +1020,13 @@ describe(SelfCheckInPanel, () => {
     expect(manualSubmit).toHaveAttribute("aria-busy", "true");
 
     releaseResolve(
-      HttpResponse.json({
-        requestId: "rid-pending-resolve",
-        data: { events: [EVENT], latest: null, enrolled: true },
-      })
+      HttpResponse.json(
+        {
+          requestId: "rid-pending-resolve",
+          data: { events: [EVENT], latest: null, enrolled: true },
+        },
+        { headers: { "X-Request-Id": "rid-pending-resolve" } }
+      )
     );
     await screen.findByRole("heading", {
       name: COPY.attendance.confirmTitle,
@@ -1020,10 +1061,17 @@ describe(SelfCheckInPanel, () => {
     ).toBeNull();
 
     releaseRetry(
-      HttpResponse.json({
-        requestId: "rid-pending-retry",
-        data: { outcome: "success", attendance_id: "att-pending" },
-      })
+      HttpResponse.json(
+        {
+          requestId: "rid-pending-retry",
+          data: {
+            outcome: "success",
+            attendance_id: "att-pending",
+            checked_in_at: "2026-08-13T11:35:00.000Z",
+          },
+        },
+        { headers: { "X-Request-Id": "rid-pending-retry" } }
+      )
     );
     await expect(
       screen.findByRole("heading", { name: COPY.attendance.successTitle })
@@ -1049,10 +1097,17 @@ describe(SelfCheckInPanel, () => {
               },
               { status: 500 }
             )
-          : HttpResponse.json({
-              requestId: "rid-retry",
-              data: { outcome: "success", attendance_id: "att-1" },
-            });
+          : HttpResponse.json(
+              {
+                requestId: "rid-retry",
+                data: {
+                  outcome: "success",
+                  attendance_id: "att-1",
+                  checked_in_at: "2026-08-13T11:35:00.000Z",
+                },
+              },
+              { headers: { "X-Request-Id": "rid-retry" } }
+            );
       })
     );
 
@@ -1169,20 +1224,23 @@ describe(SelfCheckInPanel, () => {
 
     server.use(
       http.get(`/api/v1/attendance/events/${EVENT.event_id}/me`, () =>
-        HttpResponse.json({
-          requestId: "rid-own-attendance-reconciled",
-          data: {
-            event: EVENT,
-            state: "Active",
-            attendance: {
-              attendance_id: "att-reconciled",
-              event_id: EVENT.event_id,
-              status: "Active",
-              checked_in_at: "2026-08-13T11:31:00.000Z",
+        HttpResponse.json(
+          {
+            requestId: "rid-own-attendance-reconciled",
+            data: {
+              event: EVENT,
+              state: "Present",
+              attendance: {
+                attendance_id: "att-reconciled",
+                event_id: EVENT.event_id,
+                status: "Active",
+                checked_in_at: "2026-08-13T11:31:00.000Z",
+              },
+              disposition: null,
             },
-            disposition: null,
           },
-        })
+          { headers: { "X-Request-Id": "rid-own-attendance-reconciled" } }
+        )
       )
     );
     await user.click(
@@ -1290,10 +1348,17 @@ describe(SelfCheckInPanel, () => {
     server.use(
       http.post("/api/v1/attendance/self", async () => {
         attempts += 1;
-        return HttpResponse.json({
-          requestId: "rid-online",
-          data: { outcome: "success", attendance_id: "att-1" },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-online",
+            data: {
+              outcome: "success",
+              attendance_id: "att-1",
+              checked_in_at: "2026-08-13T11:35:00.000Z",
+            },
+          },
+          { headers: { "X-Request-Id": "rid-online" } }
+        );
       })
     );
     await user.click(

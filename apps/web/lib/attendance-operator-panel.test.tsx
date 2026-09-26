@@ -145,10 +145,28 @@ const EXPECTED_MEMBER: AttendanceExpectedRow = {
 
 function rosterHandler(event: AttendanceEvent, rows: AttendanceRow[]) {
   return http.get(`/api/v1/attendance/events/${event.event_id}/roster`, () =>
-    HttpResponse.json({
-      requestId: "rid-roster",
-      data: { event, attendances: rows },
-    })
+    HttpResponse.json(
+      {
+        requestId: "rid-roster",
+        data: {
+          event,
+          attendances: rows,
+          guests: [],
+          expected: [],
+          snapshot: null,
+          counts: {
+            expected: 0,
+            present: 0,
+            not_yet: 0,
+            absent: 0,
+            excused: 0,
+            guests: 0,
+          },
+          materialization_required: false,
+        },
+      },
+      { headers: { "X-Request-Id": "rid-roster" } }
+    )
   );
 }
 
@@ -205,10 +223,13 @@ describe(AttendanceOperatorPanel, () => {
     let rosterCalls = 0;
     server.use(
       http.get("/api/v1/attendance/scanner-events", () =>
-        HttpResponse.json({
-          requestId: "rid-list",
-          data: { events: [ACTIVE] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-list",
+            data: { events: [ACTIVE] },
+          },
+          { headers: { "X-Request-Id": "rid-list" } }
+        )
       ),
       http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () => {
         rosterCalls += 1;
@@ -224,10 +245,28 @@ describe(AttendanceOperatorPanel, () => {
             { status: 503 }
           );
         }
-        return HttpResponse.json({
-          requestId: "rid-roster",
-          data: { event: ACTIVE, attendances: [ROW] },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-roster",
+            data: {
+              event: ACTIVE,
+              attendances: [ROW],
+              guests: [],
+              expected: [],
+              snapshot: null,
+              counts: {
+                expected: 0,
+                present: 0,
+                not_yet: 0,
+                absent: 0,
+                excused: 0,
+                guests: 0,
+              },
+              materialization_required: false,
+            },
+          },
+          { headers: { "X-Request-Id": "rid-roster" } }
+        );
       })
     );
     const user = userEvent.setup();
@@ -258,10 +297,13 @@ describe(AttendanceOperatorPanel, () => {
     const onAuthRequired = vi.fn<() => void>();
     server.use(
       http.get("/api/v1/attendance/scanner-events", () =>
-        HttpResponse.json({
-          requestId: "rid-list",
-          data: { events: [ACTIVE] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-list",
+            data: { events: [ACTIVE] },
+          },
+          { headers: { "X-Request-Id": "rid-list" } }
+        )
       ),
       http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () => {
         rosterCalls += 1;
@@ -276,10 +318,28 @@ describe(AttendanceOperatorPanel, () => {
             { status: 401 }
           );
         }
-        return HttpResponse.json({
-          requestId: "rid-roster",
-          data: { event: ACTIVE, attendances: [ROW] },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-roster",
+            data: {
+              event: ACTIVE,
+              attendances: [ROW],
+              guests: [],
+              expected: [],
+              snapshot: null,
+              counts: {
+                expected: 0,
+                present: 0,
+                not_yet: 0,
+                absent: 0,
+                excused: 0,
+                guests: 0,
+              },
+              materialization_required: false,
+            },
+          },
+          { headers: { "X-Request-Id": "rid-roster" } }
+        );
       })
     );
     const user = userEvent.setup();
@@ -303,10 +363,13 @@ describe(AttendanceOperatorPanel, () => {
     let closedRosterCalls = 0;
     server.use(
       http.get("/api/v1/attendance/scanner-events", () =>
-        HttpResponse.json({
-          requestId: "rid-list",
-          data: { events: [ACTIVE, closedEvent] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-list",
+            data: { events: [ACTIVE, closedEvent] },
+          },
+          { headers: { "X-Request-Id": "rid-list" } }
+        )
       ),
       rosterHandler(ACTIVE, [ROW]),
       http.get(
@@ -325,10 +388,28 @@ describe(AttendanceOperatorPanel, () => {
               { status: 503 }
             );
           }
-          return HttpResponse.json({
-            requestId: "rid-closed-roster",
-            data: { event: closedEvent, attendances: [] },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-closed-roster",
+              data: {
+                event: closedEvent,
+                attendances: [],
+                guests: [],
+                expected: [],
+                snapshot: null,
+                counts: {
+                  expected: 0,
+                  present: 0,
+                  not_yet: 0,
+                  absent: 0,
+                  excused: 0,
+                  guests: 0,
+                },
+                materialization_required: false,
+              },
+            },
+            { headers: { "X-Request-Id": "rid-closed-roster" } }
+          );
         }
       )
     );
@@ -390,38 +471,65 @@ describe(AttendanceOperatorPanel, () => {
     let rosterCalls = 0;
     server.use(
       http.get("/api/v1/attendance/scanner-events", () =>
-        HttpResponse.json({
-          requestId: "rid-list",
-          data: { events: [ACTIVE] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-list",
+            data: { events: [ACTIVE] },
+          },
+          { headers: { "X-Request-Id": "rid-list" } }
+        )
       ),
       http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () => {
         rosterCalls += 1;
         // First call: empty roster before the assist; later calls: the member row.
-        return HttpResponse.json({
-          requestId: "rid-roster",
-          data: {
-            event: ACTIVE,
-            attendances: rosterCalls === 1 ? [] : [ROW],
-            expected: [
-              rosterCalls === 1
-                ? EXPECTED_MEMBER
-                : { ...EXPECTED_MEMBER, state: "Present", attendance: ROW },
-            ],
+        return HttpResponse.json(
+          {
+            requestId: "rid-roster",
+            data: {
+              event: ACTIVE,
+              attendances: rosterCalls === 1 ? [] : [ROW],
+              expected: [
+                rosterCalls === 1
+                  ? EXPECTED_MEMBER
+                  : { ...EXPECTED_MEMBER, state: "Present", attendance: ROW },
+              ],
+              guests: [],
+              snapshot: null,
+              counts: {
+                expected: 1,
+                present: 0,
+                not_yet: 0,
+                absent: 0,
+                excused: 0,
+                guests: 0,
+              },
+              materialization_required: false,
+            },
           },
-        });
+          { headers: { "X-Request-Id": "rid-roster" } }
+        );
       }),
       http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/members`, () =>
-        HttpResponse.json({
-          requestId: "rid-members",
-          data: { members: [MEMBER, ADDITION_MEMBER] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-members",
+            data: { members: [MEMBER, ADDITION_MEMBER] },
+          },
+          { headers: { "X-Request-Id": "rid-members" } }
+        )
       ),
       http.post(`/api/v1/attendance/events/${ACTIVE.event_id}/check-in`, () =>
-        HttpResponse.json({
-          requestId: "rid-checkin",
-          data: { outcome: "success", attendance_id: "att-1" },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-checkin",
+            data: {
+              outcome: "success",
+              attendance_id: "att-1",
+              checked_in_at: "2026-08-13T11:35:00.000Z",
+            },
+          },
+          { headers: { "X-Request-Id": "rid-checkin" } }
+        )
       )
     );
     const user = userEvent.setup();
@@ -500,10 +608,13 @@ describe(AttendanceOperatorPanel, () => {
   test("cancelled event: chooser suffix, notice, and no check-in controls", async () => {
     server.use(
       http.get("/api/v1/attendance/scanner-events", () =>
-        HttpResponse.json({
-          requestId: "rid-list",
-          data: { events: [ACTIVE, CANCELLED] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-list",
+            data: { events: [ACTIVE, CANCELLED] },
+          },
+          { headers: { "X-Request-Id": "rid-list" } }
+        )
       ),
       rosterHandler(CANCELLED, [CANCELLED_GUEST_ROW]),
       rosterHandler(ACTIVE, [])
@@ -541,10 +652,13 @@ describe(AttendanceOperatorPanel, () => {
       );
       server.use(
         http.get("/api/v1/attendance/scanner-events", () =>
-          HttpResponse.json({
-            requestId: "rid-list",
-            data: { events: [selectedEvent] },
-          })
+          HttpResponse.json(
+            {
+              requestId: "rid-list",
+              data: { events: [selectedEvent] },
+            },
+            { headers: { "X-Request-Id": "rid-list" } }
+          )
         ),
         rosterHandler(selectedEvent, [])
       );
@@ -565,40 +679,49 @@ describe(AttendanceOperatorPanel, () => {
     let materializeCalls = 0;
     server.use(
       http.get("/api/v1/attendance/scanner-events", () =>
-        HttpResponse.json({
-          requestId: "rid-list",
-          data: { events: [ACTIVE] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-list",
+            data: { events: [ACTIVE] },
+          },
+          { headers: { "X-Request-Id": "rid-list" } }
+        )
       ),
       http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () =>
-        HttpResponse.json({
-          requestId: "rid-roster",
-          data: {
-            event: ACTIVE,
-            attendances: [],
-            expected: [],
-            guests: [],
-            snapshot: null,
-            counts: {
-              expected: 0,
-              present: 0,
-              not_yet: 0,
-              absent: 0,
-              excused: 0,
-              guests: 0,
+        HttpResponse.json(
+          {
+            requestId: "rid-roster",
+            data: {
+              event: ACTIVE,
+              attendances: [],
+              expected: [],
+              guests: [],
+              snapshot: null,
+              counts: {
+                expected: 0,
+                present: 0,
+                not_yet: 0,
+                absent: 0,
+                excused: 0,
+                guests: 0,
+              },
+              materialization_required: true,
             },
-            materialization_required: true,
           },
-        })
+          { headers: { "X-Request-Id": "rid-roster" } }
+        )
       ),
       http.post(
         `/api/v1/attendance/events/${ACTIVE.event_id}/materialize`,
         () => {
           materializeCalls += 1;
-          return HttpResponse.json({
-            requestId: "rid-materialize",
-            data: {},
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-materialize",
+              data: {},
+            },
+            { headers: { "X-Request-Id": "rid-materialize" } }
+          );
         }
       )
     );
@@ -618,32 +741,53 @@ describe(AttendanceOperatorPanel, () => {
     let voided = false;
     server.use(
       http.get("/api/v1/attendance/scanner-events", () =>
-        HttpResponse.json({
-          requestId: "rid-list",
-          data: { events: [ACTIVE] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-list",
+            data: { events: [ACTIVE] },
+          },
+          { headers: { "X-Request-Id": "rid-list" } }
+        )
       ),
       http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () =>
-        HttpResponse.json({
-          requestId: "rid-roster",
-          data: {
-            event: ACTIVE,
-            attendances: [
-              voided
-                ? { ...ROW, status: "Voided", void_reason: "輸入錯誤" }
-                : ROW,
-            ],
+        HttpResponse.json(
+          {
+            requestId: "rid-roster",
+            data: {
+              event: ACTIVE,
+              attendances: [
+                voided
+                  ? { ...ROW, status: "Voided", void_reason: "輸入錯誤" }
+                  : ROW,
+              ],
+              guests: [],
+              expected: [],
+              snapshot: null,
+              counts: {
+                expected: 0,
+                present: 0,
+                not_yet: 0,
+                absent: 0,
+                excused: 0,
+                guests: 0,
+              },
+              materialization_required: false,
+            },
           },
-        })
+          { headers: { "X-Request-Id": "rid-roster" } }
+        )
       ),
       http.post("/api/v1/attendance/att-1/void", async ({ request }) => {
         const body = (await request.json()) as { reason: string };
         expect(body.reason).toBe("輸入錯誤");
         voided = true;
-        return HttpResponse.json({
-          requestId: "rid-void",
-          data: { outcome: "voided", attendance_id: "att-1" },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-void",
+            data: { outcome: "voided", attendance_id: "att-1" },
+          },
+          { headers: { "X-Request-Id": "rid-void" } }
+        );
       })
     );
     const user = userEvent.setup();
@@ -688,27 +832,45 @@ describe(AttendanceOperatorPanel, () => {
     let corrected = false;
     server.use(
       http.get("/api/v1/attendance/scanner-events", () =>
-        HttpResponse.json({
-          requestId: "rid-list",
-          data: { events: [ACTIVE] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-list",
+            data: { events: [ACTIVE] },
+          },
+          { headers: { "X-Request-Id": "rid-list" } }
+        )
       ),
       http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () =>
-        HttpResponse.json({
-          requestId: "rid-roster",
-          data: {
-            event: ACTIVE,
-            attendances: [
-              corrected
-                ? {
-                    ...guestRow,
-                    guest_name: "新訪客名",
-                    guest_phone: "9222 3333",
-                  }
-                : guestRow,
-            ],
+        HttpResponse.json(
+          {
+            requestId: "rid-roster",
+            data: {
+              event: ACTIVE,
+              attendances: [
+                corrected
+                  ? {
+                      ...guestRow,
+                      guest_name: "新訪客名",
+                      guest_phone: "9222 3333",
+                    }
+                  : guestRow,
+              ],
+              guests: [],
+              expected: [],
+              snapshot: null,
+              counts: {
+                expected: 0,
+                present: 0,
+                not_yet: 0,
+                absent: 0,
+                excused: 0,
+                guests: 0,
+              },
+              materialization_required: false,
+            },
           },
-        })
+          { headers: { "X-Request-Id": "rid-roster" } }
+        )
       ),
       http.patch(
         "/api/v1/attendance/att-guest-1/guest-correction",
@@ -722,10 +884,13 @@ describe(AttendanceOperatorPanel, () => {
           expect(body.phone).toBe("9222 3333");
           expect(body.reason).toBe("更正電話");
           corrected = true;
-          return HttpResponse.json({
-            requestId: "rid-corr",
-            data: { outcome: "corrected", attendance_id: "att-guest-1" },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-corr",
+              data: { outcome: "corrected", attendance_id: "att-guest-1" },
+            },
+            { headers: { "X-Request-Id": "rid-corr" } }
+          );
         }
       )
     );
@@ -761,16 +926,37 @@ describe(AttendanceOperatorPanel, () => {
   test("operator panel surfaces error tone and recovers when void fails", async () => {
     server.use(
       http.get("/api/v1/attendance/scanner-events", () =>
-        HttpResponse.json({
-          requestId: "rid-list",
-          data: { events: [ACTIVE] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-list",
+            data: { events: [ACTIVE] },
+          },
+          { headers: { "X-Request-Id": "rid-list" } }
+        )
       ),
       http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () =>
-        HttpResponse.json({
-          requestId: "rid-roster",
-          data: { event: ACTIVE, attendances: [ROW] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-roster",
+            data: {
+              event: ACTIVE,
+              attendances: [ROW],
+              guests: [],
+              expected: [],
+              snapshot: null,
+              counts: {
+                expected: 0,
+                present: 0,
+                not_yet: 0,
+                absent: 0,
+                excused: 0,
+                guests: 0,
+              },
+              materialization_required: false,
+            },
+          },
+          { headers: { "X-Request-Id": "rid-roster" } }
+        )
       ),
       http.post("/api/v1/attendance/att-1/void", () =>
         HttpResponse.json(
@@ -825,18 +1011,39 @@ describe(AttendanceOperatorPanel, () => {
     };
     server.use(
       http.get("/api/v1/attendance/scanner-events", () =>
-        HttpResponse.json({
-          requestId: "rid-list",
-          data: { events: [ACTIVE] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-list",
+            data: { events: [ACTIVE] },
+          },
+          { headers: { "X-Request-Id": "rid-list" } }
+        )
       ),
       http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () => {
         rosterCalls += 1;
         if (rosterCalls === 1) {
-          return HttpResponse.json({
-            requestId: "rid-roster",
-            data: { event: ACTIVE, attendances: [ROW] },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-roster",
+              data: {
+                event: ACTIVE,
+                attendances: [ROW],
+                guests: [],
+                expected: [],
+                snapshot: null,
+                counts: {
+                  expected: 0,
+                  present: 0,
+                  not_yet: 0,
+                  absent: 0,
+                  excused: 0,
+                  guests: 0,
+                },
+                materialization_required: false,
+              },
+            },
+            { headers: { "X-Request-Id": "rid-roster" } }
+          );
         }
         if (rosterCalls === 2 || rosterCalls === 4) {
           return HttpResponse.json(
@@ -851,15 +1058,51 @@ describe(AttendanceOperatorPanel, () => {
           );
         }
         if (rosterCalls === 3) {
-          return HttpResponse.json({
-            requestId: "rid-mismatch",
-            data: { event: ACTIVE, attendances: [ROW] },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-mismatch",
+              data: {
+                event: ACTIVE,
+                attendances: [ROW],
+                guests: [],
+                expected: [],
+                snapshot: null,
+                counts: {
+                  expected: 0,
+                  present: 0,
+                  not_yet: 0,
+                  absent: 0,
+                  excused: 0,
+                  guests: 0,
+                },
+                materialization_required: false,
+              },
+            },
+            { headers: { "X-Request-Id": "rid-mismatch" } }
+          );
         }
-        return HttpResponse.json({
-          requestId: "rid-reconciled",
-          data: { event: ACTIVE, attendances: [voidedRow] },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-reconciled",
+            data: {
+              event: ACTIVE,
+              attendances: [voidedRow],
+              guests: [],
+              expected: [],
+              snapshot: null,
+              counts: {
+                expected: 0,
+                present: 0,
+                not_yet: 0,
+                absent: 0,
+                excused: 0,
+                guests: 0,
+              },
+              materialization_required: false,
+            },
+          },
+          { headers: { "X-Request-Id": "rid-reconciled" } }
+        );
       }),
       http.post(`/api/v1/attendance/${ROW.attendance_id}/void`, () =>
         HttpResponse.json(
@@ -955,16 +1198,37 @@ describe(AttendanceOperatorPanel, () => {
     });
     server.use(
       http.get("/api/v1/attendance/scanner-events", () =>
-        HttpResponse.json({
-          requestId: "rid-reload-list",
-          data: { events: [ACTIVE] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-reload-list",
+            data: { events: [ACTIVE] },
+          },
+          { headers: { "X-Request-Id": "rid-reload-list" } }
+        )
       ),
       http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () =>
-        HttpResponse.json({
-          requestId: "rid-reload-roster",
-          data: { event: ACTIVE, attendances: [voidedRow] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-reload-roster",
+            data: {
+              event: ACTIVE,
+              attendances: [voidedRow],
+              guests: [],
+              expected: [],
+              snapshot: null,
+              counts: {
+                expected: 0,
+                present: 0,
+                not_yet: 0,
+                absent: 0,
+                excused: 0,
+                guests: 0,
+              },
+              materialization_required: false,
+            },
+          },
+          { headers: { "X-Request-Id": "rid-reload-roster" } }
+        )
       )
     );
     const onMutationBlockChange = vi.fn<(blocked: boolean) => void>();
@@ -991,25 +1255,64 @@ describe(AttendanceOperatorPanel, () => {
     };
     server.use(
       http.get("/api/v1/attendance/scanner-events", () =>
-        HttpResponse.json({
-          requestId: "rid-list",
-          data: { events: [ACTIVE] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-list",
+            data: { events: [ACTIVE] },
+          },
+          { headers: { "X-Request-Id": "rid-list" } }
+        )
       ),
       http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () => {
         rosterCalls += 1;
         if (rosterCalls === 1) {
-          return HttpResponse.json({
-            requestId: "rid-roster",
-            data: { event: ACTIVE, attendances: [ROW] },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-roster",
+              data: {
+                event: ACTIVE,
+                attendances: [ROW],
+                guests: [],
+                expected: [],
+                snapshot: null,
+                counts: {
+                  expected: 0,
+                  present: 0,
+                  not_yet: 0,
+                  absent: 0,
+                  excused: 0,
+                  guests: 0,
+                },
+                materialization_required: false,
+              },
+            },
+            { headers: { "X-Request-Id": "rid-roster" } }
+          );
         }
         return rosterCalls === 2
           ? reconciliation.promise
-          : HttpResponse.json({
-              requestId: "rid-late",
-              data: { event: ACTIVE, attendances: [voidedRow] },
-            });
+          : HttpResponse.json(
+              {
+                requestId: "rid-late",
+                data: {
+                  event: ACTIVE,
+                  attendances: [voidedRow],
+                  guests: [],
+                  expected: [],
+                  snapshot: null,
+                  counts: {
+                    expected: 0,
+                    present: 0,
+                    not_yet: 0,
+                    absent: 0,
+                    excused: 0,
+                    guests: 0,
+                  },
+                  materialization_required: false,
+                },
+              },
+              { headers: { "X-Request-Id": "rid-late" } }
+            );
       }),
       http.post(`/api/v1/attendance/${ROW.attendance_id}/void`, () =>
         HttpResponse.error()
@@ -1045,10 +1348,28 @@ describe(AttendanceOperatorPanel, () => {
     expect(rosterCalls).toBe(2);
 
     reconciliation.resolve(
-      HttpResponse.json({
-        requestId: "rid-reconciled",
-        data: { event: ACTIVE, attendances: [voidedRow] },
-      })
+      HttpResponse.json(
+        {
+          requestId: "rid-reconciled",
+          data: {
+            event: ACTIVE,
+            attendances: [voidedRow],
+            guests: [],
+            expected: [],
+            snapshot: null,
+            counts: {
+              expected: 0,
+              present: 0,
+              not_yet: 0,
+              absent: 0,
+              excused: 0,
+              guests: 0,
+            },
+            materialization_required: false,
+          },
+        },
+        { headers: { "X-Request-Id": "rid-reconciled" } }
+      )
     );
     await screen.findAllByText(COPY.programs.workspaceReconciled);
     expect(rosterCalls).toBe(2);

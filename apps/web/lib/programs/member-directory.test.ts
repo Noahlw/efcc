@@ -125,7 +125,6 @@ async function createProgram(
         description: "測試目的",
         category: "測試類別",
         behavior_type: "OneOff",
-        lifecycle: "Active",
         discoverability: "Unlisted",
         enrollment_mode: "ManagerOnly",
       },
@@ -136,7 +135,16 @@ async function createProgram(
   const body = (await response.json()) as {
     data: { program: { program_id: string } };
   };
-  return body.data.program.program_id;
+  const programId = body.data.program.program_id;
+  const promote = await worker.fetch(
+    request(`/api/v1/programs/${programId}`, access, {
+      method: "PATCH",
+      body: { lifecycle: "Active" },
+    }),
+    testEnv()
+  );
+  assert.strictEqual(promote.status, 200);
+  return programId;
 }
 
 async function assignDepartmentIdentity(

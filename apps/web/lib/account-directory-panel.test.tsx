@@ -56,6 +56,7 @@ interface AccountRow {
   identities?: {
     id: string;
     label: string;
+    stableKey: string;
     scopeKind: "Global" | "Department" | "Program";
     scopeId: string | null;
   }[];
@@ -71,7 +72,13 @@ const ROWS: AccountRow[] = [
     username: "dai.man.chan",
     phone: "9123 4567",
     identities: [
-      { id: "id-1", label: "同工", scopeKind: "Global", scopeId: null },
+      {
+        id: "id-1",
+        label: "同工",
+        stableKey: "staff",
+        scopeKind: "Global",
+        scopeId: null,
+      },
     ],
     status: "Active",
     departments: [{ id: "dept-grow", name: "培育部" }],
@@ -83,7 +90,13 @@ const ROWS: AccountRow[] = [
     username: "dai.man.wong",
     phone: null,
     identities: [
-      { id: "id-2", label: "會友基礎", scopeKind: "Global", scopeId: null },
+      {
+        id: "id-2",
+        label: "會友基礎",
+        stableKey: "member",
+        scopeKind: "Global",
+        scopeId: null,
+      },
     ],
     status: "Pending",
     departments: [],
@@ -95,14 +108,17 @@ function response(
   accounts: AccountRow[] = ROWS,
   nextCursor: string | null = null
 ) {
-  return HttpResponse.json({
-    requestId: "rid-account-directory",
-    data: {
-      accounts,
-      nextCursor,
-      summary: { total: accounts.length, active: 1, elevated: 1, pending: 1 },
+  return HttpResponse.json(
+    {
+      requestId: "rid-account-directory",
+      data: {
+        accounts,
+        nextCursor,
+        summary: { total: accounts.length, active: 1, elevated: 1, pending: 1 },
+      },
     },
-  });
+    { headers: { "X-Request-Id": "rid-account-directory" } }
+  );
 }
 
 describe(AccountDirectoryPanel, () => {
@@ -128,10 +144,13 @@ describe(AccountDirectoryPanel, () => {
     server.use(
       http.get("/api/v1/programs/accounts", () => response()),
       http.get("/api/v1/programs/accounts/AD-001", () =>
-        HttpResponse.json({
-          requestId: "rid-account-detail",
-          data: ROWS[0],
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-account-detail",
+            data: ROWS[0],
+          },
+          { headers: { "X-Request-Id": "rid-account-detail" } }
+        )
       )
     );
     render(<AccountDirectoryPanel />);
@@ -159,10 +178,13 @@ describe(AccountDirectoryPanel, () => {
     server.use(
       http.get("/api/v1/programs/accounts", () => response()),
       http.get("/api/v1/programs/accounts/AD-001", () =>
-        HttpResponse.json({
-          requestId: "rid-account-detail",
-          data: ROWS[0],
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-account-detail",
+            data: ROWS[0],
+          },
+          { headers: { "X-Request-Id": "rid-account-detail" } }
+        )
       )
     );
     render(<AccountDirectoryPanel />);
@@ -277,10 +299,13 @@ describe(AccountDirectoryPanel, () => {
     server.use(
       http.get("/api/v1/programs/accounts", () => response([])),
       http.get("/api/v1/programs/accounts/AD-001", () =>
-        HttpResponse.json({
-          requestId: "rid-account-detail",
-          data: ROWS[0],
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-account-detail",
+            data: ROWS[0],
+          },
+          { headers: { "X-Request-Id": "rid-account-detail" } }
+        )
       )
     );
     render(<AccountDirectoryPanel />);
@@ -349,10 +374,13 @@ describe(AccountDirectoryPanel, () => {
           failed = false;
           return HttpResponse.json({ code: "NOT_FOUND" }, { status: 404 });
         }
-        return HttpResponse.json({
-          requestId: "rid-account-detail",
-          data: ROWS[0],
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-account-detail",
+            data: ROWS[0],
+          },
+          { headers: { "X-Request-Id": "rid-account-detail" } }
+        );
       })
     );
     render(<AccountDirectoryPanel />);
@@ -396,10 +424,13 @@ describe(AccountDirectoryPanel, () => {
     server.use(
       http.get("/api/v1/programs/accounts", () => response()),
       http.get("/api/v1/programs/accounts/AD-001", () =>
-        HttpResponse.json({
-          requestId: "rid-account-detail",
-          data: ROWS[0],
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-account-detail",
+            data: ROWS[0],
+          },
+          { headers: { "X-Request-Id": "rid-account-detail" } }
+        )
       )
     );
     render(<AccountDirectoryPanel />);
@@ -514,10 +545,13 @@ describe(AccountDirectoryPanel, () => {
     server.use(
       http.get("/api/v1/programs/accounts", () => response()),
       http.get("/api/v1/programs/accounts/AD-001", () =>
-        HttpResponse.json({
-          requestId: "rid-account-detail",
-          data: ROWS[0],
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-account-detail",
+            data: ROWS[0],
+          },
+          { headers: { "X-Request-Id": "rid-account-detail" } }
+        )
       )
     );
     render(<AccountDirectoryPanel />);
@@ -557,10 +591,13 @@ describe(AccountDirectoryPanel, () => {
     server.use(
       http.get("/api/v1/programs/accounts", () => response()),
       http.get("/api/v1/programs/accounts/AD-001", () =>
-        HttpResponse.json({
-          requestId: "rid-account-detail",
-          data: ROWS[0],
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-account-detail",
+            data: ROWS[0],
+          },
+          { headers: { "X-Request-Id": "rid-account-detail" } }
+        )
       )
     );
     render(<AccountDirectoryPanel />);

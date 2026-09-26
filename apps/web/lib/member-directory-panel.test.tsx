@@ -60,6 +60,7 @@ interface MemberRow {
   identities?: Array<{
     id: string;
     label: string;
+    stableKey: string;
     scopeKind: "Global" | "Department" | "Program";
     scopeId: string | null;
   }>;
@@ -73,7 +74,13 @@ const MEMBER_ROWS: MemberRow[] = [
     name: "陳大文",
     phone: "9123 4567",
     identities: [
-      { id: "id-dana", label: "會友基礎", scopeKind: "Global", scopeId: null },
+      {
+        id: "id-dana",
+        label: "會友基礎",
+        stableKey: "member",
+        scopeKind: "Global",
+        scopeId: null,
+      },
     ],
     status: "Active",
     departments: [
@@ -89,6 +96,7 @@ const MEMBER_ROWS: MemberRow[] = [
       {
         id: "id-evan",
         label: "青年部同工",
+        stableKey: "dept-staff",
         scopeKind: "Department",
         scopeId: "dept-worship",
       },
@@ -101,7 +109,13 @@ const MEMBER_ROWS: MemberRow[] = [
     name: "李秀蘭",
     phone: "7777 8888",
     identities: [
-      { id: "id-fay", label: "會友基礎", scopeKind: "Global", scopeId: null },
+      {
+        id: "id-fay",
+        label: "會友基礎",
+        stableKey: "member",
+        scopeKind: "Global",
+        scopeId: null,
+      },
     ],
     status: "Active",
     departments: [],
@@ -109,10 +123,13 @@ const MEMBER_ROWS: MemberRow[] = [
 ];
 
 function membersResponse(members: MemberRow[]) {
-  return HttpResponse.json({
-    requestId: "rid-member-directory",
-    data: { members },
-  });
+  return HttpResponse.json(
+    {
+      requestId: "rid-member-directory",
+      data: { members },
+    },
+    { headers: { "X-Request-Id": "rid-member-directory" } }
+  );
 }
 
 function problemResponse(status: number, code: string, detail: string) {

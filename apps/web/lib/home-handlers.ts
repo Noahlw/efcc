@@ -8,6 +8,8 @@
  * - exploreProgram: one real listed Active MemberRequest program with an eligible future event.
  */
 
+import { HomeAnnouncementsSchema, HomeProjectionSchema } from "@efcc/contracts";
+
 import type { AccountRow } from "./auth/accounts";
 import { resolveRequestSession } from "./auth/sessions";
 
@@ -132,6 +134,16 @@ function jsonResponse(
         "X-Request-Id": requestId,
       },
     }
+  );
+}
+
+function homeUnavailable(requestId: string): Response {
+  return problem(
+    503,
+    "HOME_UNAVAILABLE",
+    "Service unavailable",
+    "Home content is temporarily unavailable.",
+    requestId
   );
 }
 
@@ -445,19 +457,23 @@ export async function handleGetHome(
       exploreProgram,
     };
 
+    // Shared contract gate (#646): stored rows must still project to a
+    // valid wire shape. A failure serves the existing 503 fallback —
+    // never a malformed 2xx, never a new wire code.
+    if (!HomeProjectionSchema.safeParse(data).success) {
+      console.error(
+        `[home] GET /api/v1/home malformed data requestId=${requestId}`
+      );
+      return homeUnavailable(requestId);
+    }
+
     return jsonResponse(200, data, requestId);
   } catch (error) {
     console.error(
       `[home] GET /api/v1/home failed requestId=${requestId}:`,
       error
     );
-    return problem(
-      503,
-      "HOME_UNAVAILABLE",
-      "Service unavailable",
-      "Home content is temporarily unavailable.",
-      requestId
-    );
+    return homeUnavailable(requestId);
   }
 }
 
@@ -480,18 +496,19 @@ export async function handleGetAnnouncements(
       new Date().toISOString(),
       MESSAGES_PAGE_SIZE
     );
-    return jsonResponse(200, { announcements }, requestId);
+    const data = { announcements };
+    if (!HomeAnnouncementsSchema.safeParse(data).success) {
+      console.error(
+        `[home] GET /api/v1/home/announcements malformed data requestId=${requestId}`
+      );
+      return homeUnavailable(requestId);
+    }
+    return jsonResponse(200, data, requestId);
   } catch (error) {
     console.error(
       `[home] GET /api/v1/home/announcements failed requestId=${requestId}:`,
       error
     );
-    return problem(
-      503,
-      "HOME_UNAVAILABLE",
-      "Service unavailable",
-      "Home content is temporarily unavailable.",
-      requestId
-    );
+    return homeUnavailable(requestId);
   }
 }

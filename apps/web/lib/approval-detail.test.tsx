@@ -53,10 +53,13 @@ const PENDING: RegistrationDetail = {
 };
 
 function detailResponse(detail: RegistrationDetail) {
-  return HttpResponse.json({
-    requestId: "rid-detail",
-    data: { registration: detail },
-  });
+  return HttpResponse.json(
+    {
+      requestId: "rid-detail",
+      data: { registration: detail },
+    },
+    { headers: { "X-Request-Id": "rid-detail" } }
+  );
 }
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
@@ -137,10 +140,13 @@ describe(ApprovalDetail, () => {
           decidedAt: 1_700_000_300_000,
           decision: "Approved",
         };
-        return HttpResponse.json({
-          requestId: "rid-approve",
-          data: { accountStatus: "active" },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-approve",
+            data: { accountStatus: "active" },
+          },
+          { headers: { "X-Request-Id": "rid-approve" } }
+        );
       })
     );
     const user = userEvent.setup();
@@ -192,10 +198,13 @@ describe(ApprovalDetail, () => {
       http.post("/api/v1/auth/registrations/req-1/reject", () => {
         rejectPosts += 1;
         detail = { ...detail, status: "Rejected", decision: "Rejected" };
-        return HttpResponse.json({
-          requestId: "rid-reject",
-          data: { accountStatus: "rejected" },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-reject",
+            data: { accountStatus: "rejected" },
+          },
+          { headers: { "X-Request-Id": "rid-reject" } }
+        );
       })
     );
     const user = userEvent.setup();
@@ -303,10 +312,13 @@ describe(ApprovalDetail, () => {
           decision: "Approved",
           decidedAt: 1_700_000_500_000,
         };
-        return HttpResponse.json({
-          requestId: "rid-detail-busy",
-          data: { accountStatus: "active" },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-detail-busy",
+            data: { accountStatus: "active" },
+          },
+          { headers: { "X-Request-Id": "rid-detail-busy" } }
+        );
       })
     );
     const user = userEvent.setup();
@@ -355,10 +367,13 @@ describe(ApprovalDetail, () => {
             decisionNote: body.decisionNote ?? null,
             decision: "Rejected",
           };
-          return HttpResponse.json({
-            requestId: "rid-reject-note",
-            data: { accountStatus: "rejected" },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-reject-note",
+              data: { accountStatus: "rejected" },
+            },
+            { headers: { "X-Request-Id": "rid-reject-note" } }
+          );
         }
       )
     );

@@ -161,7 +161,6 @@ test.beforeAll(async ({ playwright }) => {
         description: "Disposable participant Browser Acceptance fixture.",
         category: "T05",
         behavior_type: "Recurring",
-        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "MemberRequest",
       },

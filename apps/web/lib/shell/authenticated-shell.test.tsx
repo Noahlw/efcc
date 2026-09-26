@@ -82,18 +82,24 @@ const authCalls: string[] = [];
 const server = setupServer(
   http.get("/api/v1/auth/me", () => {
     authCalls.push("/api/v1/auth/me");
-    return HttpResponse.json({
-      requestId: "r-me",
-      data: {
-        user: PUBLIC_USER,
-        sections: BOOTSTRAP.sections,
-        navigation: BOOTSTRAP.navigation,
+    return HttpResponse.json(
+      {
+        requestId: "r-me",
+        data: {
+          user: PUBLIC_USER,
+          sections: BOOTSTRAP.sections,
+          navigation: BOOTSTRAP.navigation,
+        },
       },
-    });
+      { headers: { "X-Request-Id": "r-me" } }
+    );
   }),
   http.post("/api/v1/auth/refresh", () => {
     authCalls.push("/api/v1/auth/refresh");
-    return HttpResponse.json({ requestId: "r-refresh", data: {} });
+    return HttpResponse.json(
+      { requestId: "r-refresh", data: {} },
+      { headers: { "X-Request-Id": "r-refresh" } }
+    );
   }),
   http.post("/api/v1/auth/logout", () => {
     authCalls.push("/api/v1/auth/logout");
@@ -268,14 +274,17 @@ describe("Authenticated Shell (TK-04/TK-05/TK-06/TK-07/TK-08)", () => {
     mocks.pathnameMock.mockReturnValue("/management");
     server.use(
       http.get("/api/v1/auth/me", () =>
-        HttpResponse.json({
-          requestId: "r-me",
-          data: {
-            user: STAFF_USER,
-            sections: STAFF_BOOTSTRAP.sections,
-            navigation: STAFF_BOOTSTRAP.navigation,
+        HttpResponse.json(
+          {
+            requestId: "r-me",
+            data: {
+              user: STAFF_USER,
+              sections: STAFF_BOOTSTRAP.sections,
+              navigation: STAFF_BOOTSTRAP.navigation,
+            },
           },
-        })
+          { headers: { "X-Request-Id": "r-me" } }
+        )
       )
     );
     const user = userEvent.setup();

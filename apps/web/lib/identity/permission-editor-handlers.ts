@@ -1,3 +1,10 @@
+import {
+  GrantChangeSchema,
+  GrantsBodySchema,
+  RoleDefinitionDetailViewSchema,
+  parseIdempotencyKey,
+} from "@efcc/contracts";
+
 import { isCapability } from "./capability-catalog";
 /**
  * #485 — cookie-only Worker handlers for Role Definition permissions.
@@ -32,15 +39,6 @@ import {
   RoleScopeMismatchError,
   RoleTargetNotFoundError,
 } from "./role-hierarchy";
-
-type GrantsBody = {
-  base_revision?: unknown;
-  changes?: unknown;
-  actor_user_id?: unknown;
-};
-function hasOnlyKeys(value: object, allowed: readonly string[]): boolean {
-  return Object.keys(value).every((key) => allowed.includes(key));
-}
 
 function requestIdForError(error: unknown, fallback: string): string {
   if (
@@ -166,8 +164,7 @@ function mapPermissionError(error: unknown, requestId: string): Response {
 }
 
 function idempotencyKeyFor(request: Request): string | null {
-  const key = request.headers.get("Idempotency-Key")?.trim() ?? "";
-  return key.length > 0 && key.length <= 200 ? key : null;
+  return parseIdempotencyKey(request.headers.get("Idempotency-Key"));
 }
 
 /** GET /api/v1/identity/role-definitions/:id. */
@@ -187,6 +184,10 @@ export async function handleGetRoleDefinitionDetail(
       auth.account.user_id,
       roleDefinitionId
     );
+    if (!RoleDefinitionDetailViewSchema.safeParse(detail).success) {
+      console.error(`[identity] detail malformed data requestId=${requestId}`);
+      throw new Error("identity contract violation");
+    }
     return roleSuccess(200, detail, requestId);
   } catch (error) {
     return mapPermissionError(error, requestId);
@@ -214,9 +215,9 @@ export async function handleUpdateRoleDefinitionGrants(
       requestId
     );
   }
-  let body: GrantsBody;
+  let body: unknown;
   try {
-    body = (await request.json()) as GrantsBody;
+    body = (await request.json()) as unknown;
   } catch {
     return roleProblem(
       422,
@@ -226,15 +227,8 @@ export async function handleUpdateRoleDefinitionGrants(
       requestId
     );
   }
-  if (
-    typeof body !== "object" ||
-    body === null ||
-    !hasOnlyKeys(body, ["base_revision", "changes"]) ||
-    typeof body.base_revision !== "number" ||
-    !Number.isInteger(body.base_revision) ||
-    body.base_revision < 1 ||
-    !Array.isArray(body.changes)
-  ) {
+  const parsedBody = GrantsBodySchema.safeParse(body);
+  if (!parsedBody.success) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -243,7 +237,7 @@ export async function handleUpdateRoleDefinitionGrants(
       requestId
     );
   }
-  if (body.changes.length > 100) {
+  if (parsedBody.data.changes.length > 100) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -252,16 +246,8 @@ export async function handleUpdateRoleDefinitionGrants(
       requestId
     );
   }
-  for (const change of body.changes) {
-    if (
-      typeof change !== "object" ||
-      change === null ||
-      !hasOnlyKeys(change, ["capability", "value"]) ||
-      !("capability" in change) ||
-      typeof change.capability !== "string" ||
-      !("value" in change) ||
-      typeof change.value !== "boolean"
-    ) {
+  for (const change of parsedBody.data.changes) {
+    if (!GrantChangeSchema.safeParse(change).success) {
       return roleProblem(
         422,
         "ROLE_INVALID_TARGET",
@@ -272,12 +258,12 @@ export async function handleUpdateRoleDefinitionGrants(
     }
   }
   try {
-    const changes = body.changes as PermissionGrantChange[];
+    const changes = parsedBody.data.changes as PermissionGrantChange[];
     const result: RoleDefinitionMutationResult =
       await updateRoleDefinitionGrants(env.DB, {
         actor_user_id: auth.account.user_id,
         role_definition_id: roleDefinitionId,
-        base_revision: body.base_revision,
+        base_revision: parsedBody.data.base_revision,
         idempotency_key: idempotencyKey,
         changes,
         now: new Date().toISOString(),
@@ -285,6 +271,10 @@ export async function handleUpdateRoleDefinitionGrants(
         correlation_id: requestId,
       });
     const { responseRequestId, ...data } = result;
+    if (!RoleDefinitionDetailViewSchema.safeParse(data).success) {
+      console.error(`[identity] grants malformed data requestId=${requestId}`);
+      throw new Error("identity contract violation");
+    }
     return roleSuccess(200, data, responseRequestId ?? requestId);
   } catch (error) {
     return mapPermissionError(error, requestId);

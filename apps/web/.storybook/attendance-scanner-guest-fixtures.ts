@@ -214,7 +214,15 @@ const ATTENDANCE_COUNTS: AttendanceRosterCounts = {
 };
 
 const result = (outcome: "success" | "duplicate" = "success") =>
-  envelope({ outcome, attendance_id: "t07-5-new-attendance" });
+  envelope(
+    outcome === "success"
+      ? {
+          outcome,
+          attendance_id: "t07-5-new-attendance",
+          checked_in_at: "2099-09-01T10:05:00.000Z",
+        }
+      : { outcome }
+  );
 
 export const attendanceScannerGuestHandlers = [
   authMeHandler,

@@ -797,7 +797,7 @@ export const EventDetail = ({
   const runAction = useCallback(
     // oxlint-disable-next-line eslint/complexity -- the mutation boundary keeps identity, refresh, and unknown-outcome guards together.
     async (
-      fn: () => Promise<unknown>,
+      fn: (idempotencyKey: string) => Promise<unknown>,
       successCopy: string | (() => string),
       pendingMutation: EventMutationRecovery,
       onRefused?: (error: unknown) => boolean
@@ -812,15 +812,17 @@ export const EventDetail = ({
       }
       setBusy(true);
       setActionError(null);
+      const idempotencyKey = crypto.randomUUID();
       pendingEventMutationRef.current = pendingMutation;
       writeWorkspaceMutationRecovery({
         surface: "event",
         programId: requestProgramId,
         eventId: requestEventId,
+        idempotencyKey,
         mutation: pendingMutation,
       });
       try {
-        await fn();
+        await fn(idempotencyKey);
         pendingEventMutationRef.current = null;
         clearWorkspaceMutationRecovery("event", {
           programId: requestProgramId,
@@ -932,15 +934,20 @@ export const EventDetail = ({
       return;
     }
     void runAction(
-      () =>
-        updateEvent(programId, eventId, {
-          name,
-          location: location || null,
-          event_type: eventType,
-          ...(hasAttendance && identityChanged
-            ? { reason: editReason.trim() }
-            : {}),
-        }),
+      (idempotencyKey) =>
+        updateEvent(
+          programId,
+          eventId,
+          {
+            name,
+            location: location || null,
+            event_type: eventType,
+            ...(hasAttendance && identityChanged
+              ? { reason: editReason.trim() }
+              : {}),
+          },
+          idempotencyKey
+        ),
       () => {
         clearManagementDraft(eventId, EVENT_DETAIL_DRAFT_ACTION);
         setEditing(false);
@@ -976,17 +983,22 @@ export const EventDetail = ({
       return;
     }
     void runAction(
-      () =>
-        updateEvent(programId, eventId, {
-          starts_at: startsAtIso,
-          ends_at: endsAtIso,
-          check_in_window_opens_at: hkWallInputToIso(
-            String(form.get("opens_at") ?? "")
-          ),
-          check_in_window_closes_at: hkWallInputToIso(
-            String(form.get("closes_at") ?? "")
-          ),
-        }),
+      (idempotencyKey) =>
+        updateEvent(
+          programId,
+          eventId,
+          {
+            starts_at: startsAtIso,
+            ends_at: endsAtIso,
+            check_in_window_opens_at: hkWallInputToIso(
+              String(form.get("opens_at") ?? "")
+            ),
+            check_in_window_closes_at: hkWallInputToIso(
+              String(form.get("closes_at") ?? "")
+            ),
+          },
+          idempotencyKey
+        ),
       () => {
         clearManagementDraft(eventId, EVENT_DETAIL_DRAFT_ACTION);
         setEditing(false);
@@ -1009,8 +1021,14 @@ export const EventDetail = ({
 
   const submitDeactivate = (confirmRequired: boolean) => {
     void runAction(
-      () =>
-        setEventAvailability(programId, eventId, "Inactive", confirmRequired),
+      (idempotencyKey) =>
+        setEventAvailability(
+          programId,
+          eventId,
+          "Inactive",
+          confirmRequired,
+          idempotencyKey
+        ),
       () => {
         setConfirmingDeactivate(false);
         setUndoAvailable(true);
@@ -1051,7 +1069,14 @@ export const EventDetail = ({
 
   const submitActivate = () => {
     void runAction(
-      () => setEventAvailability(programId, eventId, "Active"),
+      (idempotencyKey) =>
+        setEventAvailability(
+          programId,
+          eventId,
+          "Active",
+          false,
+          idempotencyKey
+        ),
       () => {
         setUndoAvailable(false);
         return COPY.programs.eventAvailabilityRestoredNotice;
@@ -1080,7 +1105,8 @@ export const EventDetail = ({
     const form = new FormData(event.currentTarget);
     const reason = String(form.get("cancel_reason") ?? "").trim() || null;
     void runAction(
-      () => cancelEvent(programId, eventId, reason),
+      (idempotencyKey) =>
+        cancelEvent(programId, eventId, reason, idempotencyKey),
       () => {
         setConfirmingCancel(false);
         setUndoAvailable(false);

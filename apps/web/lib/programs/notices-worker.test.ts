@@ -219,6 +219,23 @@ describe("085-07: Participant Notices", () => {
     memberGAccess = await login("notices-member-g", "member-g-secret");
   });
 
+  test("create rejects a non-string program_id with 422", async () => {
+    const response = await worker.fetch(
+      request("/api/v1/programs/notices", adminAccess, {
+        method: "POST",
+        body: {
+          member_user_id: "A002",
+          kind: "event",
+          title: "x",
+          body: "y",
+          program_id: 42,
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 422);
+  });
+
   test("admin create is role-gated, validates kind/title/body, and appears in the member list", async () => {
     const asMember = await postCreate(memberAAccess, {
       member_user_id: "A002",

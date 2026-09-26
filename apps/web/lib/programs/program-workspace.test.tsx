@@ -280,7 +280,9 @@ const rule: ScheduleRule = {
   start_time: "19:30",
   end_time: "21:00",
   location: "主堂",
+  created_by: null,
   created_at: "2026-01-01T00:00:00.000Z",
+  updated_by: null,
   updated_at: "2026-01-01T00:00:00.000Z",
 };
 
@@ -3869,15 +3871,19 @@ describe("EVT-01 workspace Event deep link (#251)", () => {
     );
 
     await waitFor(() =>
-      expect(mocks.createEvent).toHaveBeenCalledWith("program-1", {
-        name: "新聚會",
-        event_type: COPY.programs.eventTypeOptions[1],
-        starts_at: "2026-09-13T10:00:00.000Z",
-        ends_at: "2026-09-13T11:00:00.000Z",
-        location: null,
-        check_in_window_opens_at: null,
-        check_in_window_closes_at: null,
-      })
+      expect(mocks.createEvent).toHaveBeenCalledWith(
+        "program-1",
+        {
+          name: "新聚會",
+          event_type: COPY.programs.eventTypeOptions[1],
+          starts_at: "2026-09-13T10:00:00.000Z",
+          ends_at: "2026-09-13T11:00:00.000Z",
+          location: null,
+          check_in_window_opens_at: null,
+          check_in_window_closes_at: null,
+        },
+        expect.any(String)
+      )
     );
     expect(onEventChange).toHaveBeenCalledWith("event-created");
   });

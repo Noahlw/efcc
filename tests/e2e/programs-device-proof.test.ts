@@ -212,7 +212,6 @@ test.beforeAll(async ({ playwright }) => {
         name: fresh("DEVICE_PROOF_PROGRAM"),
         description: "S3 camera acceptance fixture",
         behavior_type: "Recurring",
-        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "ManagerOnly",
         // ponytail: keep at tail of catalog (F-C02)
@@ -226,6 +225,13 @@ test.beforeAll(async ({ playwright }) => {
     );
     const program = recordValue(programData.program, "program response");
     proofProgramId = stringValue(program.program_id, "program_id");
+    const publishedProgram = await adminLogin.api.patch(
+      `/api/v1/programs/${proofProgramId}`,
+      {
+        data: { lifecycle: "Active", discoverability: "Listed" },
+      }
+    );
+    expect(publishedProgram.status()).toBe(200);
 
     const now = Date.now();
     const eventResponse = await postJson(

@@ -903,4 +903,71 @@ describe("GET /api/v1/home Worker route", () => {
     assert.ok(!listedIds.includes("trial-scheduled-future"));
     assert.ok(!listedIds.includes("trial-expired"));
   });
+
+  test("ignores unknown query parameters on public reads", async () => {
+    const response = await worker.fetch(
+      request("/api/v1/home?future=param&limit=not-a-number", {
+        method: "GET",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${memberCookie}` },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(response.status, 200);
+    const body = (await response.json()) as HomeApiResponse;
+    assert.ok("featuredEvent" in body.data);
+  });
+
+  test("returns 503 HOME_UNAVAILABLE when stored announcement data is malformed", async () => {
+    // The public projection filters on exact template/status values, so a
+    // corrupted row would deselect rather than serve malformed data.
+    // Prove the shared contract gate with a delegating store: real D1 for
+    // auth and every other table, one malformed home_content row.
+    const malformed = {
+      content_id: "contract-malformed",
+      version: "corrupt",
+      title: "合約測試公告",
+      summary: "摘要",
+      body_markdown: null,
+      cta_label: null,
+      cta_url: null,
+      image_url: null,
+      image_alt: null,
+      published_at: null,
+      updated_at: new Date().toISOString(),
+    };
+    const realDb = testDb();
+    const delegatingDb = {
+      prepare: (sql: string) => {
+        if (sql.includes("home_content")) {
+          return {
+            bind: () => ({
+              first: async () => null,
+              all: async () => ({ results: [malformed] }),
+            }),
+          };
+        }
+        return realDb.prepare(sql);
+      },
+    };
+    const { handleGetHome } = await import("./home-handlers");
+    const response = await handleGetHome(
+      request("/api/v1/home", {
+        method: "GET",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${memberCookie}` },
+      }),
+      {
+        // oxlint-disable-next-line no-explicit-any
+        DB: delegatingDb as any,
+        EFCC_ACCESS_TOKEN_SECRET: SECRET,
+      }
+    );
+    assert.strictEqual(response.status, 503);
+    const body = (await response.json()) as {
+      code: string;
+      requestId: string;
+    };
+    assert.strictEqual(body.code, "HOME_UNAVAILABLE");
+    assert.ok(typeof body.requestId === "string");
+    assert.ok(response.headers.get("X-Request-Id"));
+  });
 });

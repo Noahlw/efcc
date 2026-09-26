@@ -177,7 +177,8 @@ async function createProgram(
     description?: string;
     category?: string;
     behavior_type: "Recurring" | "OneOff";
-    lifecycle?: "Draft" | "Active" | "Archived";
+    /** The test helper applies this target state with PATCH after creation. */
+    lifecycle?: "Draft" | "Active";
     discoverability?: "Listed" | "Unlisted";
     enrollment_mode?: "MemberRequest" | "ManagerOnly";
   }
@@ -186,6 +187,8 @@ async function createProgram(
   name: string;
   check_in_token: string | null;
 }> {
+  const requestedLifecycle = body.lifecycle ?? "Draft";
+  const { lifecycle: _requestedLifecycle, ...createFields } = body;
   const res = await worker.fetch(
     programsRequest(`/api/v1/programs/departments/${departmentId}/programs`, {
       method: "POST",
@@ -195,10 +198,9 @@ async function createProgram(
         "Content-Type": "application/json",
       },
       body: {
-        ...body,
+        ...createFields,
         description: body.description ?? "測試目的",
         category: body.category ?? "測試類別",
-        lifecycle: body.lifecycle ?? "Draft",
         discoverability: body.discoverability ?? "Unlisted",
         enrollment_mode: body.enrollment_mode ?? "MemberRequest",
       },
@@ -215,7 +217,6 @@ async function createProgram(
       };
     };
   };
-  const requestedLifecycle = body.lifecycle ?? "Draft";
   const requestedDiscoverability = body.discoverability ?? "Unlisted";
   if (
     requestedLifecycle === "Active" ||
@@ -3080,7 +3081,7 @@ describe("PRG-01: programs", () => {
     const missingBody = await problemOf(missingPurpose);
     assert.strictEqual(
       missingBody.detail,
-      "name, purpose, behavior_type, and lifecycle are required and must be valid."
+      "name, purpose, and behavior_type are required and must be valid."
     );
 
     const created = await request("Weekly discipleship purpose");
@@ -3158,7 +3159,7 @@ describe("PRG-01: programs", () => {
     assert.strictEqual(archivedBody.code, "VALIDATION");
     assert.strictEqual(
       archivedBody.detail,
-      "Programs cannot be created directly in the Archived state."
+      "Programs must be created as Draft; update lifecycle after creation."
     );
 
     await Promise.all(
@@ -12282,4 +12283,484 @@ describe("#622 R41/R42: committed writes survive a failing readback", () => {
       .first<{ status: string }>();
     assert.strictEqual(durable?.status, "Cancelled");
   }, 120_000);
+});
+
+describe("#656 programs read contracts", () => {
+  test("members limit floors instead of rejecting", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    for (const limit of ["2.5", "abc", "999"]) {
+      const res = await worker.fetch(
+        programsRequest(`/api/v1/programs/members?q=al&limit=${limit}`, {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(res.status, 200);
+    }
+  });
+
+  test("accounts search rejects bad cursor, status, and department", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    for (const query of [
+      "cursor=1.5",
+      "status=Bogus",
+      `department=${"d".repeat(81)}`,
+    ]) {
+      const res = await worker.fetch(
+        programsRequest(`/api/v1/programs/accounts?${query}`, {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(res.status, 422);
+      const problem = await problemOf(res);
+      assert.strictEqual(problem.code, "VALIDATION");
+    }
+  });
+
+  test("notifications limit clamps to its own ceiling", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    for (const limit of ["0", "999", "abc"]) {
+      const res = await worker.fetch(
+        programsRequest(`/api/v1/programs/notifications?limit=${limit}`, {
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        }),
+        testEnv()
+      );
+      assert.strictEqual(res.status, 200);
+    }
+  });
+
+  test("notifications/read rejects oversized and malformed items", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const post = (body: unknown) =>
+      worker.fetch(
+        programsRequest("/api/v1/programs/notifications/read", {
+          method: "POST",
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+          body,
+        }),
+        testEnv()
+      );
+    const tooMany = await post({
+      items: Array.from({ length: 101 }, (_, i) => ({
+        source_key: `k${i}`,
+        source_revision: "1",
+      })),
+    });
+    assert.strictEqual(tooMany.status, 422);
+    const missingRevision = await post({ items: [{ source_key: "k" }] });
+    assert.strictEqual(missingRevision.status, 422);
+    const duplicates = await post({
+      items: [
+        { source_key: "k", source_revision: "1" },
+        { source_key: "k", source_revision: "1" },
+      ],
+    });
+    assert.strictEqual(duplicates.status, 200);
+    const marked = (await duplicates.json()) as {
+      data: { marked_count: number };
+    };
+    assert.strictEqual(typeof marked.data.marked_count, "number");
+  });
+
+  test("rotate rejects an overlong Idempotency-Key before auth", async () => {
+    const res = await worker.fetch(
+      programsRequest(
+        "/api/v1/programs/unknown-program/attendance-artifact/rotate",
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": "k".repeat(201) },
+          body: {},
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 422);
+    const problem = await problemOf(res);
+    assert.strictEqual(problem.code, "VALIDATION");
+  });
+});
+
+describe("#657 department and program settings mutations", () => {
+  test("department PATCH ignores unknown keys", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const created = await worker.fetch(
+      programsRequest("/api/v1/programs/departments", {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        body: { code: "T657", name: "合約測試部", lifecycle: "Active" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(created.status, 201);
+    const createdBody = (await created.json()) as {
+      data: { department: { department_id: string } };
+    };
+    const departmentId = createdBody.data.department.department_id;
+    const patched = await worker.fetch(
+      programsRequest(`/api/v1/programs/departments/${departmentId}`, {
+        method: "PATCH",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        body: { nickname: "ignored", name: "合約測試部改名" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(patched.status, 200);
+    const patchedBody = (await patched.json()) as {
+      data: { department: { name: string } };
+    };
+    assert.strictEqual(patchedBody.data.department.name, "合約測試部改名");
+  });
+
+  test("program create rejects unknown keys", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const res = await worker.fetch(
+      programsRequest("/api/v1/programs/departments/T657-invalid/programs", {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        body: {
+          name: "x",
+          description: "y",
+          behavior_type: "Recurring",
+          lifecycle: "Active",
+          nickname: "nope",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 422);
+  });
+
+  test("program PATCH rejects empty and unknown-key bodies", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const empty = await worker.fetch(
+      programsRequest("/api/v1/programs/unknown-program", {
+        method: "PATCH",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        body: {},
+      }),
+      testEnv()
+    );
+    assert.strictEqual(empty.status, 422);
+    const unknownKey = await worker.fetch(
+      programsRequest("/api/v1/programs/unknown-program", {
+        method: "PATCH",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        body: { nickname: "x" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(unknownKey.status, 422);
+  });
+
+  test("department create rejects a non-numeric display_order", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const res = await worker.fetch(
+      programsRequest("/api/v1/programs/departments", {
+        method: "POST",
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        body: {
+          code: "T657B",
+          name: "x",
+          lifecycle: "Active",
+          display_order: "3",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 422);
+  });
+});
+
+describe("#658 schedule and event request policies", () => {
+  async function setupProgram(): Promise<{
+    adminAccess: string;
+    programId: string;
+    eventId: string;
+  }> {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const stamp = Date.now();
+    const department = await createDepartment(adminAccess, {
+      code: `T658-${stamp}`,
+      name: "合約排程部",
+    });
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: `合約排程課程-${stamp}`,
+      behavior_type: "OneOff",
+    });
+    const programId = program.program_id;
+    const event = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events`, {
+        method: "POST",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          starts_at: "2030-10-01T10:00:00.000Z",
+          ends_at: "2030-10-01T11:00:00.000Z",
+          name: "合約聚會",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(event.status, 201);
+    const eventBody = (await event.json()) as {
+      data: { event: { event_id: string } };
+    };
+    return { adminAccess, programId, eventId: eventBody.data.event.event_id };
+  }
+
+  test("rule create rejects an out-of-range day_of_week", async () => {
+    const { adminAccess, programId } = await setupProgram();
+    const res = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/schedule-rules`, {
+        method: "POST",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: {
+          recurrence: "WEEKLY",
+          day_of_week: 7,
+          start_time: "09:00",
+          end_time: "10:00",
+        },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 422);
+  });
+
+  test("event PATCH rejects bad availability and unknown fields", async () => {
+    const { adminAccess, programId, eventId } = await setupProgram();
+    const badAvailability = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events/${eventId}`, {
+        method: "PATCH",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { availability: "Maybe" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(badAvailability.status, 422);
+    const unknownField = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events/${eventId}`, {
+        method: "PATCH",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { nickname: "x" },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(unknownField.status, 422);
+  });
+
+  test("preview rejects a zero horizon and generate rejects a blank plan", async () => {
+    const { adminAccess, programId } = await setupProgram();
+    const preview = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events/preview`, {
+        method: "POST",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { horizon_days: 0 },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(preview.status, 422);
+    const generate = await worker.fetch(
+      programsRequest(`/api/v1/programs/${programId}/events/generate`, {
+        method: "POST",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { plan_id: "  " },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(generate.status, 422);
+  });
+
+  test("exception DELETE on an unknown id is 404", async () => {
+    const { adminAccess, programId } = await setupProgram();
+    const res = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${programId}/schedule-rules/unknown-rule/exceptions/unknown-exc`,
+        {
+          method: "DELETE",
+          headers: { Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}` },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 404);
+  });
+});
+
+describe("#659 enrollment request policies", () => {
+  test("approval-run start rejects non-string request_ids", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    for (const body of [{ request_ids: "x" }, { request_ids: [42] }]) {
+      const res = await worker.fetch(
+        programsRequest(
+          "/api/v1/programs/unknown-program/enrollment-approval-runs",
+          {
+            method: "POST",
+            headers: {
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+              "Content-Type": "application/json",
+            },
+            body,
+          }
+        ),
+        testEnv()
+      );
+      assert.strictEqual(res.status, 422);
+    }
+  });
+
+  test("decide rejects bad action and version", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const memberAccess = await accessCookieFor("bob", "bob-secret");
+    const stamp = Date.now();
+    const department = await createDepartment(adminAccess, {
+      code: `T659-${stamp}`,
+      name: "合約報名部",
+    });
+    const program = await createProgram(adminAccess, department.department_id, {
+      name: `合約報名課程-${stamp}`,
+      behavior_type: "OneOff",
+      lifecycle: "Active",
+      discoverability: "Listed",
+      enrollment_mode: "MemberRequest",
+    });
+    const submitted = await worker.fetch(
+      programsRequest(
+        `/api/v1/programs/${program.program_id}/enrollment-requests`,
+        {
+          method: "POST",
+          headers: {
+            Cookie: `${ACCESS_COOKIE_NAME}=${memberAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: {},
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(submitted.status, 201);
+    const submittedBody = (await submitted.json()) as {
+      data: { request: { request_id: string } };
+    };
+    const requestId = submittedBody.data.request.request_id;
+    for (const body of [
+      { action: "Maybe" },
+      { action: "Approved", request_version: 0 },
+      { action: "Approved", request_version: "3" },
+    ]) {
+      const res = await worker.fetch(
+        programsRequest(
+          `/api/v1/programs/${program.program_id}/enrollment-requests/${requestId}/decision`,
+          {
+            method: "POST",
+            headers: {
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+              "Content-Type": "application/json",
+            },
+            body,
+          }
+        ),
+        testEnv()
+      );
+      assert.strictEqual(res.status, 422);
+    }
+  });
+
+  test("assisted enroll rejects a non-string member id", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const res = await worker.fetch(
+      programsRequest("/api/v1/programs/unknown-program/enrollments", {
+        method: "POST",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+          "Content-Type": "application/json",
+        },
+        body: { member_user_id: 42 },
+      }),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 422);
+  });
+
+  test("cancel enrollment rejects an overlong reason", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const res = await worker.fetch(
+      programsRequest(
+        "/api/v1/programs/unknown-program/enrollments/unknown-enrollment/cancel",
+        {
+          method: "POST",
+          headers: {
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+            "Content-Type": "application/json",
+          },
+          body: { reason: "x".repeat(501) },
+        }
+      ),
+      testEnv()
+    );
+    assert.strictEqual(res.status, 422);
+  });
+});
+
+describe("#657 accepted Program creation lifecycle", () => {
+  test("create defaults to Draft and rejects a requested Active lifecycle", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const department = await createDepartment(adminAccess, {
+      code: `T657-LIFE-${Date.now()}`,
+      name: "Program creation lifecycle",
+    });
+    const request = (body: Record<string, unknown>) =>
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/departments/${department.department_id}/programs`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+              "Content-Type": "application/json",
+            },
+            body,
+          }
+        ),
+        testEnv()
+      );
+
+    const active = await request({
+      name: "Requested Active",
+      description: "A program starts as Draft.",
+      behavior_type: "OneOff",
+      lifecycle: "Active",
+    });
+    assert.strictEqual(active.status, 422);
+
+    const created = await request({
+      name: "Default Draft",
+      description: "A new program starts as Draft.",
+      behavior_type: "OneOff",
+    });
+    assert.strictEqual(created.status, 201);
+    const body = (await created.json()) as {
+      data: { program: { lifecycle: string } };
+    };
+    assert.strictEqual(body.data.program.lifecycle, "Draft");
+  });
 });

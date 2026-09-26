@@ -245,7 +245,6 @@ test("participant material states remain contained", async ({
               description: "Phase D geometry fixture",
               category: "Phase D",
               behavior_type: "OneOff",
-              lifecycle: "Active",
               discoverability: "Listed",
               enrollment_mode: "MemberRequest",
               display_order: 0,
@@ -265,6 +264,21 @@ test("participant material states remain contained", async ({
     expect(created.status).toBe(201);
     const programId = required("participant dialog program id", created.id);
     mutatedProgramId = programId;
+    const publishStatus = await page.evaluate(async (targetId) => {
+      const response = await fetch(
+        `/api/v1/programs/${encodeURIComponent(targetId)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lifecycle: "Active",
+            discoverability: "Listed",
+          }),
+        }
+      );
+      return response.status;
+    }, programId);
+    expect(publishStatus).toBe(200);
     const enrollmentStatus = await page.evaluate(async (targetId) => {
       const response = await fetch(
         `/api/v1/programs/${encodeURIComponent(targetId)}/enrollments`,

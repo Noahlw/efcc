@@ -68,10 +68,13 @@ describe(ApprovalQueue, () => {
   test("lists Pending registrations with explicit selection controls", async () => {
     server.use(
       http.get("/api/v1/auth/registrations", () =>
-        HttpResponse.json({
-          requestId: "rid-1",
-          data: { registrations: PENDING_ONE },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-1",
+            data: { registrations: PENDING_ONE },
+          },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       )
     );
     render(<ApprovalQueue />);
@@ -92,7 +95,10 @@ describe(ApprovalQueue, () => {
   test("shows an empty state when there are no pending requests", async () => {
     server.use(
       http.get("/api/v1/auth/registrations", () =>
-        HttpResponse.json({ requestId: "rid-2", data: { registrations: [] } })
+        HttpResponse.json(
+          { requestId: "rid-2", data: { registrations: [] } },
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       )
     );
     render(<ApprovalQueue />);
@@ -126,10 +132,13 @@ describe(ApprovalQueue, () => {
     ];
     server.use(
       http.get("/api/v1/auth/registrations", () =>
-        HttpResponse.json({
-          requestId: "rid-order",
-          data: { registrations: PENDING_TWO },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-order",
+            data: { registrations: PENDING_TWO },
+          },
+          { headers: { "X-Request-Id": "rid-order" } }
+        )
       )
     );
     render(<ApprovalQueue />);
@@ -169,10 +178,13 @@ describe(ApprovalQueue, () => {
     ];
     server.use(
       http.get("/api/v1/auth/registrations", () =>
-        HttpResponse.json({
-          requestId: "rid-mixed",
-          data: { registrations: rows },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-mixed",
+            data: { registrations: rows },
+          },
+          { headers: { "X-Request-Id": "rid-mixed" } }
+        )
       )
     );
     const user = userEvent.setup();
@@ -197,10 +209,13 @@ describe(ApprovalQueue, () => {
     }));
     server.use(
       http.get("/api/v1/auth/registrations", () =>
-        HttpResponse.json({
-          requestId: "rid-batch-cap",
-          data: { registrations: rows },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-batch-cap",
+            data: { registrations: rows },
+          },
+          { headers: { "X-Request-Id": "rid-batch-cap" } }
+        )
       )
     );
 
@@ -220,12 +235,15 @@ describe(ApprovalQueue, () => {
     let batchCalls = 0;
     server.use(
       http.get("/api/v1/auth/registrations", () =>
-        HttpResponse.json({
-          requestId: "rid-3",
-          data: {
-            registrations: approved ? [] : PENDING_ONE,
+        HttpResponse.json(
+          {
+            requestId: "rid-3",
+            data: {
+              registrations: approved ? [] : PENDING_ONE,
+            },
           },
-        })
+          { headers: { "X-Request-Id": "rid-3" } }
+        )
       ),
       http.post(
         "/api/v1/auth/registrations/approve-batch",
@@ -236,10 +254,13 @@ describe(ApprovalQueue, () => {
           await expect(request.json()).resolves.toStrictEqual({
             requestIds: ["req-1"],
           });
-          return HttpResponse.json({
-            requestId: "rid-4",
-            data: { accountStatus: "active", approvedCount: 1 },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-4",
+              data: { accountStatus: "active", approvedCount: 1 },
+            },
+            { headers: { "X-Request-Id": "rid-4" } }
+          );
         }
       )
     );
@@ -275,18 +296,24 @@ describe(ApprovalQueue, () => {
     });
     server.use(
       http.get("/api/v1/auth/registrations", () =>
-        HttpResponse.json({
-          requestId: "rid-busy",
-          data: { registrations: approved ? [] : PENDING_ONE },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-busy",
+            data: { registrations: approved ? [] : PENDING_ONE },
+          },
+          { headers: { "X-Request-Id": "rid-busy" } }
+        )
       ),
       http.post("/api/v1/auth/registrations/approve-batch", async () => {
         await gate;
         approved = true;
-        return HttpResponse.json({
-          requestId: "rid-busy-post",
-          data: { accountStatus: "active", approvedCount: 1 },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-busy-post",
+            data: { accountStatus: "active", approvedCount: 1 },
+          },
+          { headers: { "X-Request-Id": "rid-busy-post" } }
+        );
       })
     );
     const user = userEvent.setup();
@@ -323,20 +350,23 @@ describe(ApprovalQueue, () => {
   test("selection persists across search and supports review removal and clear", async () => {
     server.use(
       http.get("/api/v1/auth/registrations", () =>
-        HttpResponse.json({
-          requestId: "rid-selection",
-          data: {
-            registrations: [
-              ...PENDING_ONE,
-              {
-                ...PENDING_ONE[0],
-                requestId: "req-2",
-                username: "anna",
-                name: "Anna Poon",
-              },
-            ],
+        HttpResponse.json(
+          {
+            requestId: "rid-selection",
+            data: {
+              registrations: [
+                ...PENDING_ONE,
+                {
+                  ...PENDING_ONE[0],
+                  requestId: "req-2",
+                  username: "anna",
+                  name: "Anna Poon",
+                },
+              ],
+            },
           },
-        })
+          { headers: { "X-Request-Id": "rid-selection" } }
+        )
       )
     );
     const user = userEvent.setup();
@@ -363,23 +393,26 @@ describe(ApprovalQueue, () => {
     server.use(
       http.get("/api/v1/auth/registrations", ({ request }) => {
         const status = new URL(request.url).searchParams.get("status");
-        return HttpResponse.json({
-          requestId: "rid-processed",
-          data: {
-            status: status === "Processed" ? "Processed" : "Pending",
-            registrations:
-              status === "Processed"
-                ? [
-                    {
-                      ...PENDING_ONE[0],
-                      accountStatus: "Rejected",
-                      decision: "Rejected",
-                      decisionNote: "資料不完整",
-                    },
-                  ]
-                : PENDING_ONE,
+        return HttpResponse.json(
+          {
+            requestId: "rid-processed",
+            data: {
+              status: status === "Processed" ? "Processed" : "Pending",
+              registrations:
+                status === "Processed"
+                  ? [
+                      {
+                        ...PENDING_ONE[0],
+                        accountStatus: "Rejected",
+                        decision: "Rejected",
+                        decisionNote: "資料不完整",
+                      },
+                    ]
+                  : PENDING_ONE,
+            },
           },
-        });
+          { headers: { "X-Request-Id": "rid-processed" } }
+        );
       })
     );
     const user = userEvent.setup();
@@ -400,13 +433,16 @@ describe(ApprovalQueue, () => {
     server.use(
       http.get("/api/v1/auth/registrations", ({ request }) => {
         const status = new URL(request.url).searchParams.get("status");
-        return HttpResponse.json({
-          requestId: "rid-processed-actions",
-          data: {
-            status: status === "Processed" ? "Processed" : "Pending",
-            registrations: status === "Processed" ? [] : PENDING_ONE,
+        return HttpResponse.json(
+          {
+            requestId: "rid-processed-actions",
+            data: {
+              status: status === "Processed" ? "Processed" : "Pending",
+              registrations: status === "Processed" ? [] : PENDING_ONE,
+            },
           },
-        });
+          { headers: { "X-Request-Id": "rid-processed-actions" } }
+        );
       })
     );
     const user = userEvent.setup();
@@ -428,10 +464,13 @@ describe(ApprovalQueue, () => {
     server.use(
       http.get("/api/v1/auth/registrations", () => {
         const registrations = reads++ === 0 ? PENDING_ONE : [];
-        return HttpResponse.json({
-          requestId: "rid-conflict",
-          data: { registrations },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-conflict",
+            data: { registrations },
+          },
+          { headers: { "X-Request-Id": "rid-conflict" } }
+        );
       }),
       http.post("/api/v1/auth/registrations/approve-batch", () =>
         HttpResponse.json(
@@ -470,10 +509,13 @@ describe(ApprovalQueue, () => {
     server.use(
       http.get("/api/v1/auth/registrations", async () => {
         await new Promise((resolve) => setTimeout(resolve, 10));
-        return HttpResponse.json({
-          requestId: "rid-a11y",
-          data: { registrations: PENDING_ONE },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-a11y",
+            data: { registrations: PENDING_ONE },
+          },
+          { headers: { "X-Request-Id": "rid-a11y" } }
+        );
       })
     );
     render(<ApprovalQueue />);
@@ -523,10 +565,13 @@ describe(ApprovalQueue, () => {
     );
     server.use(
       http.get("/api/v1/auth/registrations", () =>
-        HttpResponse.json({
-          requestId: "rid-return",
-          data: { registrations: PENDING_ONE },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-return",
+            data: { registrations: PENDING_ONE },
+          },
+          { headers: { "X-Request-Id": "rid-return" } }
+        )
       )
     );
     render(<ApprovalQueue />);
@@ -547,10 +592,13 @@ describe(ApprovalQueue, () => {
             { status: 500 }
           );
         }
-        return HttpResponse.json({
-          requestId: "rid-retry-success",
-          data: { registrations: PENDING_ONE },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-retry-success",
+            data: { registrations: PENDING_ONE },
+          },
+          { headers: { "X-Request-Id": "rid-retry-success" } }
+        );
       })
     );
     render(<ApprovalQueue />);

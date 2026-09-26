@@ -972,4 +972,65 @@ describe("#479 Worker/HTTP create + reorder seam", () => {
       correlation_id: body.requestId,
     });
   });
+
+  test("rename rejects an overlong Idempotency-Key with 422", async () => {
+    const response = await worker.fetch(
+      request(`/api/v1/identity/roles/${ADMIN_ROLE}/name`, {
+        method: "PATCH",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Idempotency-Key": "k".repeat(201),
+        },
+        body: { label: "新名稱", base_revision: 1 },
+      }),
+      testEnv()
+    );
+    assert.equal(response.status, 422);
+    const body = await problemBody(response);
+    assert.equal(body.code, "VALIDATION");
+  });
+
+  test("reorder rejects a non-pair target list with 422", async () => {
+    const response = await worker.fetch(
+      request("/api/v1/identity/roles/order", {
+        method: "PATCH",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Idempotency-Key": "http-reorder-single",
+        },
+        body: {
+          category_key: "Global",
+          targets: [{ role_definition_id: ADMIN_ROLE, position: 0 }],
+          base_revision: 1,
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(response.status, 422);
+    const body = await problemBody(response);
+    assert.equal(body.code, "VALIDATION");
+  });
+
+  test("create rejects a non-string scope_id with 422", async () => {
+    const response = await worker.fetch(
+      request("/api/v1/identity/role-definitions", {
+        method: "POST",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Idempotency-Key": "http-create-scope-id",
+        },
+        body: {
+          category_key: "Department",
+          label: "合約測試身份組",
+          scope_kind: "Department",
+          scope_id: 42,
+          base_revision: 1,
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(response.status, 422);
+    const body = await problemBody(response);
+    assert.equal(body.code, "VALIDATION");
+  });
 });

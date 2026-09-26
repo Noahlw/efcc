@@ -442,4 +442,47 @@ describe("#485 Permission Editor Worker seam", () => {
       )
     );
   });
+
+  test("rejects more than 100 grant changes with 422", async () => {
+    const response = await worker.fetch(
+      request(`/api/v1/identity/role-definitions/${ADMIN_ROLE}/grants`, {
+        method: "PATCH",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": "permission-editor-too-many",
+        },
+        body: {
+          base_revision: 1,
+          changes: Array.from({ length: 101 }, () => ({
+            capability: "role.read",
+            value: true,
+          })),
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(response.status, 422);
+  });
+
+  test("rejects a grant change without value with ROLE_INVALID_TARGET", async () => {
+    const response = await worker.fetch(
+      request(`/api/v1/identity/role-definitions/${ADMIN_ROLE}/grants`, {
+        method: "PATCH",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": "permission-editor-no-value",
+        },
+        body: {
+          base_revision: 1,
+          changes: [{ capability: "role.read" }],
+        },
+      }),
+      testEnv()
+    );
+    assert.equal(response.status, 422);
+    const problem = (await response.json()) as { code: string };
+    assert.equal(problem.code, "ROLE_INVALID_TARGET");
+  });
 });

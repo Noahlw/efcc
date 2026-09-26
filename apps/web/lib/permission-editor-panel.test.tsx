@@ -186,23 +186,33 @@ function detail(
 function installDetail(detailView = detail()) {
   server.use(
     http.get("/api/v1/identity/roles", () =>
-      HttpResponse.json({ requestId: "hierarchy-request", data: HIERARCHY })
+      HttpResponse.json(
+        { requestId: "hierarchy-request", data: HIERARCHY },
+        { headers: { "X-Request-Id": "hierarchy-request" } }
+      )
     ),
     http.get(
       "/api/v1/identity/role-definitions/:roleDefinitionId",
       ({ params }) =>
-        HttpResponse.json({
-          requestId: "detail-request",
-          data:
-            String(params.roleDefinitionId) ===
-            detailView.roleDefinition.roleDefinitionId
-              ? detailView
-              : detail(String(params.roleDefinitionId)),
-        })
+        HttpResponse.json(
+          {
+            requestId: "detail-request",
+            data:
+              String(params.roleDefinitionId) ===
+              detailView.roleDefinition.roleDefinitionId
+                ? detailView
+                : detail(String(params.roleDefinitionId)),
+          },
+          { headers: { "X-Request-Id": "detail-request" } }
+        )
     ),
     http.patch(
       "/api/v1/identity/role-definitions/:roleDefinitionId/grants",
-      () => HttpResponse.json({ requestId: "patch-request", data: detailView })
+      () =>
+        HttpResponse.json(
+          { requestId: "patch-request", data: detailView },
+          { headers: { "X-Request-Id": "patch-request" } }
+        )
     )
   );
 }
@@ -332,18 +342,21 @@ describe("PermissionEditorPanel", () => {
         "/api/v1/identity/role-definitions/:roleDefinitionId/grants",
         async ({ request }) => {
           patchBody = await request.json();
-          return HttpResponse.json({
-            requestId: "patch-request",
-            data: detail(ROLE_ID, {
-              permissions: [
-                { ...ordinary, value: true },
-                ...CAPABILITY_CATALOG.filter(
-                  (item) => item.capability !== "department.manage"
-                ).map((item) => permission(item)),
-              ],
-              revision: 8,
-            }),
-          });
+          return HttpResponse.json(
+            {
+              requestId: "patch-request",
+              data: detail(ROLE_ID, {
+                permissions: [
+                  { ...ordinary, value: true },
+                  ...CAPABILITY_CATALOG.filter(
+                    (item) => item.capability !== "department.manage"
+                  ).map((item) => permission(item)),
+                ],
+                revision: 8,
+              }),
+            },
+            { headers: { "X-Request-Id": "patch-request" } }
+          );
         }
       )
     );
@@ -447,25 +460,31 @@ describe("PermissionEditorPanel", () => {
     let detailCalls = 0;
     server.resetHandlers(
       http.get("/api/v1/identity/roles", () =>
-        HttpResponse.json({ requestId: "hierarchy-request", data: HIERARCHY })
+        HttpResponse.json(
+          { requestId: "hierarchy-request", data: HIERARCHY },
+          { headers: { "X-Request-Id": "hierarchy-request" } }
+        )
       ),
       http.get("/api/v1/identity/role-definitions/:roleDefinitionId", () => {
         detailCalls += 1;
-        return HttpResponse.json({
-          requestId: `detail-${detailCalls}`,
-          data:
-            detailCalls > 1
-              ? latest
-              : detail(ROLE_ID, {
-                  permissions: [
-                    highRisk,
-                    ...CAPABILITY_CATALOG.filter(
-                      (item) => item.capability !== "role.read"
-                    ).map((item) => permission(item)),
-                  ],
-                  revision: 9,
-                }),
-        });
+        return HttpResponse.json(
+          {
+            requestId: `detail-${detailCalls}`,
+            data:
+              detailCalls > 1
+                ? latest
+                : detail(ROLE_ID, {
+                    permissions: [
+                      highRisk,
+                      ...CAPABILITY_CATALOG.filter(
+                        (item) => item.capability !== "role.read"
+                      ).map((item) => permission(item)),
+                    ],
+                    revision: 9,
+                  }),
+          },
+          { headers: { "X-Request-Id": `detail-${detailCalls}` } }
+        );
       }),
       http.patch(
         "/api/v1/identity/role-definitions/:roleDefinitionId/grants",
@@ -477,7 +496,7 @@ describe("PermissionEditorPanel", () => {
               requestId: "conflict",
               data: { authoritativeRevision: 11 },
             },
-            { status: 409 }
+            { status: 409, headers: { "X-Request-Id": "conflict" } }
           )
       )
     );
@@ -636,10 +655,13 @@ describe("PermissionEditorPanel", () => {
         "/api/v1/identity/role-definitions/:roleDefinitionId/grants",
         async () => {
           await patchPromise;
-          return HttpResponse.json({
-            requestId: "patch-busy",
-            data: detail(ROLE_ID, { revision: 12 }),
-          });
+          return HttpResponse.json(
+            {
+              requestId: "patch-busy",
+              data: detail(ROLE_ID, { revision: 12 }),
+            },
+            { headers: { "X-Request-Id": "patch-busy" } }
+          );
         }
       )
     );

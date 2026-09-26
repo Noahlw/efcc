@@ -259,6 +259,9 @@ async function chooseDate(
   const value = localDateValue(date);
   await page.getByRole("button", { name: label }).click();
   const day = page.locator(`[data-day="${value}"]`);
+  if ((await day.count()) === 0) {
+    await page.getByRole("button", { name: "Go to the Next Month" }).click();
+  }
   const dayButton = day.getByRole("button");
   await ((await dayButton.count()) > 0 ? dayButton : day).click();
 }
@@ -308,7 +311,6 @@ async function createFixture(page: Page, suffix: string): Promise<Fixture> {
         description,
         category: "T05",
         behavior_type: "Recurring",
-        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "MemberRequest",
       }
@@ -490,7 +492,6 @@ async function createProgramForDepartment(
       description: `Disposable parity fixture ${name}.`,
       category: "T05",
       behavior_type: behaviorType,
-      lifecycle: "Active",
       discoverability: "Listed",
       enrollment_mode: enrollmentMode,
     }

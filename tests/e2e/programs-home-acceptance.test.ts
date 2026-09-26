@@ -338,7 +338,6 @@ test.beforeAll(async () => {
           description: LONG_COPY,
           category: "PUI-05",
           behavior_type: "Recurring",
-          lifecycle: "Active",
           discoverability: "Listed",
           enrollment_mode: "MemberRequest",
         },
@@ -408,6 +407,67 @@ test.beforeAll(async () => {
     200
   );
   expect(decisionData.enrollment.status).toBe("Active");
+
+  // Explore prefers unenrolled programs, so any pre-existing Listed demo
+  // program would outrank this enrolled fixture program and case 64 could
+  // never see its long copy. Enroll the member in every other Listed +
+  // MemberRequest program: the enrolled tie breaks on display_order, where
+  // this fixture program (0) sorts first.
+  const departmentsData = await responseData<{
+    departments: { department_id: string }[];
+  }>(await adminApi.get("/api/v1/programs/departments"), 200);
+  for (const department of departmentsData.departments) {
+    const departmentPrograms = await responseData<{
+      programs: {
+        program_id: string;
+        enrollment_mode: string;
+        discoverability: string;
+      }[];
+    }>(
+      await adminApi.get(
+        `/api/v1/programs/departments/${department.department_id}/programs`
+      ),
+      200
+    );
+    for (const candidate of departmentPrograms.programs) {
+      if (
+        candidate.program_id === programId ||
+        candidate.enrollment_mode !== "MemberRequest" ||
+        candidate.discoverability !== "Listed"
+      ) {
+        continue;
+      }
+      const demoRequest = await responseData<{
+        request: { request_id: string };
+      }>(
+        await memberApi.post(
+          `/api/v1/programs/${candidate.program_id}/enrollment-requests`,
+          {
+            headers: {
+              "Idempotency-Key": `pui05-home-demo-enrollment-${candidate.program_id}-${suffix}`,
+            },
+            data: {},
+          }
+        ),
+        201
+      );
+      const demoDecision = await responseData<{
+        enrollment: { status: string };
+      }>(
+        await adminApi.post(
+          `/api/v1/programs/${candidate.program_id}/enrollment-requests/${demoRequest.request.request_id}/decision`,
+          {
+            headers: {
+              "Idempotency-Key": `pui05-home-demo-approval-${candidate.program_id}-${suffix}`,
+            },
+            data: { action: "Approved" },
+          }
+        ),
+        200
+      );
+      expect(demoDecision.enrollment.status).toBe("Active");
+    }
+  }
 
   const announcementId = `E2E_PUI05_HOME_${suffix}`;
   const eventNoticeTitle = `E2E PUI-05 Event ${suffix}`;

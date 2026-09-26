@@ -618,7 +618,9 @@ const SCHEDULE_RULE: ScheduleRule = {
   start_time: "18:00",
   end_time: "19:30",
   location: "培育室",
+  created_by: "t07-3-manager",
   created_at: "2026-09-01T00:00:00.000Z",
+  updated_by: "t07-3-manager",
   updated_at: "2026-09-03T00:00:00.000Z",
 };
 
@@ -667,6 +669,7 @@ const SCHEDULE_EXCEPTIONS: ScheduleException[] = [
     action: "CANCEL",
     new_start_time: null,
     new_end_time: null,
+    created_by: "t07-3-manager",
     created_at: "2026-09-04T00:00:00.000Z",
   },
 ];
