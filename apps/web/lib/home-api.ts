@@ -93,7 +93,7 @@ async function homeGet<T>(
   if (!res.ok) {
     throw new RpcError(problemFromPayload(parsed, res.status, requestId));
   }
-  const envelope = parseSuccessEnvelope(parsed);
+  const envelope = parseSuccessEnvelope(parsed, requestId);
   // Shared contract gate (#646): the envelope carries no shape promise —
   // a 2xx whose data fails the route schema is MALFORMED_RESPONSE,
   // never a partial success.

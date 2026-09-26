@@ -86,7 +86,8 @@ async function homeCmsFetch<T>(
   path: string,
   method: "GET" | "POST",
   payloadSchema: { safeParse: (value: unknown) => { success: boolean } },
-  body?: unknown
+  body?: unknown,
+  operationKey?: string
 ): Promise<T> {
   let response: Response;
   try {
@@ -96,7 +97,9 @@ async function homeCmsFetch<T>(
       headers: {
         Accept: "application/json",
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-        ...(method === "POST" ? { "Idempotency-Key": idempotencyKey() } : {}),
+        ...(method === "POST"
+          ? { "Idempotency-Key": operationKey ?? idempotencyKey() }
+          : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: AbortSignal.timeout(30_000),
@@ -128,7 +131,7 @@ async function homeCmsFetch<T>(
     throw new RpcError(resolved as ProblemDetails);
   }
 
-  const envelope = parseSuccessEnvelope(parsed);
+  const envelope = parseSuccessEnvelope(parsed, headerRequestId);
   // Shared contract gate (#646): malformed 2xx data is
   // MALFORMED_RESPONSE, never a partial success.
   if (!envelope || !payloadSchema.safeParse(envelope.data).success) {
@@ -154,24 +157,30 @@ export function getHomeContent(): Promise<HomeContent | null> {
 }
 
 /** POST /api/v1/home/draft — persist the current editor as an unpublished draft. */
-export function saveHomeDraft(input: HomeDraftInput): Promise<HomeContent> {
+export function saveHomeDraft(
+  input: HomeDraftInput,
+  operationKey?: string
+): Promise<HomeContent> {
   return homeCmsFetch<HomeContent>(
     "/api/v1/home/draft",
     "POST",
     HomeContentSchema,
-    input
+    input,
+    operationKey
   );
 }
 
 /** POST /api/v1/home/publish — publish now or queue a Hong Kong-time window. */
 export function publishHomeContent(
-  input: HomePublishInput
+  input: HomePublishInput,
+  operationKey?: string
 ): Promise<HomeContent> {
   return homeCmsFetch<HomeContent>(
     "/api/v1/home/publish",
     "POST",
     HomeContentSchema,
-    input
+    input,
+    operationKey
   );
 }
 

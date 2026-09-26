@@ -75,7 +75,7 @@ async function roleFetch<T>(
         requestId,
       });
     }
-    const envelope = parseSuccessEnvelope(parsed);
+    const envelope = parseSuccessEnvelope(parsed, requestId);
     // Shared contract gate (#655): malformed 2xx data is
     // MALFORMED_RESPONSE, never a partial success.
     if (!envelope || !payloadSchema.safeParse(envelope.data).success) {

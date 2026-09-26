@@ -1,7 +1,34 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
+import { HttpResponse } from "msw";
 import { afterEach, expect } from "vitest";
 
 expect.extend(matchers);
+
+// Legacy MSW fixtures model Worker envelopes but often omit the matching
+// transport header. Complete only those synthetic envelopes; real responses
+// and explicit missing-header client tests still exercise strict parsing.
+const originalJson = HttpResponse.json;
+Object.defineProperty(HttpResponse, "json", {
+  value: (
+    body: Parameters<typeof HttpResponse.json>[0],
+    init?: Parameters<typeof HttpResponse.json>[1]
+  ) => {
+    if (
+      body &&
+      typeof body === "object" &&
+      "data" in body &&
+      "requestId" in body &&
+      typeof body.requestId === "string"
+    ) {
+      const headers = new Headers(init?.headers);
+      if (!headers.has("X-Request-Id")) {
+        headers.set("X-Request-Id", body.requestId);
+      }
+      return originalJson(body, { ...init, headers });
+    }
+    return originalJson(body, init);
+  },
+});
 
 // Components persist session drafts by design; tests still need a fresh
 // authenticated session boundary for each case.

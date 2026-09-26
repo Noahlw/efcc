@@ -60,12 +60,47 @@ interface EditorForm {
 }
 
 type LoadState = "loading" | "ready" | "error";
-type Operation = "idle" | "saving" | "publishing";
+type Operation = "idle" | "saving" | "publishing" | "checking";
 type PreviewViewport = "phone" | "desktop";
 type AuditState = "fresh" | "stale" | "unavailable" | "denied";
 
 interface ConflictProblem {
   latest?: HomeContent;
+}
+
+interface PendingHomeMutation {
+  kind: "draft" | "publish";
+  key: string;
+  beforeVersion: number | null;
+}
+
+const PENDING_HOME_MUTATION_KEY = "efcc-home-cms-pending-mutation";
+
+function readPendingHomeMutation(): PendingHomeMutation | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_HOME_MUTATION_KEY);
+    if (!raw) {
+      return null;
+    }
+    const value = JSON.parse(raw) as Partial<PendingHomeMutation>;
+    if (
+      (value.kind === "draft" || value.kind === "publish") &&
+      typeof value.key === "string" &&
+      value.key.length > 0 &&
+      (value.beforeVersion === null ||
+        (typeof value.beforeVersion === "number" &&
+          Number.isInteger(value.beforeVersion)))
+    ) {
+      return {
+        kind: value.kind,
+        key: value.key,
+        beforeVersion: value.beforeVersion,
+      };
+    }
+  } catch {
+    // Private browsing can disable session storage; in-memory state remains.
+  }
+  return null;
 }
 
 const emptyForm: EditorForm = {
@@ -264,6 +299,15 @@ function isConflict(error: unknown): boolean {
   return error instanceof RpcError && error.problem.code === "CONFLICT";
 }
 
+function isUnknownHomeMutation(error: unknown): boolean {
+  return (
+    error instanceof RpcError &&
+    (error.problem.status === 0 ||
+      (error.problem.status ?? 0) >= 500 ||
+      error.problem.code === "MALFORMED_RESPONSE")
+  );
+}
+
 function latestFromConflict(error: unknown): HomeContent | null {
   if (!(error instanceof RpcError)) {
     return null;
@@ -297,6 +341,8 @@ export function HomeContentEditor() {
   }, []);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [operation, setOperation] = useState<Operation>("idle");
+  const [pendingMutation, setPendingMutation] =
+    useState<PendingHomeMutation | null>(null);
   const [form, setForm] = useState<EditorForm>(emptyForm);
   const [audit, setAudit] = useState<HomeAuditItem[]>([]);
   const [auditState, setAuditState] = useState<AuditState>("fresh");
@@ -363,10 +409,37 @@ export function HomeContentEditor() {
   }, [router]);
   useEffect(() => {
     isMountedRef.current = true;
+    setPendingMutation(readPendingHomeMutation());
     return () => {
       isMountedRef.current = false;
     };
   }, []);
+
+  const beginMutation = (
+    kind: PendingHomeMutation["kind"],
+    beforeVersion: number | null
+  ) => {
+    const pending = { kind, key: crypto.randomUUID(), beforeVersion };
+    setPendingMutation(pending);
+    try {
+      sessionStorage.setItem(
+        PENDING_HOME_MUTATION_KEY,
+        JSON.stringify(pending)
+      );
+    } catch {
+      // The in-memory pending state still blocks duplicate submission.
+    }
+    return pending;
+  };
+
+  const clearPendingMutation = () => {
+    setPendingMutation(null);
+    try {
+      sessionStorage.removeItem(PENDING_HOME_MUTATION_KEY);
+    } catch {
+      // Storage can be unavailable while the current page remains safe.
+    }
+  };
 
   useEffect(() => {
     void loadEditor();
@@ -462,8 +535,13 @@ export function HomeContentEditor() {
   const persistDraft = useCallback(
     async (showSuccess: boolean): Promise<HomeContent | null> => {
       setOperation("saving");
+      const pending = beginMutation("draft", form.version ?? null);
       try {
-        const saved = await saveHomeDraft(draftInputFromForm(form));
+        const saved = await saveHomeDraft(
+          draftInputFromForm(form),
+          pending.key
+        );
+        clearPendingMutation();
         setForm(editorFormFromContent(saved));
         setConflictLatest(null);
         if (showSuccess) {
@@ -472,7 +550,14 @@ export function HomeContentEditor() {
         }
         return saved;
       } catch (error: unknown) {
-        handleSaveFailure(error);
+        if (isUnknownHomeMutation(error)) {
+          const message = `${copy.outcomeUnknown} ${pending.key}`;
+          setNotice(message);
+          announce(message);
+        } else {
+          clearPendingMutation();
+          handleSaveFailure(error);
+        }
         return null;
       } finally {
         setOperation("idle");
@@ -482,7 +567,7 @@ export function HomeContentEditor() {
   );
 
   const handleSaveDraft = () => {
-    if (operation !== "idle") {
+    if (operation !== "idle" || pendingMutation) {
       return;
     }
     setNotice("");
@@ -490,14 +575,16 @@ export function HomeContentEditor() {
   };
 
   const handlePublish = async () => {
-    if (operation !== "idle") {
+    if (operation !== "idle" || pendingMutation) {
       return;
     }
     setOperation("publishing");
     setNotice("");
+    let pending = beginMutation("draft", form.version ?? null);
     try {
       // Save draft before publish while keeping operation = "publishing"
-      const saved = await saveHomeDraft(draftInputFromForm(form));
+      const saved = await saveHomeDraft(draftInputFromForm(form), pending.key);
+      clearPendingMutation();
       const savedForm = editorFormFromContent(saved);
       if (isMountedRef.current) {
         setForm(savedForm);
@@ -505,13 +592,18 @@ export function HomeContentEditor() {
       }
 
       // Publish content
-      const published = await publishHomeContent({
-        content_id: savedForm.contentId ?? saved.contentId,
-        version: savedForm.version ?? saved.version,
-        publish_mode: savedForm.publishMode,
-        start_at: hkIsoValue(savedForm.startAt),
-        end_at: hkIsoValue(savedForm.endAt),
-      });
+      pending = beginMutation("publish", saved.version);
+      const published = await publishHomeContent(
+        {
+          content_id: savedForm.contentId ?? saved.contentId,
+          version: savedForm.version ?? saved.version,
+          publish_mode: savedForm.publishMode,
+          start_at: hkIsoValue(savedForm.startAt),
+          end_at: hkIsoValue(savedForm.endAt),
+        },
+        pending.key
+      );
+      clearPendingMutation();
       if (!isMountedRef.current) {
         return;
       }
@@ -561,7 +653,14 @@ export function HomeContentEditor() {
       }
     } catch (error: unknown) {
       if (isMountedRef.current) {
-        handleSaveFailure(error);
+        if (isUnknownHomeMutation(error)) {
+          const message = `${copy.outcomeUnknown} ${pending.key}`;
+          setNotice(message);
+          announce(message);
+        } else {
+          clearPendingMutation();
+          handleSaveFailure(error);
+        }
       }
     } finally {
       if (isMountedRef.current) {
@@ -619,6 +718,47 @@ export function HomeContentEditor() {
     }
   };
 
+  const handleCheckPending = async () => {
+    if (!pendingMutation || operation !== "idle") {
+      return;
+    }
+    setOperation("checking");
+    try {
+      const [content, auditResult] = await Promise.all([
+        getHomeContent(),
+        listHomeAudit(),
+      ]);
+      if (!isMountedRef.current) {
+        return;
+      }
+      if (
+        pendingMutation.kind === "publish" ||
+        (content?.version ?? null) !== pendingMutation.beforeVersion
+      ) {
+        setForm(editorFormFromContent(content));
+      }
+      setAudit(auditResult.items);
+      setAuditState("fresh");
+      clearPendingMutation();
+      setNotice(copy.outcomeReviewed);
+      announce(copy.outcomeReviewed);
+    } catch (error: unknown) {
+      if (!isMountedRef.current) {
+        return;
+      }
+      if (isAuthRequired(error) || isForbidden(error)) {
+        handleSaveFailure(error);
+      } else {
+        setNotice(copy.outcomeStillUnknown);
+        announce(copy.outcomeStillUnknown);
+      }
+    } finally {
+      if (isMountedRef.current) {
+        setOperation("idle");
+      }
+    }
+  };
+
   const handleReloadLatest = () => {
     if (conflictLatest) {
       setForm(editorFormFromContent(conflictLatest));
@@ -631,6 +771,7 @@ export function HomeContentEditor() {
   };
 
   const busy = operation !== "idle" || loadState === "loading";
+  const locked = busy || pendingMutation !== null;
 
   return (
     <section
@@ -694,6 +835,30 @@ export function HomeContentEditor() {
 
       {loadState === "ready" && (
         <>
+          {pendingMutation && (
+            <section
+              className="grid gap-3 rounded-lg border border-[var(--error-border)] bg-[var(--error-surface)] p-6 text-[var(--ink)]"
+              role="alert"
+              aria-live="assertive"
+            >
+              <h2 className="text-base font-bold text-[var(--error)]">
+                {copy.outcomePending}
+              </h2>
+              <p className="text-sm text-[var(--ink-muted)]">
+                {notice || `${copy.outcomeUnknown} ${pendingMutation.key}`}
+              </p>
+              <Button
+                id="home-cms-check-outcome"
+                className="w-fit"
+                type="button"
+                variant="secondary"
+                onClick={() => void handleCheckPending()}
+                disabled={operation !== "idle"}
+              >
+                {operation === "checking" ? copy.loading : copy.outcomeCheck}
+              </Button>
+            </section>
+          )}
           {conflictLatest && (
             <section
               ref={stateRef}
@@ -734,7 +899,7 @@ export function HomeContentEditor() {
               type="button"
               aria-pressed={form.templateType === "A"}
               onClick={() => updateField("templateType", "A")}
-              disabled={busy}
+              disabled={locked}
             >
               {copy.templateA}
             </Button>
@@ -749,7 +914,7 @@ export function HomeContentEditor() {
               type="button"
               aria-pressed={form.templateType === "B"}
               onClick={() => updateField("templateType", "B")}
-              disabled={busy}
+              disabled={locked}
             >
               {copy.templateB}
             </Button>
@@ -794,7 +959,7 @@ export function HomeContentEditor() {
                     }
                     placeholder="event-id"
                     autoComplete="off"
-                    disabled={busy}
+                    disabled={locked}
                   />
                 </label>
                 <p
@@ -837,7 +1002,7 @@ export function HomeContentEditor() {
                     onChange={(event) =>
                       updateField("title", event.target.value)
                     }
-                    disabled={busy}
+                    disabled={locked}
                   />
                 </label>
                 <label className="grid gap-1.5" htmlFor="home-cms-summary">
@@ -852,7 +1017,7 @@ export function HomeContentEditor() {
                       updateField("summary", event.target.value)
                     }
                     rows={3}
-                    disabled={busy}
+                    disabled={locked}
                   />
                 </label>
                 <label className="grid gap-1.5" htmlFor="home-cms-body">
@@ -867,7 +1032,7 @@ export function HomeContentEditor() {
                       updateField("bodyMarkdown", event.target.value)
                     }
                     rows={7}
-                    disabled={busy}
+                    disabled={locked}
                   />
                 </label>
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -882,7 +1047,7 @@ export function HomeContentEditor() {
                       onChange={(event) =>
                         updateField("ctaLabel", event.target.value)
                       }
-                      disabled={busy}
+                      disabled={locked}
                     />
                   </label>
                   <label className="grid gap-1.5" htmlFor="home-cms-cta-url">
@@ -897,7 +1062,7 @@ export function HomeContentEditor() {
                       onChange={(event) =>
                         updateField("ctaUrl", event.target.value)
                       }
-                      disabled={busy}
+                      disabled={locked}
                     />
                   </label>
                 </div>
@@ -914,7 +1079,7 @@ export function HomeContentEditor() {
                       onChange={(event) =>
                         updateField("imageUrl", event.target.value)
                       }
-                      disabled={busy}
+                      disabled={locked}
                     />
                   </label>
                   <label className="grid gap-1.5" htmlFor="home-cms-image-alt">
@@ -928,7 +1093,7 @@ export function HomeContentEditor() {
                       onChange={(event) =>
                         updateField("imageAlt", event.target.value)
                       }
-                      disabled={busy}
+                      disabled={locked}
                     />
                   </label>
                 </div>
@@ -951,7 +1116,7 @@ export function HomeContentEditor() {
                     name="home-cms-publish-mode"
                     checked={form.publishMode === "immediate"}
                     onChange={() => updateField("publishMode", "immediate")}
-                    disabled={busy}
+                    disabled={locked}
                   />
                   <span>{copy.publishImmediate}</span>
                 </label>
@@ -966,7 +1131,7 @@ export function HomeContentEditor() {
                     name="home-cms-publish-mode"
                     checked={form.publishMode === "scheduled"}
                     onChange={() => updateField("publishMode", "scheduled")}
-                    disabled={busy}
+                    disabled={locked}
                   />
                   <span>{copy.publishScheduled}</span>
                 </label>
@@ -989,7 +1154,7 @@ export function HomeContentEditor() {
                         updateField("startAt", event.target.value)
                       }
                       required
-                      disabled={busy}
+                      disabled={locked}
                     />
                   </label>
                   <label
@@ -1007,7 +1172,7 @@ export function HomeContentEditor() {
                       onChange={(event) =>
                         updateField("endAt", event.target.value)
                       }
-                      disabled={busy}
+                      disabled={locked}
                     />
                   </label>
                 </div>
@@ -1032,7 +1197,7 @@ export function HomeContentEditor() {
                 variant="outline"
                 onClick={() => setPreviewOpen((open) => !open)}
                 aria-expanded={previewOpen}
-                disabled={busy}
+                disabled={locked}
               >
                 {copy.preview}
               </Button>
@@ -1041,17 +1206,17 @@ export function HomeContentEditor() {
                 type="button"
                 variant="secondary"
                 onClick={handleSaveDraft}
-                disabled={busy}
+                disabled={locked}
               >
                 {operation === "saving" ? copy.loading : copy.saveDraft}
               </Button>
-              <Button id="home-cms-publish" type="submit" disabled={busy}>
+              <Button id="home-cms-publish" type="submit" disabled={locked}>
                 {operation === "publishing" ? copy.loading : copy.savePublished}
               </Button>
             </ActionSurface>
           </form>
 
-          {notice && !conflictLatest && (
+          {notice && !conflictLatest && !pendingMutation && (
             <output
               className="rounded-lg border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-sm text-[var(--ink)] shadow-xs"
               aria-live="polite"

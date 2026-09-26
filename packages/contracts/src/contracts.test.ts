@@ -24,15 +24,23 @@ import { parseProblemDetails, problemFallback } from "./problem";
 describe("envelope", () => {
   test("parses a well-formed envelope", () => {
     assert.deepStrictEqual(
-      parseSuccessEnvelope({ requestId: "r1", data: { a: 1 } }),
+      parseSuccessEnvelope({ requestId: "r1", data: { a: 1 } }, "r1"),
       { requestId: "r1", data: { a: 1 } }
     );
   });
   test("rejects missing data key and missing requestId", () => {
-    assert.strictEqual(parseSuccessEnvelope({ requestId: "r1" }), null);
-    assert.strictEqual(parseSuccessEnvelope({ data: 1 }), null);
-    assert.strictEqual(parseSuccessEnvelope(null), null);
-    assert.strictEqual(parseSuccessEnvelope("x"), null);
+    assert.strictEqual(parseSuccessEnvelope({ requestId: "r1" }, "r1"), null);
+    assert.strictEqual(parseSuccessEnvelope({ data: 1 }, "r1"), null);
+    assert.strictEqual(parseSuccessEnvelope(null, "r1"), null);
+    assert.strictEqual(parseSuccessEnvelope("x", "r1"), null);
+    assert.strictEqual(
+      parseSuccessEnvelope({ requestId: "r1", data: 1 }, undefined),
+      null
+    );
+    assert.strictEqual(
+      parseSuccessEnvelope({ requestId: "r1", data: 1 }, "other"),
+      null
+    );
   });
 });
 
@@ -45,7 +53,7 @@ describe("problem details", () => {
       latest: { version: 3 },
       reloadRequired: true,
     };
-    const resolved = parseProblemDetails(body, 409, "header-id");
+    const resolved = parseProblemDetails(body, 409, "r9");
     assert.strictEqual(resolved?.status, 409);
     assert.strictEqual(resolved?.code, "CONFLICT");
     assert.strictEqual(resolved?.requestId, "r9");
@@ -67,6 +75,14 @@ describe("problem details", () => {
     );
     assert.strictEqual(
       parseProblemDetails({ status: 200, code: "CONFLICT" }, 409, "hdr"),
+      null
+    );
+    assert.strictEqual(
+      parseProblemDetails(
+        { status: 409, code: "CONFLICT", requestId: "other" },
+        409,
+        "hdr"
+      ),
       null
     );
   });

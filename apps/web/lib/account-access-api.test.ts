@@ -118,6 +118,7 @@ describe("Account Access API", () => {
           : accessView;
       return new Response(JSON.stringify({ requestId: "r-2", data }), {
         status: 200,
+        headers: { "X-Request-Id": "r-2" },
       });
     });
     await getAccountAccess("user/target");

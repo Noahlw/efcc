@@ -38,12 +38,13 @@ function idempotencyKey(): string {
   return crypto.randomUUID();
 }
 
-function malformedResponse(status: number): RpcError {
+function malformedResponse(status: number, requestId?: string): RpcError {
   return new RpcError({
     status,
     code: "MALFORMED_RESPONSE",
     title: "Malformed response",
     detail: "伺服器回應格式錯誤。",
+    requestId,
   });
 }
 
@@ -80,13 +81,13 @@ async function noticesFetch<T>(
     try {
       parsed = await response.json();
     } catch {
-      throw malformedResponse(response.status);
+      throw malformedResponse(response.status, requestId);
     }
-    const envelope = parseSuccessEnvelope(parsed);
+    const envelope = parseSuccessEnvelope(parsed, requestId);
     // Shared contract gate (#656): malformed 2xx data is
     // MALFORMED_RESPONSE, never a partial success.
     if (!envelope || !payloadSchema.safeParse(envelope.data).success) {
-      throw malformedResponse(response.status);
+      throw malformedResponse(response.status, requestId);
     }
     return envelope.data as T;
   }

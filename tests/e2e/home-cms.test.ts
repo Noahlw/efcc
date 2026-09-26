@@ -191,6 +191,77 @@ async function restoreHomeSnapshot(
 }
 
 test.describe("087-05 Home Content CMS", () => {
+  test("keeps a committed draft unresolved until real Worker readback", async ({
+    page,
+  }) => {
+    await clearSession(page);
+    await loginAsAdmin(page);
+    const snapshot = await captureHomeSnapshot(page);
+    let draftPosts = 0;
+    let sentKey: string | null = null;
+    try {
+      await page.goto("/management?module=home-content");
+      const title = `E2E uncertain CMS ${Date.now()}`;
+      await page.getByRole("button", { name: EDITOR.templateB }).click();
+      await expect(page.locator("#home-cms-title")).toBeVisible();
+      await page.locator("#home-cms-title").fill(title);
+
+      await page.route("**/api/v1/home/draft", async (route) => {
+        draftPosts += 1;
+        sentKey = route.request().headers()["idempotency-key"] ?? null;
+        const real = await route.fetch();
+        expect(real.status()).toBe(200);
+        const body = (await real.json()) as {
+          requestId: string;
+          data: Record<string, unknown>;
+        };
+        await route.fulfill({
+          response: real,
+          body: JSON.stringify({
+            ...body,
+            data: { ...body.data, version: "malformed" },
+          }),
+        });
+      });
+
+      await page.getByRole("button", { name: EDITOR.saveDraft }).click();
+      await expect(
+        page.getByRole("heading", { name: EDITOR.outcomePending })
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: EDITOR.saveDraft })
+      ).toBeDisabled();
+      const pendingKey = await page.evaluate(() => {
+        const raw = sessionStorage.getItem("efcc-home-cms-pending-mutation");
+        return raw ? (JSON.parse(raw) as { key: string }).key : null;
+      });
+      expect(pendingKey).toBe(sentKey);
+      expect(draftPosts).toBe(1);
+
+      const readback = await api(page, "/api/v1/home/content");
+      expect(readback.status).toBe(200);
+      expect((readback.body.data as { title: string }).title).toBe(title);
+
+      await page.reload();
+      await expect(
+        page.getByRole("heading", { name: EDITOR.outcomePending })
+      ).toBeVisible();
+      await page.getByRole("button", { name: EDITOR.outcomeCheck }).click();
+      await expect(
+        page.locator(
+          '[aria-labelledby="home-cms-editor-title"] output[aria-live="polite"]'
+        )
+      ).toContainText(EDITOR.outcomeReviewed);
+      expect(draftPosts).toBe(1);
+      await expect(
+        page.getByRole("button", { name: EDITOR.saveDraft })
+      ).toBeEnabled();
+    } finally {
+      await page.unroute("**/api/v1/home/draft");
+      await restoreHomeSnapshot(page, snapshot);
+    }
+  });
+
   test("edits both templates, saves then publishes, previews, and rejects stale writes", async ({
     page,
   }) => {

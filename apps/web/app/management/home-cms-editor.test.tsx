@@ -82,7 +82,12 @@ const AUDIT_ITEMS = [
 const server = setupServer();
 
 function json(data: unknown, init?: ResponseInit) {
-  return HttpResponse.json({ requestId: "req-home-cms", data }, init);
+  const headers = new Headers(init?.headers);
+  headers.set("X-Request-Id", "req-home-cms");
+  return HttpResponse.json(
+    { requestId: "req-home-cms", data },
+    { ...init, headers }
+  );
 }
 
 function installHandlers(content: HomeContent = CONTENT) {
@@ -138,6 +143,7 @@ describe(HomeContentEditor, () => {
   afterEach(() => {
     cleanup();
     server.resetHandlers();
+    sessionStorage.clear();
   });
 
   afterAll(() => server.close());
@@ -202,6 +208,60 @@ describe(HomeContentEditor, () => {
     expect(draftBody?.title).toBe("未發佈草稿");
     expect(publishCalls).toBe(0);
     expect(screen.getByRole("status")).toHaveTextContent(EDITOR.saveSuccess);
+  });
+
+  test("holds a malformed draft acknowledgement until readback without replay", async () => {
+    const user = userEvent.setup();
+    let latest = CONTENT;
+    let draftPosts = 0;
+    let sentKey: string | null = null;
+    installHandlers();
+    server.use(
+      http.get("/api/v1/home/content", () => json(latest)),
+      http.post("/api/v1/home/draft", ({ request }) => {
+        draftPosts += 1;
+        sentKey = request.headers.get("Idempotency-Key");
+        latest = {
+          ...CONTENT,
+          version: 4,
+          updatedAt: "2026-08-17T03:00:00.000Z",
+        };
+        return json({ ...latest, version: "invalid" });
+      })
+    );
+    const view = render(<HomeContentEditor />);
+    await waitUntilReady();
+    await user.click(screen.getByRole("button", { name: EDITOR.saveDraft }));
+
+    await screen.findByRole("heading", { name: EDITOR.outcomePending });
+    const pending = JSON.parse(
+      sessionStorage.getItem("efcc-home-cms-pending-mutation") ?? "null"
+    ) as { key: string };
+    expect(pending.key).toBe(sentKey);
+    expect(
+      screen.getByRole("button", { name: EDITOR.saveDraft })
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: EDITOR.savePublished })
+    ).toBeDisabled();
+    expect(draftPosts).toBe(1);
+
+    view.unmount();
+    render(<HomeContentEditor />);
+    await waitUntilReady();
+    await screen.findByRole("heading", { name: EDITOR.outcomePending });
+    expect(
+      screen.getByRole("button", { name: EDITOR.saveDraft })
+    ).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: EDITOR.outcomeCheck }));
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(
+        EDITOR.outcomeReviewed
+      )
+    );
+    expect(sessionStorage.getItem("efcc-home-cms-pending-mutation")).toBeNull();
+    expect(draftPosts).toBe(1);
   });
 
   test("previews Template A from the draft featured event id", async () => {
@@ -425,7 +485,7 @@ describe(HomeContentEditor, () => {
     expect(publishBody?.version).toBe(4);
   });
 
-  test("preserves unpersisted draft form state across recoverable non-conflict save failure and allows retry", async () => {
+  test("preserves unpersisted draft after unknown save, then allows retry after readback", async () => {
     const user = userEvent.setup();
     installHandlers();
     server.use(
@@ -461,12 +521,25 @@ describe(HomeContentEditor, () => {
 
     await user.click(screen.getByRole("button", { name: EDITOR.saveDraft }));
 
-    await screen.findByText(/資料庫寫入逾時|載入失敗/);
+    await screen.findByRole("heading", { name: EDITOR.outcomePending });
     expect((element("home-cms-title") as HTMLInputElement).value).toBe(
       "未儲存的特別草稿"
     );
     expect((element("home-cms-summary") as HTMLTextAreaElement).value).toBe(
       "這段草稿簡介在失敗後必須保留。"
+    );
+    expect(
+      screen.getByRole("button", { name: EDITOR.saveDraft })
+    ).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: EDITOR.outcomeCheck }));
+    await waitFor(() =>
+      expect(screen.getByRole("status")).toHaveTextContent(
+        EDITOR.outcomeReviewed
+      )
+    );
+    expect((element("home-cms-title") as HTMLInputElement).value).toBe(
+      "未儲存的特別草稿"
     );
 
     server.use(

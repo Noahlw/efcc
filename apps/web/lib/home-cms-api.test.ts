@@ -173,4 +173,23 @@ describe("home-cms-api client", () => {
       restore();
     }
   });
+
+  test("rejects a success envelope without its matching transport header", async () => {
+    const restore = stubFetch(
+      () =>
+        new Response(
+          JSON.stringify({ requestId: "body-only", data: { items: [] } }),
+          { status: 200 }
+        )
+    );
+    try {
+      await assert.rejects(listHomeAudit(), (error: unknown) => {
+        assert.ok(error instanceof RpcError);
+        assert.strictEqual(error.problem.code, "MALFORMED_RESPONSE");
+        return true;
+      });
+    } finally {
+      restore();
+    }
+  });
 });

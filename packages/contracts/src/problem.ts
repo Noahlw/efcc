@@ -58,7 +58,10 @@ export function parseProblemDetails(
       parsed.data.title === undefined &&
       parsed.data.detail === undefined &&
       parsed.data.code === undefined) ||
-    (parsed.data.status !== undefined && parsed.data.status !== httpStatus)
+    (parsed.data.status !== undefined && parsed.data.status !== httpStatus) ||
+    (headerRequestId !== undefined &&
+      parsed.data.requestId !== undefined &&
+      parsed.data.requestId !== headerRequestId)
   ) {
     return null;
   }

@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 
 import { env } from "cloudflare:workers";
-import { beforeAll, describe, test } from "vitest";
+import { beforeAll, describe, test, vi } from "vitest";
 
 import worker from "../../worker";
 import type { Env } from "../../worker";
@@ -19,6 +19,7 @@ import {
   seedTestAccount,
   testDb,
 } from "../auth/test-bootstrap";
+import { D1WorkspaceStore } from "./d1-workspace-store";
 
 const HOST = "https://efcc.example";
 const SECRET = "t05-contract-test-secret";
@@ -207,6 +208,39 @@ beforeAll(async () => {
 });
 
 describe("T05.2 Worker Contract Gate", () => {
+  test("malformed Programs projection returns correlated 503", async () => {
+    const adminCookie = await login("t05-admin", "t05-admin-secret");
+    const spy = vi.spyOn(D1WorkspaceStore.prototype, "listDepartments");
+    spy.mockResolvedValue([
+      {
+        department_id: "malformed-department",
+        code: "MALFORMED",
+        name: "Malformed",
+        description: null,
+        lifecycle: "Active",
+        display_order: "invalid" as unknown as number,
+        created_by: null,
+        created_at: "2026-09-26T00:00:00.000Z",
+        updated_by: null,
+        updated_at: "2026-09-26T00:00:00.000Z",
+      },
+    ]);
+    try {
+      const response = await worker.fetch(
+        request("/api/v1/programs/departments", { cookie: adminCookie }),
+        testEnv()
+      );
+      assert.equal(response.status, 503);
+      const body = await correlated<{ code: string; requestId: string }>(
+        response
+      );
+      assert.equal(body.code, "UNAVAILABLE");
+      assert.equal(body.requestId, response.headers.get("X-Request-Id"));
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test("proves authenticated Programs mutation, D1 outcome, audit/idempotency, and projection read-back", async () => {
     const adminCookie = await login("t05-admin", "t05-admin-secret");
     const memberCookie = await login("t05-member", "t05-member-secret");

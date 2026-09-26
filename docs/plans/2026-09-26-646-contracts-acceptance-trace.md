@@ -1,8 +1,8 @@
 # #646 Acceptance Trace — Shared runtime contracts for every non-Auth API
 
 Parent spec #646, tickets #654–#662. Stack: `codex/646-non-auth-contracts`
-(@ `4325ab4`) above `refactor/workspace-organization` (PR #663, OPEN @
-`4325ab4`) above PR #644 (OPEN @ `a3da16da`). Auth routes, `auth.*`
+above `refactor/workspace-organization` (PR #663, OPEN at
+`245c2658`) above PR #644 (OPEN at `a3da16da`). Auth routes, `auth.*`
 grants, and Better Auth migration (#647) are out of scope; the dirty
 Better Auth docs worktree is preserved untouched.
 
@@ -437,3 +437,28 @@ affected components only where HTTP cannot show the state.
 Storybook/MSW never counts as runtime proof. `packages/contracts`
 unit tests cover pure schemas/helpers; compatibility proven by
 Worker build, static export, and the consuming suites.
+
+## Review follow-up — transport correlation and unknown CMS writes
+
+- Browser success envelopes now require the body `requestId` to equal
+  `X-Request-Id`. A mismatched Problem Details body falls back to
+  `UNAVAILABLE` with the transport request reference. Programs malformed
+  projections return 503 `UNAVAILABLE` with the handler's original
+  requestId instead of minting a new generic 500.
+- Home CMS POSTs pass one generated key through the request and persist an
+  unresolved operation marker in sessionStorage on network, server, or
+  malformed-response uncertainty. Submission controls remain locked across
+  reload until the admin explicitly reads current content and audit; no
+  write is automatically replayed.
+- Local Home CMS Playwright proof intercepts the response only after
+  `route.fetch()` completes the real Worker/D1 write, changes the success
+  payload into a malformed acknowledgement, then checks the key, single
+  POST, reload-persistent lock, and explicit readback recovery. This is a
+  transport fault injection around the real Worker, not a mock of the
+  write.
+- Playwright API guidance verified through Context7 on 2026-09-26:
+  library ID `/microsoft/playwright`, concept `Route.fetch` followed by
+  `Route.fulfill({ response, body })`; source was Microsoft Playwright's
+  official network/API documentation.
+- Existing static-shell Playwright Home/catalog route fixtures now provide
+  matching `X-Request-Id` headers to represent the real Worker contract.

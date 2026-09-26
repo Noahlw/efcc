@@ -775,7 +775,7 @@ async function programsFetch<T>(
         requestId,
       });
     }
-    const envelope = parseSuccessEnvelope(parsed);
+    const envelope = parseSuccessEnvelope(parsed, requestId);
     // Shared contract gate (#656): malformed 2xx data is
     // MALFORMED_RESPONSE, never a partial success. Routes whose
     // schemas land in later #646 tickets keep today's envelope-only

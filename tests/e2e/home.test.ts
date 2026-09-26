@@ -164,6 +164,7 @@ function stubHomeEndpoint(options: HomeRouteOptions = {}) {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
+      headers: { "X-Request-Id": "r-home" },
       body: JSON.stringify({
         requestId: "r-home",
         data,
@@ -189,6 +190,7 @@ async function initAuthenticatedPage(
     await route.fulfill({
       status: 200,
       contentType: "application/json",
+      headers: { "X-Request-Id": "r-catalog" },
       body: JSON.stringify({ requestId: "r-catalog", data: { catalog: [] } }),
     });
   });
@@ -241,6 +243,7 @@ test.describe("085-01: Participant Home and Church Announcement", () => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
+        headers: { "X-Request-Id": "r-home-skeleton" },
         body: JSON.stringify({
           requestId: "r-home-skeleton",
           data: {

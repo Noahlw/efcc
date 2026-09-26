@@ -158,6 +158,13 @@ export interface ProgramEnv {
   DB: D1Database;
   EFCC_ACCESS_TOKEN_SECRET: string;
 }
+
+class ProgramsContractViolation extends Error {
+  constructor(readonly requestId: string) {
+    super("programs contract violation");
+    this.name = "ProgramsContractViolation";
+  }
+}
 function departmentDto(row: DepartmentView) {
   return {
     department_id: row.department_id,
@@ -546,7 +553,7 @@ export async function handleCreateDepartment(
       console.error(
         `[programs] department create malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(201, createdData, requestId);
   } catch (error) {
@@ -578,7 +585,7 @@ export async function handleListDepartments(
     console.error(
       `[programs] departments malformed data requestId=${requestId}`
     );
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, data, requestId);
 }
@@ -599,10 +606,10 @@ export async function handleListManagementAccess(
     authorizationContextFor(auth.account)
   );
   if (!ManagementAccessViewSchema.safeParse(access).success) {
-    // Shared contract gate (#656): never a malformed 2xx. The throw
-    // reaches the programs catch as the existing 500 INTERNAL_ERROR.
+    // Shared contract gate (#656): never a malformed 2xx. The Worker
+    // returns a correlated 503 while preserving this handler requestId.
     console.error(`[programs] access malformed data requestId=${requestId}`);
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, access, requestId);
 }
@@ -622,7 +629,7 @@ export async function handleGetManagementHub(
   );
   if (!ManagementHubViewSchema.safeParse(hub).success) {
     console.error(`[programs] hub malformed data requestId=${requestId}`);
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, hub, requestId);
 }
@@ -643,7 +650,7 @@ export async function handleListManagementDirectory(
   );
   if (!ManagementDirectoryViewSchema.safeParse(directory).success) {
     console.error(`[programs] directory malformed data requestId=${requestId}`);
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, directory, requestId);
 }
@@ -684,7 +691,7 @@ export async function handleSearchManagementMembers(
     const data = { members };
     if (!MembersSearchResultSchema.safeParse(data).success) {
       console.error(`[programs] members malformed data requestId=${requestId}`);
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, data, requestId);
   } catch (error) {
@@ -744,7 +751,7 @@ export async function handleSearchAccountDirectory(
       console.error(
         `[programs] accounts malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, directory, requestId);
   } catch (error) {
@@ -777,7 +784,7 @@ export async function handleGetAccountDirectoryDetail(
       console.error(
         `[programs] account detail malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, account, requestId);
   } catch (error) {
@@ -821,7 +828,7 @@ export async function handleGetManagementAttention(
   );
   if (!ManagementAttentionViewSchema.safeParse(attention).success) {
     console.error(`[programs] attention malformed data requestId=${requestId}`);
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, attention, requestId);
 }
@@ -852,7 +859,7 @@ export async function handleGetManagementNotifications(
       console.error(
         `[programs] notifications malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, notifications, requestId);
   } catch (error) {
@@ -919,7 +926,7 @@ export async function handleMarkManagementNotificationsRead(
       console.error(
         `[programs] notifications read malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, data, requestId);
   } catch (error) {
@@ -954,7 +961,7 @@ export async function handleGetManagementProgram(
     console.error(
       `[programs] management malformed data requestId=${requestId}`
     );
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, result, requestId);
 }
@@ -981,7 +988,7 @@ export async function handleGetProgramAttendanceArtifact(
   const artifactData = { artifact };
   if (!ProgramAttendanceArtifactSchema.safeParse(artifactData).success) {
     console.error(`[programs] artifact malformed data requestId=${requestId}`);
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, artifactData, requestId);
 }
@@ -1018,7 +1025,7 @@ export async function handleRotateProgramAttendanceArtifact(
       console.error(
         `[programs] rotation malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, rotationData, requestId);
   } catch (error) {
@@ -1055,7 +1062,7 @@ export async function handleGetManagementCockpit(
   const cockpitData = { cockpit: result };
   if (!ManagementCockpitViewSchema.safeParse(cockpitData).success) {
     console.error(`[programs] cockpit malformed data requestId=${requestId}`);
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, cockpitData, requestId);
 }
@@ -1082,7 +1089,7 @@ export async function handleListParticipantCatalog(
   const catalogData = { catalog };
   if (!ParticipantCatalogSchema.safeParse(catalogData).success) {
     console.error(`[programs] catalog malformed data requestId=${requestId}`);
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, catalogData, requestId);
 }
@@ -1111,7 +1118,7 @@ export async function handleGetParticipantProgramDetail(
   const detailData = { detail };
   if (!ParticipantProgramDetailSchema.safeParse(detailData).success) {
     console.error(`[programs] detail malformed data requestId=${requestId}`);
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, detailData, requestId);
 }
@@ -1159,7 +1166,7 @@ export async function handleGetDepartment(
     console.error(
       `[programs] department malformed data requestId=${requestId}`
     );
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, detailData, requestId);
 }
@@ -1272,7 +1279,7 @@ export async function handleUpdateDepartment(
       console.error(
         `[programs] department update malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, updatedData, requestId);
   } catch (error) {
@@ -1374,7 +1381,7 @@ export async function handleCreateProgram(
       console.error(
         `[programs] program create malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(201, createdProgramData, requestId);
   } catch (error) {
@@ -1418,7 +1425,7 @@ export async function handleListPrograms(
   const programsData = { programs: rows };
   if (!ProgramsListSchema.safeParse(programsData).success) {
     console.error(`[programs] programs malformed data requestId=${requestId}`);
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, programsData, requestId);
 }
@@ -1452,7 +1459,7 @@ export async function handleGetProgram(
   const programData = { program: row };
   if (!ProgramGetSchema.safeParse(programData).success) {
     console.error(`[programs] program malformed data requestId=${requestId}`);
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, programData, requestId);
 }
@@ -1531,7 +1538,7 @@ export async function handleUpdateProgram(
       console.error(
         `[programs] program update malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, updatedProgramData, requestId);
   } catch (error) {
@@ -1602,7 +1609,7 @@ export async function handleSearchMemberOptions(
     console.error(
       `[programs] member options malformed data requestId=${requestId}`
     );
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, optionsData, requestId);
 }
@@ -1636,7 +1643,7 @@ export async function handleSetModule(
     const moduleData = { module };
     if (!SetModuleResponseSchema.safeParse(moduleData).success) {
       console.error(`[programs] module malformed data requestId=${requestId}`);
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, moduleData, requestId);
   } catch (error) {
@@ -1686,7 +1693,7 @@ export async function handleListScheduleRules(
     const rulesData = { rules };
     if (!ScheduleRulesSchema.safeParse(rulesData).success) {
       console.error(`[programs] rules malformed data requestId=${requestId}`);
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, rulesData, requestId);
   } catch (error) {
@@ -1731,7 +1738,7 @@ export async function handleListScheduleExceptions(
       console.error(
         `[programs] exceptions malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, exceptionsData, requestId);
   } catch (error) {
@@ -1792,7 +1799,7 @@ export async function handleCreateScheduleRule(
       console.error(
         `[programs] rule create malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(result.idempotent ? 200 : 201, ruleData, requestId);
   } catch (error) {
@@ -1854,7 +1861,7 @@ export async function handleUpdateScheduleRule(
     const ruleData = { rule: row };
     if (!ScheduleRuleResponseSchema.safeParse(ruleData).success) {
       console.error(`[programs] rule malformed data requestId=${requestId}`);
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, ruleData, requestId);
   } catch (error) {
@@ -1891,7 +1898,7 @@ export async function handleRetireScheduleRule(
     const ruleData = { rule: row };
     if (!ScheduleRuleResponseSchema.safeParse(ruleData).success) {
       console.error(`[programs] rule malformed data requestId=${requestId}`);
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, ruleData, requestId);
   } catch (error) {
@@ -1998,7 +2005,7 @@ export async function handleCreateScheduleException(
       console.error(
         `[programs] exception malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(201, exceptionData, requestId);
   } catch (error) {
@@ -2041,7 +2048,7 @@ export async function handleDeleteScheduleException(
       console.error(
         `[programs] exception delete malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, deletedData, requestId);
   } catch (error) {
@@ -2162,7 +2169,7 @@ export async function handlePreviewEvents(
     const previewData = { plan: result.plan, occurrences: result.occurrences };
     if (!PreviewEventsResponseSchema.safeParse(previewData).success) {
       console.error(`[programs] preview malformed data requestId=${requestId}`);
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, previewData, requestId);
   } catch (error) {
@@ -2210,7 +2217,7 @@ export async function handleGenerateEvents(
       console.error(
         `[programs] generate malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, generatedData, requestId);
   } catch (error) {
@@ -2346,7 +2353,7 @@ export async function handleCreateEvent(
       console.error(
         `[programs] event create malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(201, eventData, requestId);
   } catch (error) {
@@ -2380,7 +2387,7 @@ export async function handleListEvents(
   const eventsData = { events: rows };
   if (!EventsListSchema.safeParse(eventsData).success) {
     console.error(`[programs] events malformed data requestId=${requestId}`);
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, eventsData, requestId);
 }
@@ -2410,7 +2417,7 @@ export async function handleGetEvent(
       console.error(
         `[programs] event detail malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, detail, requestId);
   } catch (error) {
@@ -2488,7 +2495,7 @@ export async function handleEventUpdate(
         console.error(
           `[programs] event update malformed data requestId=${requestId}`
         );
-        throw new Error("programs contract violation");
+        throw new ProgramsContractViolation(requestId);
       }
       return jsonResponse(200, updatedEventData, requestId);
     } catch (error) {
@@ -2514,7 +2521,7 @@ export async function handleEventUpdate(
         console.error(
           `[programs] event update malformed data requestId=${requestId}`
         );
-        throw new Error("programs contract violation");
+        throw new ProgramsContractViolation(requestId);
       }
       return jsonResponse(200, updatedEventData, requestId);
     } catch (error) {
@@ -2647,7 +2654,7 @@ export async function handleEventUpdate(
       console.error(
         `[programs] event update malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, updatedEventData, requestId);
   } catch (error) {
@@ -2686,7 +2693,7 @@ export async function handleCreateEnrollmentRequest(
       console.error(
         `[programs] enrollment submit malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(201, requestData, requestId);
   } catch (error) {
@@ -2722,7 +2729,7 @@ export async function handleListEnrollmentRequests(
     console.error(
       `[programs] enrollment requests malformed data requestId=${requestId}`
     );
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, requestsData, requestId);
 }
@@ -2749,7 +2756,7 @@ export async function handleListEnrollmentSnapshot(
     console.error(
       `[programs] enrollment snapshot malformed data requestId=${requestId}`
     );
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, snapshot, requestId);
 }
@@ -2786,7 +2793,7 @@ export async function handleStartEnrollmentApprovalRun(
       console.error(
         `[programs] approval run start malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(201, result, requestId);
   } catch (error) {
@@ -2825,7 +2832,7 @@ export async function handleListEnrollmentApprovalRuns(
       console.error(
         `[programs] approval runs malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, runsData, requestId);
   } catch (error) {
@@ -2871,7 +2878,7 @@ async function handleEnrollmentApprovalRunAction(
         console.error(
           `[programs] approval reconcile malformed data requestId=${requestId}`
         );
-        throw new Error("programs contract violation");
+        throw new ProgramsContractViolation(requestId);
       }
       return jsonResponse(200, reconcileData, requestId);
     }
@@ -2889,7 +2896,7 @@ async function handleEnrollmentApprovalRunAction(
         console.error(
           `[programs] approval continue malformed data requestId=${requestId}`
         );
-        throw new Error("programs contract violation");
+        throw new ProgramsContractViolation(requestId);
       }
       return jsonResponse(200, result, requestId);
     }
@@ -2907,7 +2914,7 @@ async function handleEnrollmentApprovalRunAction(
       console.error(
         `[programs] approval cancel malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, cancelRunData, requestId);
   } catch (error) {
@@ -3024,7 +3031,7 @@ export async function handleDecideEnrollmentRequest(
     );
     if (!EnrollmentDecisionResponseSchema.safeParse(result).success) {
       console.error(`[programs] decide malformed data requestId=${requestId}`);
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, result, requestId);
   } catch (error) {
@@ -3072,7 +3079,7 @@ export async function handleWithdrawEnrollmentRequest(
       console.error(
         `[programs] withdraw malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, withdrawData, requestId);
   } catch (error) {
@@ -3120,7 +3127,7 @@ export async function handleAssistedEnroll(
       console.error(
         `[programs] assisted enroll malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(201, assistedData, requestId);
   } catch (error) {
@@ -3156,7 +3163,7 @@ export async function handleListEnrollments(
     console.error(
       `[programs] enrollments malformed data requestId=${requestId}`
     );
-    throw new Error("programs contract violation");
+    throw new ProgramsContractViolation(requestId);
   }
   return jsonResponse(200, enrollmentsData, requestId);
 }
@@ -3206,7 +3213,7 @@ export async function handleCancelEnrollment(
       console.error(
         `[programs] cancel enrollment malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, cancelData, requestId);
   } catch (error) {
@@ -3240,7 +3247,7 @@ export async function handleListParticipantNotices(
     );
     if (!ParticipantNoticesViewSchema.safeParse(notices).success) {
       console.error(`[programs] notices malformed data requestId=${requestId}`);
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, notices, requestId);
   } catch (error) {
@@ -3273,7 +3280,7 @@ export async function handleMarkParticipantNoticesRead(
       console.error(
         `[programs] notices read-all malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(200, markedData, requestId);
   } catch (error) {
@@ -3354,7 +3361,7 @@ export async function handleCreateParticipantNotice(
       console.error(
         `[programs] notice create malformed data requestId=${requestId}`
       );
-      throw new Error("programs contract violation");
+      throw new ProgramsContractViolation(requestId);
     }
     return jsonResponse(201, noticeData, requestId);
   } catch (error) {

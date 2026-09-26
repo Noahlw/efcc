@@ -836,6 +836,20 @@ export default {
           "Unknown programs route."
         );
       } catch (error) {
+        if (
+          error instanceof Error &&
+          error.name === "ProgramsContractViolation" &&
+          "requestId" in error &&
+          typeof error.requestId === "string"
+        ) {
+          return authProblemResponse(
+            503,
+            "UNAVAILABLE",
+            "Service unavailable",
+            "Programs data is temporarily unavailable.",
+            error.requestId
+          );
+        }
         // Parity with the auth envelope (worker.ts try/catch): unmapped
         // throws become RFC 9457 500s with requestId + server log line,
         // never raw workerd 500s without a body.

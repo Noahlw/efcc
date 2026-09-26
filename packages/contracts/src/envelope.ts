@@ -18,12 +18,19 @@ export type SuccessEnvelope = z.infer<typeof SuccessEnvelopeSchema>;
  * Total envelope parse: null when the value is not an enveloped
  * response (missing requestId or missing data key). Never throws.
  */
-export function parseSuccessEnvelope(value: unknown): {
+export function parseSuccessEnvelope(
+  value: unknown,
+  headerRequestId: string | undefined
+): {
   requestId: string;
   data: unknown;
 } | null {
   const parsed = SuccessEnvelopeSchema.safeParse(value);
-  if (!parsed.success) {
+  if (
+    !parsed.success ||
+    !headerRequestId ||
+    parsed.data.requestId !== headerRequestId
+  ) {
     return null;
   }
   if (
