@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 
 import { env } from "cloudflare:workers";
-import { beforeAll, describe, expect, test } from "vitest";
+import { beforeAll, describe, expect, test, vi } from "vitest";
 
 import worker from "../../worker";
 import type { Env } from "../../worker";
 import { ACCESS_COOKIE_NAME } from "../auth/cookies";
 import { issueSession } from "../auth/sessions";
 import { applyMigrations, testDb } from "../auth/test-bootstrap";
+import * as accountAccess from "./account-access";
 import { seedDisposableIdentity } from "./index";
 
 const SECRET = "account-access-handler-test-secret";
@@ -642,6 +643,38 @@ describe("#486 Account Access handlers", () => {
     const problemBody = await problem(response);
     expect(problemBody).toHaveProperty("type");
     expect(problemBody).toHaveProperty("title");
+  });
+
+  test("rejects malformed assignment mutation projections", async () => {
+    const mutateSpy = vi
+      .spyOn(accountAccess, "mutateAccountAssignments")
+      .mockResolvedValueOnce({ responseRequestId: "stored-request" } as never);
+    try {
+      const response = await worker.fetch(
+        request(`/api/v1/identity/accounts/${STAFF}/assignments`, {
+          method: "POST",
+          headers: {
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+            "Content-Type": "application/json",
+            "Idempotency-Key": "account-access-malformed-projection",
+          },
+          body: {
+            base_revision: await revision(),
+            role_definition_ids: [DEPARTMENT_ROLE],
+          },
+        }),
+        testEnv()
+      );
+
+      expect(mutateSpy).toHaveBeenCalledOnce();
+      expect(response.status).toBe(500);
+      expect(response.headers.get("X-Request-Id")).toBeTruthy();
+      const body = await problem(response);
+      expect(body.code).toBe("INTERNAL_ERROR");
+      expect(body.requestId).toBe(response.headers.get("X-Request-Id"));
+    } finally {
+      mutateSpy.mockRestore();
+    }
   });
 
   test("strictly forbids multi-account bulk assignment endpoints", async () => {

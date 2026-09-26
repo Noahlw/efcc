@@ -378,6 +378,12 @@ export async function handleMutateAccountAssignments(
       )
     );
     const { responseRequestId, ...publicData } = data;
+    if (!AccountAccessMutationResultSchema.safeParse(publicData).success) {
+      console.error(
+        `[identity] assignments malformed data requestId=${requestId}`
+      );
+      throw new Error("identity contract violation");
+    }
     return roleSuccess(200, publicData, responseRequestId ?? requestId);
   } catch (error) {
     return mapAccountAccessError(error, requestId);
