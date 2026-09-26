@@ -493,7 +493,6 @@ test.beforeAll(async ({ playwright }) => {
         description: "S3 attendance acceptance fixture",
         category: "測試",
         behavior_type: "Recurring",
-        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "MemberRequest",
       }
@@ -577,7 +576,6 @@ test.beforeAll(async ({ playwright }) => {
         name: `E2E 未報名課程 ${fresh("P")}`,
         description: "S3 unenrolled acceptance fixture",
         behavior_type: "Recurring",
-        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "MemberRequest",
       }
@@ -586,6 +584,12 @@ test.beforeAll(async ({ playwright }) => {
     const unenrolledProgramId = (
       unenrolledProg.body.data as { program: { program_id: string } }
     ).program.program_id;
+    const publishedUnenrolled = await patchJson(
+      admin.api,
+      `/api/v1/programs/${unenrolledProgramId}`,
+      { lifecycle: "Active", discoverability: "Listed" }
+    );
+    expect(publishedUnenrolled.status).toBe(200);
     const unenrolledCreated = await postJson(
       admin.api,
       `/api/v1/programs/${unenrolledProgramId}/events`,

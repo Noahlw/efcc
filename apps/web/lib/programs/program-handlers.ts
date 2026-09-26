@@ -1,3 +1,85 @@
+import {
+  AccountDirectoryMemberSchema,
+  AccountDirectoryStatusSchema,
+  AccountDirectoryViewSchema,
+  DepartmentDetailSchema,
+  DepartmentGetSchema,
+  DepartmentsListSchema,
+  MemberOptionsSchema,
+  ProgramGetSchema,
+  ProgramsListSchema,
+  ManagementAccessViewSchema,
+  ManagementAttentionViewSchema,
+  ManagementCockpitViewSchema,
+  ManagementDirectoryViewSchema,
+  ManagementHubViewSchema,
+  ManagementNotificationsViewSchema,
+  ManagementProgramWorkspaceViewSchema,
+  MarkedCountSchema,
+  MembersSearchResultSchema,
+  NoticeCreateResponseSchema,
+  NotificationReadItemSchema,
+  NotificationsReadBodySchema,
+  ParticipantCatalogSchema,
+  ParticipantNoticesViewSchema,
+  ParticipantNoticeKindSchema,
+  ParticipantProgramDetailSchema,
+  ProgramAttendanceArtifactSchema,
+  ProgramTokenRotationSchema,
+  floorClampLimit,
+  isValidAccountCursor,
+  optionalIdField,
+  parseOptionalIdempotencyKey,
+  parseSearchTerm,
+  trimmedField,
+} from "@efcc/contracts";
+import {
+  DepartmentCreateResponseSchema,
+  DepartmentLifecycleSchema,
+  DepartmentUpdateResponseSchema,
+  ProgramCreateResponseSchema,
+  ProgramUpdateResponseSchema,
+  SetModuleResponseSchema,
+  parseProgramFields,
+} from "@efcc/contracts";
+import {
+  ApprovalRunActionResponseSchema,
+  ApprovalRunResponseSchema,
+  ApprovalRunStartBodySchema,
+  ApprovalRunStartResponseSchema,
+  ApprovalRunsSchema,
+  AssistedEnrollResponseSchema,
+  CancelEnrollmentResponseSchema,
+  EnrollmentDecisionResponseSchema,
+  EnrollmentRequestCreateResponseSchema,
+  EnrollmentRequestsSchema,
+  EnrollmentSnapshotSchema,
+  EnrollmentWithdrawResponseSchema,
+  EnrollmentsSchema,
+  EventCreateResponseSchema,
+  EventTypeSchema,
+  EventDetailResponseSchema,
+  EventResponseSchema,
+  EventsListSchema,
+  ExceptionActionSchema,
+  GenerateEventsResponseSchema,
+  PreviewEventsResponseSchema,
+  ScheduleExceptionCreateResponseSchema,
+  ScheduleExceptionDeleteResponseSchema,
+  ScheduleExceptionsSchema,
+  ScheduleRuleCreateResponseSchema,
+  ScheduleRuleResponseSchema,
+  ScheduleRulesSchema,
+  parseAssistedMemberId,
+  parseCancelReason,
+  parseDecideAction,
+  parseDecideNote,
+  parseDecideRequestVersion,
+  parseExceptionBody,
+  parseRuleBody,
+  parseRulePatch,
+} from "@efcc/contracts";
+
 import type { AccountRow } from "../auth/accounts";
 import { resolveRequestSession } from "../auth/sessions";
 /**
@@ -92,69 +174,6 @@ function departmentDto(row: DepartmentView) {
 
 function isOneOf<T extends string>(v: unknown, options: readonly T[]): v is T {
   return typeof v === "string" && (options as readonly string[]).includes(v);
-}
-
-const INVALID_PROGRAM_VALUE = Symbol("invalid program value");
-const PROGRAM_FIELD_PARSERS: Record<string, (value: unknown) => unknown> = {
-  name: (value) =>
-    typeof value === "string" && value.trim()
-      ? value.trim()
-      : INVALID_PROGRAM_VALUE,
-  description: (value) =>
-    value === null || typeof value === "string" ? value : INVALID_PROGRAM_VALUE,
-  category: (value) =>
-    typeof value === "string" && value.trim()
-      ? value.trim()
-      : value === null
-        ? null
-        : INVALID_PROGRAM_VALUE,
-  behavior_type: (value) =>
-    isOneOf(value, ["Recurring", "OneOff"] as const)
-      ? value
-      : INVALID_PROGRAM_VALUE,
-  lifecycle: (value) =>
-    isOneOf(value, ["Draft", "Active", "Archived"] as const)
-      ? value
-      : INVALID_PROGRAM_VALUE,
-  discoverability: (value) =>
-    isOneOf(value, ["Listed", "Unlisted"] as const)
-      ? value
-      : INVALID_PROGRAM_VALUE,
-  enrollment_mode: (value) =>
-    isOneOf(value, ["MemberRequest", "ManagerOnly"] as const)
-      ? value
-      : INVALID_PROGRAM_VALUE,
-  display_order: (value) =>
-    typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-      ? value
-      : INVALID_PROGRAM_VALUE,
-  check_in_opens_at_minutes_before_start: (value) =>
-    typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-      ? value
-      : INVALID_PROGRAM_VALUE,
-  check_in_closes_at_minutes_after_end: (value) =>
-    typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-      ? value
-      : INVALID_PROGRAM_VALUE,
-};
-
-function parseProgramFields(
-  body: Record<string, unknown>,
-  required: readonly string[]
-): Record<string, unknown> | null {
-  const fields: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(body)) {
-    const parser = PROGRAM_FIELD_PARSERS[key];
-    if (!parser) {
-      return null;
-    }
-    const parsed = parser(value);
-    if (parsed === INVALID_PROGRAM_VALUE) {
-      return null;
-    }
-    fields[key] = parsed;
-  }
-  return required.every((key) => key in fields) ? fields : null;
 }
 
 function problem(
@@ -480,12 +499,7 @@ export async function handleCreateDepartment(
   }
   if (
     typeof body.lifecycle !== "string" ||
-    !isOneOf(body.lifecycle, [
-      "Draft",
-      "PendingDevelopment",
-      "Active",
-      "Archived",
-    ] as const)
+    !DepartmentLifecycleSchema.safeParse(body.lifecycle).success
   ) {
     return problem(
       422,
@@ -517,13 +531,24 @@ export async function handleCreateDepartment(
         name,
         description:
           typeof body.description === "string" ? body.description : undefined,
-        lifecycle: body.lifecycle,
+        lifecycle: body.lifecycle as
+          | "Draft"
+          | "PendingDevelopment"
+          | "Active"
+          | "Archived",
         display_order:
           typeof body.display_order === "number" ? body.display_order : 0,
       },
       correlationId
     );
-    return jsonResponse(201, { department: row }, requestId);
+    const createdData = { department: row };
+    if (!DepartmentCreateResponseSchema.safeParse(createdData).success) {
+      console.error(
+        `[programs] department create malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(201, createdData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -548,7 +573,14 @@ export async function handleListDepartments(
   const rows = await workspace.listDepartments(
     authorizationContextFor(auth.account)
   );
-  return jsonResponse(200, { departments: rows }, requestId);
+  const data = { departments: rows };
+  if (!DepartmentsListSchema.safeParse(data).success) {
+    console.error(
+      `[programs] departments malformed data requestId=${requestId}`
+    );
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, data, requestId);
 }
 
 /** GET /api/v1/programs/access — capability-only Programs entry projection. */
@@ -566,6 +598,12 @@ export async function handleListManagementAccess(
   const access = await workspace.getManagementAccess(
     authorizationContextFor(auth.account)
   );
+  if (!ManagementAccessViewSchema.safeParse(access).success) {
+    // Shared contract gate (#656): never a malformed 2xx. The throw
+    // reaches the programs catch as the existing 500 INTERNAL_ERROR.
+    console.error(`[programs] access malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
   return jsonResponse(200, access, requestId);
 }
 /** GET /api/v1/programs/hub — capability-filtered Management Hub directory. */
@@ -582,6 +620,10 @@ export async function handleGetManagementHub(
   const hub = await workspace.getManagementHub(
     authorizationContextFor(auth.account)
   );
+  if (!ManagementHubViewSchema.safeParse(hub).success) {
+    console.error(`[programs] hub malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
   return jsonResponse(200, hub, requestId);
 }
 
@@ -599,6 +641,10 @@ export async function handleListManagementDirectory(
   const directory = await workspace.listManagementDirectory(
     authorizationContextFor(auth.account)
   );
+  if (!ManagementDirectoryViewSchema.safeParse(directory).success) {
+    console.error(`[programs] directory malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
   return jsonResponse(200, directory, requestId);
 }
 
@@ -623,15 +669,11 @@ export async function handleSearchManagementMembers(
     return auth;
   }
   const url = new URL(request.url);
-  const query = url.searchParams.get("q")?.trim() ?? "";
+  const query = parseSearchTerm(url.searchParams.get("q"));
   if (query.length < 2) {
     return validation(requestId, "Search requires at least two characters.");
   }
-  const rawLimit = url.searchParams.get("limit");
-  const parsedLimit = rawLimit === null ? 20 : Number(rawLimit);
-  const limit = Number.isFinite(parsedLimit)
-    ? Math.min(50, Math.max(1, Math.floor(parsedLimit)))
-    : 20;
+  const limit = floorClampLimit(url.searchParams.get("limit"), 20, 1, 50);
   const { workspace } = await getModule(env);
   try {
     const members = await workspace.searchManagementMembers(
@@ -639,7 +681,12 @@ export async function handleSearchManagementMembers(
       query,
       limit
     );
-    return jsonResponse(200, { members }, requestId);
+    const data = { members };
+    if (!MembersSearchResultSchema.safeParse(data).success) {
+      console.error(`[programs] members malformed data requestId=${requestId}`);
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, data, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -660,23 +707,18 @@ export async function handleSearchAccountDirectory(
     return auth;
   }
   const url = new URL(request.url);
-  const query = url.searchParams.get("q")?.trim() ?? "";
-  const rawLimit = url.searchParams.get("limit");
-  const parsedLimit = rawLimit === null ? 20 : Number(rawLimit);
-  const limit = Number.isFinite(parsedLimit)
-    ? Math.min(50, Math.max(1, Math.floor(parsedLimit)))
-    : 20;
+  const query = parseSearchTerm(url.searchParams.get("q"));
+  const limit = floorClampLimit(url.searchParams.get("limit"), 20, 1, 50);
   const rawCursor = url.searchParams.get("cursor");
   const cursor = rawCursor === null ? 0 : Number(rawCursor);
   const rawStatus = url.searchParams.get("status");
   const rawDepartment = url.searchParams.get("department")?.trim() || undefined;
-  const statuses = ["Pending", "Active", "Suspended", "Deactivated"] as const;
-  if (!Number.isInteger(cursor) || cursor < 0) {
+  if (!isValidAccountCursor(cursor)) {
     return validation(requestId, "Invalid Account Directory cursor.");
   }
   if (
     rawStatus !== null &&
-    !statuses.includes(rawStatus as (typeof statuses)[number])
+    !AccountDirectoryStatusSchema.safeParse(rawStatus).success
   ) {
     return validation(requestId, "Unknown account status filter.");
   }
@@ -694,10 +736,16 @@ export async function handleSearchAccountDirectory(
         status:
           rawStatus === null
             ? undefined
-            : (rawStatus as (typeof statuses)[number]),
+            : (rawStatus as "Pending" | "Active" | "Suspended" | "Deactivated"),
       },
       cursor
     );
+    if (!AccountDirectoryViewSchema.safeParse(directory).success) {
+      console.error(
+        `[programs] accounts malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
     return jsonResponse(200, directory, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
@@ -725,6 +773,12 @@ export async function handleGetAccountDirectoryDetail(
       authorizationContextFor(auth.account),
       accountId
     );
+    if (!AccountDirectoryMemberSchema.safeParse(account).success) {
+      console.error(
+        `[programs] account detail malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
     return jsonResponse(200, account, requestId);
   } catch (error) {
     if (error instanceof WorkspaceNotFoundError) {
@@ -755,15 +809,20 @@ export async function handleGetManagementAttention(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const rawLimit = new URL(request.url).searchParams.get("limit");
-  const parsedLimit = rawLimit === null ? 5 : Number(rawLimit);
-  const limit = Number.isFinite(parsedLimit)
-    ? Math.min(50, Math.max(1, Math.floor(parsedLimit)))
-    : 5;
+  const limit = floorClampLimit(
+    new URL(request.url).searchParams.get("limit"),
+    5,
+    1,
+    50
+  );
   const attention = await workspace.getManagementAttention(
     authorizationContextFor(auth.account),
     limit
   );
+  if (!ManagementAttentionViewSchema.safeParse(attention).success) {
+    console.error(`[programs] attention malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
   return jsonResponse(200, attention, requestId);
 }
 
@@ -778,16 +837,23 @@ export async function handleGetManagementNotifications(
     return auth;
   }
   const { workspace } = await getModule(env);
-  const rawLimit = new URL(request.url).searchParams.get("limit");
-  const parsedLimit = rawLimit === null ? 20 : Number(rawLimit);
-  const limit = Number.isFinite(parsedLimit)
-    ? Math.min(20, Math.max(1, Math.floor(parsedLimit)))
-    : 20;
+  const limit = floorClampLimit(
+    new URL(request.url).searchParams.get("limit"),
+    20,
+    1,
+    20
+  );
   try {
     const notifications = await workspace.getManagementNotifications(
       authorizationContextFor(auth.account),
       limit
     );
+    if (!ManagementNotificationsViewSchema.safeParse(notifications).success) {
+      console.error(
+        `[programs] notifications malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
     return jsonResponse(200, notifications, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
@@ -809,7 +875,8 @@ export async function handleMarkManagementNotificationsRead(
     return auth;
   }
   const body = await parseJson<{ items?: unknown }>(request);
-  if (!body || !Array.isArray(body.items) || body.items.length > 100) {
+  const parsedEnvelope = NotificationsReadBodySchema.safeParse(body);
+  if (!parsedEnvelope.success) {
     return validation(
       requestId,
       "items must be an array containing at most 100 notification sources."
@@ -817,35 +884,29 @@ export async function handleMarkManagementNotificationsRead(
   }
   const items: NotificationReadStateInput[] = [];
   const seen = new Set<string>();
-  for (const raw of body.items) {
+  for (const raw of parsedEnvelope.data.items) {
     if (typeof raw !== "object" || raw === null) {
       return validation(
         requestId,
         "Each notification source must be an object."
       );
     }
-    const sourceKey = (raw as { source_key?: unknown }).source_key;
-    const sourceRevision = (raw as { source_revision?: unknown })
-      .source_revision;
-    if (
-      typeof sourceKey !== "string" ||
-      sourceKey.length === 0 ||
-      sourceKey.length > 256 ||
-      typeof sourceRevision !== "string" ||
-      sourceRevision.length === 0 ||
-      sourceRevision.length > 512
-    ) {
+    const parsedItem = NotificationReadItemSchema.safeParse(raw);
+    if (!parsedItem.success) {
       return validation(
         requestId,
         "Each notification source requires bounded source_key and source_revision strings."
       );
     }
-    const key = `${sourceKey}\u0000${sourceRevision}`;
+    const key = `${parsedItem.data.source_key}\u0000${parsedItem.data.source_revision}`;
     if (seen.has(key)) {
       continue;
     }
     seen.add(key);
-    items.push({ source_key: sourceKey, source_revision: sourceRevision });
+    items.push({
+      source_key: parsedItem.data.source_key,
+      source_revision: parsedItem.data.source_revision,
+    });
   }
   const { workspace } = await getModule(env);
   try {
@@ -853,7 +914,14 @@ export async function handleMarkManagementNotificationsRead(
       authorizationContextFor(auth.account),
       items
     );
-    return jsonResponse(200, { marked_count: markedCount }, requestId);
+    const data = { marked_count: markedCount };
+    if (!MarkedCountSchema.safeParse(data).success) {
+      console.error(
+        `[programs] notifications read malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, data, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -882,6 +950,12 @@ export async function handleGetManagementProgram(
   if (!result) {
     return notFound(requestId, "Unknown program.");
   }
+  if (!ManagementProgramWorkspaceViewSchema.safeParse(result).success) {
+    console.error(
+      `[programs] management malformed data requestId=${requestId}`
+    );
+    throw new Error("programs contract violation");
+  }
   return jsonResponse(200, result, requestId);
 }
 
@@ -904,7 +978,12 @@ export async function handleGetProgramAttendanceArtifact(
   if (!artifact) {
     return notFound(requestId, "Unknown program.");
   }
-  return jsonResponse(200, { artifact }, requestId);
+  const artifactData = { artifact };
+  if (!ProgramAttendanceArtifactSchema.safeParse(artifactData).success) {
+    console.error(`[programs] artifact malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, artifactData, requestId);
 }
 
 /** POST /api/v1/programs/:id/attendance-artifact/rotate — emergency rotation. */
@@ -914,10 +993,13 @@ export async function handleRotateProgramAttendanceArtifact(
   programId: string
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
-  const idempotencyKey = request.headers.get("Idempotency-Key")?.trim();
-  if (idempotencyKey !== undefined && idempotencyKey.length > 200) {
+  const parsedKey = parseOptionalIdempotencyKey(
+    request.headers.get("Idempotency-Key")
+  );
+  if (parsedKey === null) {
     return validation(requestId, "Idempotency-Key is too long.");
   }
+  const idempotencyKey = parsedKey.key;
   const correlationId = idempotencyKey || requestId;
   const auth = await requireActor(request, env, requestId);
   if (auth instanceof Response) {
@@ -931,7 +1013,14 @@ export async function handleRotateProgramAttendanceArtifact(
       idempotencyKey || requestId,
       correlationId
     );
-    return jsonResponse(200, { rotation }, requestId);
+    const rotationData = { rotation };
+    if (!ProgramTokenRotationSchema.safeParse(rotationData).success) {
+      console.error(
+        `[programs] rotation malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, rotationData, requestId);
   } catch (error) {
     if (error instanceof WorkspaceNotFoundError) {
       return notFound(requestId, "Unknown program.");
@@ -963,7 +1052,12 @@ export async function handleGetManagementCockpit(
   if (!result) {
     return notFound(requestId, "Unknown program.");
   }
-  return jsonResponse(200, { cockpit: result }, requestId);
+  const cockpitData = { cockpit: result };
+  if (!ManagementCockpitViewSchema.safeParse(cockpitData).success) {
+    console.error(`[programs] cockpit malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, cockpitData, requestId);
 }
 
 /**
@@ -985,7 +1079,12 @@ export async function handleListParticipantCatalog(
   const catalog = await workspace.listParticipantCatalog(
     authorizationContextFor(auth.account)
   );
-  return jsonResponse(200, { catalog }, requestId);
+  const catalogData = { catalog };
+  if (!ParticipantCatalogSchema.safeParse(catalogData).success) {
+    console.error(`[programs] catalog malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, catalogData, requestId);
 }
 /**
  * GET /api/v1/programs/:id/participant-detail — privacy-preserving detail
@@ -1009,7 +1108,12 @@ export async function handleGetParticipantProgramDetail(
   if (!detail) {
     return notFound(requestId, "Unknown program.");
   }
-  return jsonResponse(200, { detail }, requestId);
+  const detailData = { detail };
+  if (!ParticipantProgramDetailSchema.safeParse(detailData).success) {
+    console.error(`[programs] detail malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, detailData, requestId);
 }
 
 /** GET /api/v1/programs/departments/:id */
@@ -1050,11 +1154,14 @@ export async function handleGetDepartment(
       enabled_at,
     })
   );
-  return jsonResponse(
-    200,
-    { department: departmentDto(row), modules: safeModules },
-    requestId
-  );
+  const detailData = { department: departmentDto(row), modules: safeModules };
+  if (!DepartmentDetailSchema.safeParse(detailData).success) {
+    console.error(
+      `[programs] department malformed data requestId=${requestId}`
+    );
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, detailData, requestId);
 }
 /** PATCH /api/v1/programs/departments/:id */
 export async function handleUpdateDepartment(
@@ -1106,12 +1213,7 @@ export async function handleUpdateDepartment(
   }
   if (
     body.lifecycle !== undefined &&
-    !isOneOf(body.lifecycle, [
-      "Draft",
-      "PendingDevelopment",
-      "Active",
-      "Archived",
-    ] as const)
+    !DepartmentLifecycleSchema.safeParse(body.lifecycle).success
   ) {
     return problem(
       422,
@@ -1145,14 +1247,14 @@ export async function handleUpdateDepartment(
     update.description = body.description;
   }
   if (
-    isOneOf(body.lifecycle, [
-      "Draft",
-      "PendingDevelopment",
-      "Active",
-      "Archived",
-    ] as const)
+    body.lifecycle !== undefined &&
+    DepartmentLifecycleSchema.safeParse(body.lifecycle).success
   ) {
-    update.lifecycle = body.lifecycle;
+    update.lifecycle = body.lifecycle as
+      | "Draft"
+      | "PendingDevelopment"
+      | "Active"
+      | "Archived";
   }
   if (typeof body.display_order === "number") {
     update.display_order = body.display_order;
@@ -1165,7 +1267,14 @@ export async function handleUpdateDepartment(
       update,
       correlationId
     );
-    return jsonResponse(200, { department: row }, requestId);
+    const updatedData = { department: row };
+    if (!DepartmentUpdateResponseSchema.safeParse(updatedData).success) {
+      console.error(
+        `[programs] department update malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, updatedData, requestId);
   } catch (error) {
     if (
       error instanceof AuthorizationDeniedError ||
@@ -1223,7 +1332,6 @@ export async function handleCreateProgram(
     "name",
     "description",
     "behavior_type",
-    "lifecycle",
   ]);
   if (
     !fields ||
@@ -1234,11 +1342,10 @@ export async function handleCreateProgram(
       422,
       "VALIDATION",
       "Validation failed",
-      "name, purpose, behavior_type, and lifecycle are required and must be valid.",
+      "name, purpose, and behavior_type are required and must be valid.",
       requestId
     );
   }
-
   const { workspace } = await getModule(env);
   try {
     const row = await workspace.createProgram(
@@ -1250,7 +1357,6 @@ export async function handleCreateProgram(
         category:
           typeof fields.category === "string" ? fields.category : undefined,
         behavior_type: fields.behavior_type as "Recurring" | "OneOff",
-        lifecycle: fields.lifecycle as "Draft" | "Active" | "Archived",
         discoverability: (fields.discoverability ?? "Listed") as
           | "Listed"
           | "Unlisted",
@@ -1260,9 +1366,17 @@ export async function handleCreateProgram(
         display_order:
           typeof fields.display_order === "number" ? fields.display_order : 0,
       },
+      body.lifecycle,
       correlationId
     );
-    return jsonResponse(201, { program: row }, requestId);
+    const createdProgramData = { program: row };
+    if (!ProgramCreateResponseSchema.safeParse(createdProgramData).success) {
+      console.error(
+        `[programs] program create malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(201, createdProgramData, requestId);
   } catch (error) {
     if (
       error instanceof AuthorizationDeniedError ||
@@ -1301,7 +1415,12 @@ export async function handleListPrograms(
     authorizationContextFor(auth.account),
     departmentId
   );
-  return jsonResponse(200, { programs: rows }, requestId);
+  const programsData = { programs: rows };
+  if (!ProgramsListSchema.safeParse(programsData).success) {
+    console.error(`[programs] programs malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, programsData, requestId);
 }
 
 /** GET /api/v1/programs/:id */
@@ -1330,7 +1449,12 @@ export async function handleGetProgram(
       requestId
     );
   }
-  return jsonResponse(200, { program: row }, requestId);
+  const programData = { program: row };
+  if (!ProgramGetSchema.safeParse(programData).success) {
+    console.error(`[programs] program malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, programData, requestId);
 }
 
 /** PATCH /api/v1/programs/:id */
@@ -1402,7 +1526,14 @@ export async function handleUpdateProgram(
       update,
       correlationId
     );
-    return jsonResponse(200, { program: row }, requestId);
+    const updatedProgramData = { program: row };
+    if (!ProgramUpdateResponseSchema.safeParse(updatedProgramData).success) {
+      console.error(
+        `[programs] program update malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, updatedProgramData, requestId);
   } catch (error) {
     if (
       error instanceof AuthorizationDeniedError ||
@@ -1449,7 +1580,7 @@ export async function handleSearchMemberOptions(
       requestId
     );
   }
-  const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
+  const query = parseSearchTerm(new URL(request.url).searchParams.get("q"));
   const excludeEnrolled =
     new URL(request.url).searchParams.get("excludeEnrolled") === "true";
   if (query.length < 2) {
@@ -1466,7 +1597,14 @@ export async function handleSearchMemberOptions(
     20,
     excludeEnrolled ? programId : undefined
   );
-  return jsonResponse(200, { members }, requestId);
+  const optionsData = { members };
+  if (!MemberOptionsSchema.safeParse(optionsData).success) {
+    console.error(
+      `[programs] member options malformed data requestId=${requestId}`
+    );
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, optionsData, requestId);
 }
 
 /** POST /api/v1/programs/departments/:id/modules/:moduleKey/(enable|disable) */
@@ -1495,7 +1633,12 @@ export async function handleSetModule(
       },
       correlationId
     );
-    return jsonResponse(200, { module }, requestId);
+    const moduleData = { module };
+    if (!SetModuleResponseSchema.safeParse(moduleData).success) {
+      console.error(`[programs] module malformed data requestId=${requestId}`);
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, moduleData, requestId);
   } catch (error) {
     if (
       error instanceof AuthorizationDeniedError ||
@@ -1521,137 +1664,6 @@ export async function handleSetModule(
 // PRG-02 (#198): schedule rules, exceptions, generation, events.
 // ---------------------------------------------------------------------------
 
-function isDayOfWeekValue(v: unknown): v is number {
-  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 6;
-}
-
-function isMonthDayValue(v: unknown): v is number {
-  return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 31;
-}
-
-/**
- * The rule resolved from `update` over `existing` must satisfy the same
- * cross-field invariants as create: the field matching the effective
- * recurrence kind is required. Returns an error detail, or null when valid.
- */
-function resolvedRuleInvariantError(
-  update: UpdateScheduleRuleCommand,
-  existing: ScheduleRuleRow
-): string | null {
-  const resolvedRecurrence = update.recurrence ?? existing.recurrence;
-  const resolvedDayOfWeek = update.day_of_week ?? existing.day_of_week;
-  const resolvedMonthDay = update.month_day ?? existing.month_day;
-  if (
-    resolvedRecurrence === "WEEKLY" &&
-    (resolvedDayOfWeek === null || !isDayOfWeekValue(resolvedDayOfWeek))
-  ) {
-    return "day_of_week (0-6) is required for WEEKLY.";
-  }
-  if (
-    resolvedRecurrence === "MONTHLY" &&
-    (resolvedMonthDay === null || !isMonthDayValue(resolvedMonthDay))
-  ) {
-    return "month_day (1-31) is required for MONTHLY.";
-  }
-  return null;
-}
-
-type RuleBodyResult =
-  | { ok: false; detail: string }
-  | { ok: true; value: CreateScheduleRuleCommand };
-
-function parseRuleBody(body: {
-  recurrence?: unknown;
-  day_of_week?: unknown;
-  month_day?: unknown;
-  start_time?: unknown;
-  end_time?: unknown;
-  location?: unknown;
-  effective_start_date?: unknown;
-  effective_end_date?: unknown;
-}): RuleBodyResult {
-  if (!isOneOf(body.recurrence, ["WEEKLY", "MONTHLY"] as const)) {
-    return { ok: false, detail: "recurrence must be WEEKLY or MONTHLY." };
-  }
-  if (!isWallTime(body.start_time) || !isWallTime(body.end_time)) {
-    return { ok: false, detail: "start_time and end_time must be HH:MM." };
-  }
-  if (body.end_time <= body.start_time) {
-    return { ok: false, detail: "end_time must be after start_time." };
-  }
-  const isDayOfWeek = isDayOfWeekValue(body.day_of_week);
-  const isMonthDay = isMonthDayValue(body.month_day);
-  if (body.recurrence === "WEEKLY" && !isDayOfWeek) {
-    return { ok: false, detail: "day_of_week (0-6) is required for WEEKLY." };
-  }
-  if (body.recurrence === "MONTHLY" && !isMonthDay) {
-    return { ok: false, detail: "month_day (1-31) is required for MONTHLY." };
-  }
-  if (
-    body.location !== undefined &&
-    body.location !== null &&
-    typeof body.location !== "string"
-  ) {
-    return { ok: false, detail: "location must be text or null." };
-  }
-  if (
-    body.effective_start_date !== undefined &&
-    !isValidWallDate(body.effective_start_date)
-  ) {
-    return { ok: false, detail: "effective_start_date must be YYYY-MM-DD." };
-  }
-  if (
-    body.effective_end_date !== undefined &&
-    body.effective_end_date !== null &&
-    !isValidWallDate(body.effective_end_date)
-  ) {
-    return {
-      ok: false,
-      detail: "effective_end_date must be YYYY-MM-DD or null.",
-    };
-  }
-  const effectiveStart =
-    body.effective_start_date === undefined
-      ? undefined
-      : body.effective_start_date;
-  const effectiveEnd =
-    body.effective_end_date === undefined ? undefined : body.effective_end_date;
-  if (
-    typeof effectiveStart === "string" &&
-    typeof effectiveEnd === "string" &&
-    effectiveEnd < effectiveStart
-  ) {
-    return {
-      ok: false,
-      detail: "effective_end_date must be on or after effective_start_date.",
-    };
-  }
-  return {
-    ok: true,
-    value: {
-      recurrence: body.recurrence,
-      day_of_week: isDayOfWeekValue(body.day_of_week) ? body.day_of_week : null,
-      month_day: isMonthDayValue(body.month_day) ? body.month_day : null,
-      start_time: body.start_time,
-      end_time: body.end_time,
-      ...(body.location === undefined
-        ? {}
-        : {
-            location:
-              typeof body.location === "string"
-                ? body.location.trim() || null
-                : null,
-          }),
-      ...(effectiveStart === undefined
-        ? {}
-        : { effective_start_date: effectiveStart }),
-      ...(effectiveEnd === undefined
-        ? {}
-        : { effective_end_date: effectiveEnd }),
-    },
-  };
-}
-
 /** GET /api/v1/programs/:programId/schedule-rules */
 export async function handleListScheduleRules(
   request: Request,
@@ -1671,7 +1683,12 @@ export async function handleListScheduleRules(
     const ctx = authorizationContextFor(auth.account);
     await workspace.assertProgramManagement(ctx, programId);
     const rules = await workspace.listScheduleRules(ctx, programId);
-    return jsonResponse(200, { rules }, requestId);
+    const rulesData = { rules };
+    if (!ScheduleRulesSchema.safeParse(rulesData).success) {
+      console.error(`[programs] rules malformed data requestId=${requestId}`);
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, rulesData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -1709,7 +1726,14 @@ export async function handleListScheduleExceptions(
       programId,
       ruleId
     );
-    return jsonResponse(200, { exceptions }, requestId);
+    const exceptionsData = { exceptions };
+    if (!ScheduleExceptionsSchema.safeParse(exceptionsData).success) {
+      console.error(
+        `[programs] exceptions malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, exceptionsData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -1763,11 +1787,14 @@ export async function handleCreateScheduleRule(
       correlationId,
       idempotencyKey
     );
-    return jsonResponse(
-      result.idempotent ? 200 : 201,
-      { rule: result.rule, idempotent: result.idempotent },
-      requestId
-    );
+    const ruleData = { rule: result.rule, idempotent: result.idempotent };
+    if (!ScheduleRuleCreateResponseSchema.safeParse(ruleData).success) {
+      console.error(
+        `[programs] rule create malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(result.idempotent ? 200 : 201, ruleData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -1775,115 +1802,6 @@ export async function handleCreateScheduleRule(
     }
     throw error;
   }
-}
-
-type RulePatchResult =
-  | { ok: false; detail: string }
-  | { ok: true; update: UpdateScheduleRuleCommand };
-
-function parseRulePatch(
-  body: {
-    recurrence?: unknown;
-    day_of_week?: unknown;
-    month_day?: unknown;
-    start_time?: unknown;
-    end_time?: unknown;
-    location?: unknown;
-    effective_start_date?: unknown;
-    effective_end_date?: unknown;
-  },
-  existing: ScheduleRuleRow
-): RulePatchResult {
-  const update: UpdateScheduleRuleCommand = {};
-  if (isOneOf(body.recurrence, ["WEEKLY", "MONTHLY"] as const)) {
-    update.recurrence = body.recurrence;
-  }
-  if (body.day_of_week !== undefined && !isDayOfWeekValue(body.day_of_week)) {
-    return { ok: false, detail: "day_of_week must be an integer 0-6." };
-  }
-  if (isDayOfWeekValue(body.day_of_week)) {
-    update.day_of_week = body.day_of_week;
-  }
-  if (body.month_day !== undefined && !isMonthDayValue(body.month_day)) {
-    return { ok: false, detail: "month_day must be an integer 1-31." };
-  }
-  if (isMonthDayValue(body.month_day)) {
-    update.month_day = body.month_day;
-  }
-  const startTime =
-    typeof body.start_time === "string" ? body.start_time : null;
-  const endTime = typeof body.end_time === "string" ? body.end_time : null;
-  if (startTime !== null && !isWallTime(startTime)) {
-    return { ok: false, detail: "start_time must be HH:MM." };
-  }
-  if (endTime !== null && !isWallTime(endTime)) {
-    return { ok: false, detail: "end_time must be HH:MM." };
-  }
-  if (startTime !== null) {
-    update.start_time = startTime;
-  }
-  if (endTime !== null) {
-    update.end_time = endTime;
-  }
-  if (body.location !== undefined) {
-    if (body.location !== null && typeof body.location !== "string") {
-      return { ok: false, detail: "location must be text or null." };
-    }
-    update.location =
-      typeof body.location === "string" ? body.location.trim() || null : null;
-  }
-  if (body.effective_start_date !== undefined) {
-    if (
-      body.effective_start_date !== null &&
-      !isValidWallDate(body.effective_start_date)
-    ) {
-      return {
-        ok: false,
-        detail: "effective_start_date must be YYYY-MM-DD or null.",
-      };
-    }
-    update.effective_start_date = body.effective_start_date as string | null;
-  }
-  if (body.effective_end_date !== undefined) {
-    if (
-      body.effective_end_date !== null &&
-      !isValidWallDate(body.effective_end_date)
-    ) {
-      return {
-        ok: false,
-        detail: "effective_end_date must be YYYY-MM-DD or null.",
-      };
-    }
-    update.effective_end_date = body.effective_end_date as string | null;
-  }
-  const resolvedStart = update.start_time ?? existing.start_time;
-  const resolvedEnd = update.end_time ?? existing.end_time;
-  if (resolvedEnd <= resolvedStart) {
-    return { ok: false, detail: "end_time must be after start_time." };
-  }
-  const invariantError = resolvedRuleInvariantError(update, existing);
-  if (invariantError !== null) {
-    return { ok: false, detail: invariantError };
-  }
-  const resolvedEffectiveStart =
-    update.effective_start_date === undefined
-      ? (existing.effective_start_date ?? null)
-      : update.effective_start_date;
-  const resolvedEffectiveEnd =
-    update.effective_end_date === undefined
-      ? (existing.effective_end_date ?? null)
-      : update.effective_end_date;
-  if (
-    typeof resolvedEffectiveStart === "string" &&
-    typeof resolvedEffectiveEnd === "string" &&
-    resolvedEffectiveEnd < resolvedEffectiveStart
-  ) {
-    return {
-      ok: false,
-      detail: "effective_end_date must be on or after effective_start_date.",
-    };
-  }
-  return { ok: true, update };
 }
 
 /** PATCH /api/v1/programs/:programId/schedule-rules/:ruleId */
@@ -1933,7 +1851,12 @@ export async function handleUpdateScheduleRule(
       update,
       correlationId
     );
-    return jsonResponse(200, { rule: row }, requestId);
+    const ruleData = { rule: row };
+    if (!ScheduleRuleResponseSchema.safeParse(ruleData).success) {
+      console.error(`[programs] rule malformed data requestId=${requestId}`);
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, ruleData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -1965,7 +1888,12 @@ export async function handleRetireScheduleRule(
       return notFound(requestId, "Unknown schedule rule.");
     }
     const row = await workspace.retireScheduleRule(ctx, ruleId, correlationId);
-    return jsonResponse(200, { rule: row }, requestId);
+    const ruleData = { rule: row };
+    if (!ScheduleRuleResponseSchema.safeParse(ruleData).success) {
+      console.error(`[programs] rule malformed data requestId=${requestId}`);
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, ruleData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2002,7 +1930,7 @@ export async function handleCreateScheduleException(
   if (!isValidWallDate(body.override_date)) {
     return validation(requestId, "override_date must be YYYY-MM-DD.");
   }
-  if (!isOneOf(body.action, ["CANCEL", "RESCHEDULE"] as const)) {
+  if (!ExceptionActionSchema.safeParse(body.action).success) {
     return validation(requestId, "action must be CANCEL or RESCHEDULE.");
   }
   const newStart =
@@ -2056,14 +1984,23 @@ export async function handleCreateScheduleException(
       ruleId,
       {
         override_date: body.override_date,
-        action: body.action,
+        action: body.action as "CANCEL" | "RESCHEDULE",
         new_date: newDate,
         new_start_time: newStart,
         new_end_time: newEnd,
       },
       correlationId
     );
-    return jsonResponse(201, { exception: row }, requestId);
+    const exceptionData = { exception: row };
+    if (
+      !ScheduleExceptionCreateResponseSchema.safeParse(exceptionData).success
+    ) {
+      console.error(
+        `[programs] exception malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(201, exceptionData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2099,7 +2036,14 @@ export async function handleDeleteScheduleException(
       return notFound(requestId, "Unknown schedule exception.");
     }
     await workspace.deleteScheduleException(ctx, exceptionId, correlationId);
-    return jsonResponse(200, { deleted: true }, requestId);
+    const deletedData = { deleted: true };
+    if (!ScheduleExceptionDeleteResponseSchema.safeParse(deletedData).success) {
+      console.error(
+        `[programs] exception delete malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, deletedData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2215,11 +2159,12 @@ export async function handlePreviewEvents(
       correlationId,
       { fromDate, untilDate }
     );
-    return jsonResponse(
-      200,
-      { plan: result.plan, occurrences: result.occurrences },
-      requestId
-    );
+    const previewData = { plan: result.plan, occurrences: result.occurrences };
+    if (!PreviewEventsResponseSchema.safeParse(previewData).success) {
+      console.error(`[programs] preview malformed data requestId=${requestId}`);
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, previewData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2260,7 +2205,14 @@ export async function handleGenerateEvents(
       body.plan_id,
       correlationId
     );
-    return jsonResponse(200, { generated: result }, requestId);
+    const generatedData = { generated: result };
+    if (!GenerateEventsResponseSchema.safeParse(generatedData).success) {
+      console.error(
+        `[programs] generate malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, generatedData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2328,10 +2280,7 @@ export async function handleCreateEvent(
     if (
       body.event_type !== undefined &&
       body.event_type !== null &&
-      (typeof body.event_type !== "string" ||
-        !["崇拜", "訓練", "小組", "排練", "外展", "其他"].includes(
-          body.event_type
-        ))
+      !EventTypeSchema.safeParse(body.event_type).success
     ) {
       return validation(
         requestId,
@@ -2392,7 +2341,14 @@ export async function handleCreateEvent(
       } satisfies CreateEventCommand,
       correlationId
     );
-    return jsonResponse(201, { event: row }, requestId);
+    const eventData = { event: row };
+    if (!EventCreateResponseSchema.safeParse(eventData).success) {
+      console.error(
+        `[programs] event create malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(201, eventData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2421,7 +2377,12 @@ export async function handleListEvents(
   if (rows === null) {
     return notFound(requestId, "Unknown program.");
   }
-  return jsonResponse(200, { events: rows }, requestId);
+  const eventsData = { events: rows };
+  if (!EventsListSchema.safeParse(eventsData).success) {
+    console.error(`[programs] events malformed data requestId=${requestId}`);
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, eventsData, requestId);
 }
 
 /** GET /api/v1/programs/:programId/events/:eventId */
@@ -2444,6 +2405,12 @@ export async function handleGetEvent(
     );
     if (!detail || detail.event.program_id !== programId) {
       return notFound(requestId, "Unknown event.");
+    }
+    if (!EventDetailResponseSchema.safeParse(detail).success) {
+      console.error(
+        `[programs] event detail malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
     }
     return jsonResponse(200, detail, requestId);
   } catch (error) {
@@ -2516,7 +2483,14 @@ export async function handleEventUpdate(
         { availability, confirm: confirmed },
         correlationId
       );
-      return jsonResponse(200, { event: row }, requestId);
+      const updatedEventData = { event: row };
+      if (!EventResponseSchema.safeParse(updatedEventData).success) {
+        console.error(
+          `[programs] event update malformed data requestId=${requestId}`
+        );
+        throw new Error("programs contract violation");
+      }
+      return jsonResponse(200, updatedEventData, requestId);
     } catch (error) {
       const mapped = mapWorkspaceError(error, requestId);
       if (mapped) {
@@ -2535,7 +2509,14 @@ export async function handleEventUpdate(
         { reason },
         correlationId
       );
-      return jsonResponse(200, { event: row }, requestId);
+      const updatedEventData = { event: row };
+      if (!EventResponseSchema.safeParse(updatedEventData).success) {
+        console.error(
+          `[programs] event update malformed data requestId=${requestId}`
+        );
+        throw new Error("programs contract violation");
+      }
+      return jsonResponse(200, updatedEventData, requestId);
     } catch (error) {
       const mapped = mapWorkspaceError(error, requestId);
       if (mapped) {
@@ -2598,10 +2579,7 @@ export async function handleEventUpdate(
     if (
       body.event_type !== undefined &&
       body.event_type !== null &&
-      (typeof body.event_type !== "string" ||
-        !["崇拜", "訓練", "小組", "排練", "外展", "其他"].includes(
-          body.event_type
-        ))
+      !EventTypeSchema.safeParse(body.event_type).success
     ) {
       return validation(
         requestId,
@@ -2664,7 +2642,14 @@ export async function handleEventUpdate(
       update,
       correlationId
     );
-    return jsonResponse(200, { event: row }, requestId);
+    const updatedEventData = { event: row };
+    if (!EventResponseSchema.safeParse(updatedEventData).success) {
+      console.error(
+        `[programs] event update malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, updatedEventData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2696,7 +2681,14 @@ export async function handleCreateEnrollmentRequest(
       programId,
       correlationId
     );
-    return jsonResponse(201, { request: row }, requestId);
+    const requestData = { request: row };
+    if (!EnrollmentRequestCreateResponseSchema.safeParse(requestData).success) {
+      console.error(
+        `[programs] enrollment submit malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(201, requestData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2725,7 +2717,14 @@ export async function handleListEnrollmentRequests(
   if (rows === null) {
     return notFound(requestId, "Unknown program.");
   }
-  return jsonResponse(200, { requests: rows }, requestId);
+  const requestsData = { requests: rows };
+  if (!EnrollmentRequestsSchema.safeParse(requestsData).success) {
+    console.error(
+      `[programs] enrollment requests malformed data requestId=${requestId}`
+    );
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, requestsData, requestId);
 }
 /** GET /api/v1/programs/:programId/enrollment-snapshot */
 export async function handleListEnrollmentSnapshot(
@@ -2746,6 +2745,12 @@ export async function handleListEnrollmentSnapshot(
   if (snapshot === null) {
     return notFound(requestId, "Unknown program.");
   }
+  if (!EnrollmentSnapshotSchema.safeParse(snapshot).success) {
+    console.error(
+      `[programs] enrollment snapshot malformed data requestId=${requestId}`
+    );
+    throw new Error("programs contract violation");
+  }
   return jsonResponse(200, snapshot, requestId);
 }
 
@@ -2762,11 +2767,8 @@ export async function handleStartEnrollmentApprovalRun(
     return auth;
   }
   const body = await parseJson<{ request_ids?: unknown }>(request);
-  if (
-    body === null ||
-    !Array.isArray(body.request_ids) ||
-    !body.request_ids.every((id): id is string => typeof id === "string")
-  ) {
+  const parsedStart = ApprovalRunStartBodySchema.safeParse(body);
+  if (!parsedStart.success) {
     return validation(requestId, "request_ids must be an array of strings.");
   }
   const { workspace } = await getModule(env);
@@ -2777,9 +2779,15 @@ export async function handleStartEnrollmentApprovalRun(
     const result = await workspace.startEnrollmentApprovalRun(
       authorizationContextFor(auth.account),
       programId,
-      body.request_ids,
+      parsedStart.data.request_ids,
       correlationId
     );
+    if (!ApprovalRunStartResponseSchema.safeParse(result).success) {
+      console.error(
+        `[programs] approval run start malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
     return jsonResponse(201, result, requestId);
   } catch (error) {
     const mapped =
@@ -2812,7 +2820,14 @@ export async function handleListEnrollmentApprovalRuns(
       authorizationContextFor(auth.account),
       programId
     );
-    return jsonResponse(200, { runs }, requestId);
+    const runsData = { runs };
+    if (!ApprovalRunsSchema.safeParse(runsData).success) {
+      console.error(
+        `[programs] approval runs malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, runsData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -2848,9 +2863,17 @@ async function handleEnrollmentApprovalRunAction(
         runId,
         correlationId
       );
-      return run
-        ? jsonResponse(200, { run }, requestId)
-        : notFound(requestId, "Unknown Enrollment Approval Run.");
+      if (!run) {
+        return notFound(requestId, "Unknown Enrollment Approval Run.");
+      }
+      const reconcileData = { run };
+      if (!ApprovalRunResponseSchema.safeParse(reconcileData).success) {
+        console.error(
+          `[programs] approval reconcile malformed data requestId=${requestId}`
+        );
+        throw new Error("programs contract violation");
+      }
+      return jsonResponse(200, reconcileData, requestId);
     }
     if (action === "continue") {
       const result = await workspace.continueEnrollmentApprovalRun(
@@ -2859,9 +2882,16 @@ async function handleEnrollmentApprovalRunAction(
         runId,
         correlationId
       );
-      return result
-        ? jsonResponse(200, result, requestId)
-        : notFound(requestId, "Unknown Enrollment Approval Run.");
+      if (!result) {
+        return notFound(requestId, "Unknown Enrollment Approval Run.");
+      }
+      if (!ApprovalRunActionResponseSchema.safeParse(result).success) {
+        console.error(
+          `[programs] approval continue malformed data requestId=${requestId}`
+        );
+        throw new Error("programs contract violation");
+      }
+      return jsonResponse(200, result, requestId);
     }
     const run = await workspace.cancelEnrollmentApprovalRun(
       ctx,
@@ -2869,9 +2899,17 @@ async function handleEnrollmentApprovalRunAction(
       runId,
       correlationId
     );
-    return run
-      ? jsonResponse(200, { run }, requestId)
-      : notFound(requestId, "Unknown Enrollment Approval Run.");
+    if (!run) {
+      return notFound(requestId, "Unknown Enrollment Approval Run.");
+    }
+    const cancelRunData = { run };
+    if (!ApprovalRunResponseSchema.safeParse(cancelRunData).success) {
+      console.error(
+        `[programs] approval cancel malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, cancelRunData, requestId);
   } catch (error) {
     const mapped =
       mapEnrollmentApprovalRunError(error, requestId) ??
@@ -2952,22 +2990,15 @@ export async function handleDecideEnrollmentRequest(
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
   }
-  if (body.action !== "Approved" && body.action !== "Rejected") {
+  const decideAction = parseDecideAction(body.action);
+  if (decideAction === null) {
     return validation(requestId, "action must be Approved or Rejected.");
   }
-  const requestVersion =
-    body.request_version === undefined || body.request_version === null
-      ? undefined
-      : body.request_version;
-  if (
-    requestVersion !== undefined &&
-    (typeof requestVersion !== "number" ||
-      !Number.isSafeInteger(requestVersion) ||
-      requestVersion < 1)
-  ) {
+  const requestVersion = parseDecideRequestVersion(body.request_version);
+  if (requestVersion === "invalid") {
     return validation(requestId, "request_version must be a positive integer.");
   }
-  const note = typeof body.note === "string" ? body.note.trim() : null;
+  const note = parseDecideNote(body.note);
   const { workspace } = await getModule(env);
   const existing = await workspace.getEnrollmentRequest(
     authorizationContextFor(auth.account),
@@ -2985,12 +3016,16 @@ export async function handleDecideEnrollmentRequest(
       programId,
       enrollmentRequestId,
       {
-        action: body.action,
+        action: decideAction,
         note,
         expectedRequestVersion: requestVersion,
       },
       correlationId
     );
+    if (!EnrollmentDecisionResponseSchema.safeParse(result).success) {
+      console.error(`[programs] decide malformed data requestId=${requestId}`);
+      throw new Error("programs contract violation");
+    }
     return jsonResponse(200, result, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
@@ -3032,7 +3067,14 @@ export async function handleWithdrawEnrollmentRequest(
       enrollmentRequestId,
       correlationId
     );
-    return jsonResponse(200, { request: row }, requestId);
+    const withdrawData = { request: row };
+    if (!EnrollmentWithdrawResponseSchema.safeParse(withdrawData).success) {
+      console.error(
+        `[programs] withdraw malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, withdrawData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -3058,8 +3100,7 @@ export async function handleAssistedEnroll(
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
   }
-  const memberUserId =
-    typeof body.member_user_id === "string" ? body.member_user_id : "";
+  const memberUserId = parseAssistedMemberId(body.member_user_id);
   if (!memberUserId) {
     return validation(requestId, "member_user_id is required.");
   }
@@ -3074,7 +3115,14 @@ export async function handleAssistedEnroll(
       { memberUserId },
       correlationId
     );
-    return jsonResponse(201, { enrollment: row }, requestId);
+    const assistedData = { enrollment: row };
+    if (!AssistedEnrollResponseSchema.safeParse(assistedData).success) {
+      console.error(
+        `[programs] assisted enroll malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(201, assistedData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -3103,7 +3151,14 @@ export async function handleListEnrollments(
   if (rows === null) {
     return notFound(requestId, "Unknown program.");
   }
-  return jsonResponse(200, { enrollments: rows }, requestId);
+  const enrollmentsData = { enrollments: rows };
+  if (!EnrollmentsSchema.safeParse(enrollmentsData).success) {
+    console.error(
+      `[programs] enrollments malformed data requestId=${requestId}`
+    );
+    throw new Error("programs contract violation");
+  }
+  return jsonResponse(200, enrollmentsData, requestId);
 }
 
 /** POST /api/v1/programs/:programId/enrollments/:enrollmentId/cancel */
@@ -3123,8 +3178,8 @@ export async function handleCancelEnrollment(
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
   }
-  const reason = typeof body.reason === "string" ? body.reason.trim() : null;
-  if (reason !== null && reason.length > 500) {
+  const reason = parseCancelReason(body.reason);
+  if (reason === "invalid") {
     return validation(requestId, "reason must be 500 characters or fewer.");
   }
   const { workspace } = await getModule(env);
@@ -3146,7 +3201,14 @@ export async function handleCancelEnrollment(
       correlationId,
       reason
     );
-    return jsonResponse(200, { enrollment: row }, requestId);
+    const cancelData = { enrollment: row };
+    if (!CancelEnrollmentResponseSchema.safeParse(cancelData).success) {
+      console.error(
+        `[programs] cancel enrollment malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, cancelData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -3176,6 +3238,10 @@ export async function handleListParticipantNotices(
       authorizationContextFor(auth.account),
       auth.account.user_id
     );
+    if (!ParticipantNoticesViewSchema.safeParse(notices).success) {
+      console.error(`[programs] notices malformed data requestId=${requestId}`);
+      throw new Error("programs contract violation");
+    }
     return jsonResponse(200, notices, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
@@ -3202,7 +3268,14 @@ export async function handleMarkParticipantNoticesRead(
       authorizationContextFor(auth.account),
       auth.account.user_id
     );
-    return jsonResponse(200, { marked_count: markedCount }, requestId);
+    const markedData = { marked_count: markedCount };
+    if (!MarkedCountSchema.safeParse(markedData).success) {
+      console.error(
+        `[programs] notices read-all malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(200, markedData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {
@@ -3233,13 +3306,12 @@ export async function handleCreateParticipantNotice(
   if (body === null) {
     return validation(requestId, "Body must be JSON.");
   }
-  const memberUserId =
-    typeof body.member_user_id === "string" ? body.member_user_id.trim() : "";
-  const title = typeof body.title === "string" ? body.title.trim() : "";
-  const noticeBody = typeof body.body === "string" ? body.body.trim() : "";
+  const memberUserId = trimmedField(body.member_user_id);
+  const title = trimmedField(body.title);
+  const noticeBody = trimmedField(body.body);
   if (
     !memberUserId ||
-    !isOneOf(body.kind, ["event", "program", "account"] as const) ||
+    !ParticipantNoticeKindSchema.safeParse(body.kind).success ||
     !title ||
     !noticeBody
   ) {
@@ -3262,28 +3334,29 @@ export async function handleCreateParticipantNotice(
   ) {
     return validation(requestId, "event_id must be a string when provided.");
   }
-  const programId =
-    typeof body.program_id === "string" && body.program_id.trim()
-      ? body.program_id.trim()
-      : undefined;
-  const eventId =
-    typeof body.event_id === "string" && body.event_id.trim()
-      ? body.event_id.trim()
-      : undefined;
+  const programId = optionalIdField(body.program_id);
+  const eventId = optionalIdField(body.event_id);
   const { workspace } = await getModule(env);
   try {
     const notice = await workspace.createParticipantNotice(
       authorizationContextFor(auth.account),
       {
         member_user_id: memberUserId,
-        kind: body.kind,
+        kind: body.kind as "event" | "program" | "account",
         title,
         body: noticeBody,
         program_id: programId,
         event_id: eventId,
       }
     );
-    return jsonResponse(201, { notice }, requestId);
+    const noticeData = { notice };
+    if (!NoticeCreateResponseSchema.safeParse(noticeData).success) {
+      console.error(
+        `[programs] notice create malformed data requestId=${requestId}`
+      );
+      throw new Error("programs contract violation");
+    }
+    return jsonResponse(201, noticeData, requestId);
   } catch (error) {
     const mapped = mapWorkspaceError(error, requestId);
     if (mapped) {

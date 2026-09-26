@@ -7,6 +7,18 @@
  * authority (Spec 091 §10); this module only renders what the Worker
  * projects.
  */
+import {
+  RoleCreateResultSchema,
+  RoleDefinitionDetailViewSchema,
+  RoleHierarchyViewSchema,
+  RoleRenameResultSchema,
+  RoleReorderResultSchema,
+  RoleRescopeResultSchema,
+  parseProblemDetails,
+  parseSuccessEnvelope,
+  problemFallback,
+} from "@efcc/contracts";
+
 import { RpcError } from "@/lib/api";
 import type { ProblemDetails } from "@/lib/api";
 import type {
@@ -19,14 +31,10 @@ import type {
   RoleReorderResult,
 } from "@/lib/identity";
 
-interface RoleSuccess<T> {
-  requestId: string;
-  data: T;
-}
-
 async function roleFetch<T>(
   path: string,
   method: "GET" | "PATCH" | "POST",
+  payloadSchema: { safeParse: (value: unknown) => { success: boolean } },
   body?: unknown,
   idempotencyKey?: string
 ): Promise<T> {
@@ -53,6 +61,7 @@ async function roleFetch<T>(
     });
   }
 
+  const requestId = res.headers.get("X-Request-Id") ?? undefined;
   if (res.ok) {
     let parsed: unknown;
     try {
@@ -63,54 +72,61 @@ async function roleFetch<T>(
         code: "MALFORMED_RESPONSE",
         title: "Malformed success response",
         detail: "伺服器回應格式錯誤。",
+        requestId,
       });
     }
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      (parsed as { data?: unknown }).data === undefined
-    ) {
+    const envelope = parseSuccessEnvelope(parsed);
+    // Shared contract gate (#655): malformed 2xx data is
+    // MALFORMED_RESPONSE, never a partial success.
+    if (!envelope || !payloadSchema.safeParse(envelope.data).success) {
       throw new RpcError({
         status: res.status,
         code: "MALFORMED_RESPONSE",
         title: "Malformed success envelope",
         detail: "伺服器回應格式錯誤。",
+        requestId,
       });
     }
-    return (parsed as RoleSuccess<T>).data as T;
+    return envelope.data as T;
   }
 
-  const requestId = res.headers.get("X-Request-Id") ?? undefined;
-  let problem: ProblemDetails;
+  let parsedError: unknown;
   try {
-    problem = (await res.json()) as ProblemDetails;
+    parsedError = await res.json();
   } catch {
-    problem = { status: res.status, code: "UNAVAILABLE", requestId };
+    parsedError = null;
   }
-  if (typeof problem !== "object" || problem === null) {
-    problem = { status: res.status, code: "UNAVAILABLE", requestId };
-  }
-  if (typeof problem.status !== "number") {
-    problem.status = res.status;
-  }
-  if (requestId && !problem.requestId) {
-    problem.requestId = requestId;
-  }
-  throw new RpcError(problem);
+  // Shared error contract (#655): well-formed problems keep their codes
+  // and extensions; anything else falls back with status + requestId.
+  const problem =
+    parseProblemDetails(parsedError, res.status, requestId) ??
+    problemFallback(
+      res.status,
+      requestId,
+      "UNAVAILABLE",
+      "Upstream error",
+      "系統暫時無法處理請求，請稍後再試。"
+    );
+  throw new RpcError(problem as ProblemDetails);
 }
 
 /** GET /api/v1/identity/roles — the read-only hierarchy projection. */
 export function getRoleHierarchy(): Promise<RoleHierarchyView> {
-  return roleFetch("/api/v1/identity/roles", "GET");
+  return roleFetch<RoleHierarchyView>(
+    "/api/v1/identity/roles",
+    "GET",
+    RoleHierarchyViewSchema
+  );
 }
 
 /** GET /api/v1/identity/role-definitions/:id — one safe detail projection. */
 export function getRoleDefinitionDetail(
   roleDefinitionId: string
 ): Promise<RoleDefinitionDetailView> {
-  return roleFetch(
+  return roleFetch<RoleDefinitionDetailView>(
     `/api/v1/identity/role-definitions/${encodeURIComponent(roleDefinitionId)}`,
-    "GET"
+    "GET",
+    RoleDefinitionDetailViewSchema
   );
 }
 
@@ -127,9 +143,10 @@ export function updateRoleDefinitionGrants(
   },
   idempotencyKey?: string
 ): Promise<RoleDefinitionDetailView> {
-  return roleFetch(
+  return roleFetch<RoleDefinitionDetailView>(
     `/api/v1/identity/role-definitions/${encodeURIComponent(roleDefinitionId)}/grants`,
     "PATCH",
+    RoleDefinitionDetailViewSchema,
     {
       base_revision: input.baseRevision,
       changes: input.changes,
@@ -152,9 +169,10 @@ export function renameRoleDefinition(
   },
   idempotencyKey?: string
 ): Promise<RoleRenameResult> {
-  return roleFetch(
+  return roleFetch<RoleRenameResult>(
     `/api/v1/identity/roles/${encodeURIComponent(roleDefinitionId)}/name`,
     "PATCH",
+    RoleRenameResultSchema,
     {
       label: input.label,
       base_revision: input.baseRevision,
@@ -179,9 +197,10 @@ export function createRoleDefinition(
   },
   idempotencyKey?: string
 ): Promise<RoleCreateResult> {
-  return roleFetch(
+  return roleFetch<RoleCreateResult>(
     "/api/v1/identity/role-definitions",
     "POST",
+    RoleCreateResultSchema,
     {
       category_key: input.category_key,
       label: input.label,
@@ -205,9 +224,10 @@ export function reorderRoleDefinitions(
   baseRevision: number,
   idempotencyKey?: string
 ): Promise<RoleReorderResult> {
-  return roleFetch(
+  return roleFetch<RoleReorderResult>(
     "/api/v1/identity/roles/order",
     "PATCH",
+    RoleReorderResultSchema,
     {
       category_key: categoryKey,
       targets,
@@ -231,9 +251,10 @@ export function rescopeRoleDefinition(
   },
   idempotencyKey?: string
 ): Promise<RoleRescopeResult> {
-  return roleFetch(
+  return roleFetch<RoleRescopeResult>(
     `/api/v1/identity/role-definitions/${encodeURIComponent(roleDefinitionId)}/scope`,
     "PATCH",
+    RoleRescopeResultSchema,
     {
       ...(input.category_key === undefined
         ? {}

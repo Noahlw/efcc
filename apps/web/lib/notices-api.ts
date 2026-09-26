@@ -6,6 +6,14 @@
  * shared RFC 9457 `RpcError` shape used by the other domain clients.
  */
 
+import {
+  MarkedCountSchema,
+  ParticipantNoticesViewSchema,
+  parseProblemDetails,
+  parseSuccessEnvelope,
+  problemFallback,
+} from "@efcc/contracts";
+
 import { RpcError, type ProblemDetails } from "@/lib/api";
 
 type NoticeKind = "event" | "program" | "account";
@@ -26,11 +34,6 @@ export interface NoticesResult {
   unread_count: number;
 }
 
-interface NoticesSuccess<T> {
-  request_id: string;
-  data: T;
-}
-
 function idempotencyKey(): string {
   return crypto.randomUUID();
 }
@@ -46,7 +49,8 @@ function malformedResponse(status: number): RpcError {
 
 async function noticesFetch<T>(
   path: string,
-  method: "GET" | "POST"
+  method: "GET" | "POST",
+  payloadSchema: { safeParse: (value: unknown) => { success: boolean } }
 ): Promise<T> {
   let response: Response;
   try {
@@ -70,6 +74,7 @@ async function noticesFetch<T>(
     });
   }
 
+  const requestId = response.headers.get("X-Request-Id") ?? undefined;
   if (response.ok) {
     let parsed: unknown;
     try {
@@ -77,48 +82,47 @@ async function noticesFetch<T>(
     } catch {
       throw malformedResponse(response.status);
     }
-    if (typeof parsed !== "object" || parsed === null || !("data" in parsed)) {
+    const envelope = parseSuccessEnvelope(parsed);
+    // Shared contract gate (#656): malformed 2xx data is
+    // MALFORMED_RESPONSE, never a partial success.
+    if (!envelope || !payloadSchema.safeParse(envelope.data).success) {
       throw malformedResponse(response.status);
     }
-    return (parsed as NoticesSuccess<T>).data;
+    return envelope.data as T;
   }
 
-  const requestId = response.headers.get("X-Request-Id") ?? undefined;
-  let problem: ProblemDetails;
+  let parsedError: unknown;
   try {
-    problem = (await response.json()) as ProblemDetails;
+    parsedError = await response.json();
   } catch {
-    problem = {
-      status: response.status,
-      code: response.status >= 500 ? "UNAVAILABLE" : "MALFORMED_RESPONSE",
+    parsedError = null;
+  }
+  const problem =
+    parseProblemDetails(parsedError, response.status, requestId) ??
+    problemFallback(
+      response.status,
       requestId,
-    };
-  }
-  if (typeof problem !== "object" || problem === null) {
-    problem = {
-      status: response.status,
-      code: "MALFORMED_RESPONSE",
-      requestId,
-    };
-  }
-  if (typeof problem.status !== "number") {
-    problem.status = response.status;
-  }
-  if (requestId && !problem.requestId) {
-    problem.requestId = requestId;
-  }
-  throw new RpcError(problem);
+      "UNAVAILABLE",
+      "Upstream error",
+      "系統暫時無法處理請求，請稍後再試。"
+    );
+  throw new RpcError(problem as ProblemDetails);
 }
 
 /** GET /api/v1/programs/notices — member-scoped notices within retention. */
 export function listNotices(): Promise<NoticesResult> {
-  return noticesFetch<NoticesResult>("/api/v1/programs/notices", "GET");
+  return noticesFetch<NoticesResult>(
+    "/api/v1/programs/notices",
+    "GET",
+    ParticipantNoticesViewSchema
+  );
 }
 
 /** POST /api/v1/programs/notices/read-all — idempotent member read-state write. */
 export function markAllNoticesRead(): Promise<{ marked_count: number }> {
   return noticesFetch<{ marked_count: number }>(
     "/api/v1/programs/notices/read-all",
-    "POST"
+    "POST",
+    MarkedCountSchema
   );
 }

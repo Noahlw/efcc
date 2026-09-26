@@ -1,4 +1,17 @@
 import {
+  AccountAccessMutationResultSchema,
+  AccountAccessViewSchema,
+  AssignmentsBodySchema,
+  EligibleAccountSearchSchema,
+  LifecycleActionSchema,
+  LifecycleBodySchema,
+  RoleDefinitionLifecyclePreviewSchema,
+  RoleDefinitionLifecycleResultSchema,
+  parseAccountSearchQuery,
+  parseIdempotencyKey,
+} from "@efcc/contracts";
+
+import {
   AccountAdminProtectedError,
   AccountRevokeTargetError,
   AccountSelfProtectedError,
@@ -33,17 +46,7 @@ import {
 
 /* oxlint-disable eslint/complexity -- transport guards are intentionally explicit so malformed input fails before any D1 query or mutation. */
 
-type AssignmentsBody = {
-  base_revision?: unknown;
-  role_definition_ids?: unknown;
-};
 const MAX_ASSIGNMENT_ROLE_IDS = 50;
-
-type LifecycleBody = {
-  action?: unknown;
-  base_revision?: unknown;
-  reason?: unknown;
-};
 
 function hasOnlyKeys(value: object, allowed: readonly string[]): boolean {
   return Object.keys(value).every((key) => allowed.includes(key));
@@ -61,8 +64,7 @@ function requestIdForError(error: unknown, fallback: string): string {
 }
 
 function idempotencyKeyFor(request: Request): string | null {
-  const key = request.headers.get("Idempotency-Key")?.trim() ?? "";
-  return key.length > 0 && key.length <= 200 ? key : null;
+  return parseIdempotencyKey(request.headers.get("Idempotency-Key"));
 }
 
 function mapAccountAccessError(
@@ -194,7 +196,9 @@ function mapAccountAccessError(
 async function parseAssignmentsBody(
   request: Request,
   requestId: string
-): Promise<AssignmentsBody | Response> {
+): Promise<
+  { base_revision: number; role_definition_ids: string[] } | Response
+> {
   let body: unknown;
   try {
     body = await request.json();
@@ -207,7 +211,8 @@ async function parseAssignmentsBody(
       requestId
     );
   }
-  if (typeof body !== "object" || body === null) {
+  const parsed = AssignmentsBodySchema.safeParse(body);
+  if (!parsed.success) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -216,28 +221,7 @@ async function parseAssignmentsBody(
       requestId
     );
   }
-  const candidate = body as Record<string, unknown>;
-  const baseRevision = candidate.base_revision;
-  const roleDefinitionIds = candidate.role_definition_ids;
-  if (
-    !hasOnlyKeys(candidate, ["base_revision", "role_definition_ids"]) ||
-    typeof baseRevision !== "number" ||
-    !Number.isInteger(baseRevision) ||
-    baseRevision < 1 ||
-    !Array.isArray(roleDefinitionIds) ||
-    !roleDefinitionIds.every(
-      (id: unknown) => typeof id === "string" && id.length > 0
-    )
-  ) {
-    return roleProblem(
-      422,
-      "VALIDATION",
-      "Validation failed",
-      "base_revision and role_definition_ids are required。",
-      requestId
-    );
-  }
-  if (roleDefinitionIds.length > MAX_ASSIGNMENT_ROLE_IDS) {
+  if (parsed.data.role_definition_ids.length > MAX_ASSIGNMENT_ROLE_IDS) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -246,14 +230,11 @@ async function parseAssignmentsBody(
       requestId
     );
   }
-  return {
-    base_revision: baseRevision,
-    role_definition_ids: roleDefinitionIds,
-  };
+  return parsed.data;
 }
 
 function assignmentInput(
-  body: AssignmentsBody,
+  body: { base_revision: number; role_definition_ids: string[] },
   actorUserId: string,
   accountUserId: string,
   requestId: string,
@@ -271,8 +252,8 @@ function assignmentInput(
   return {
     actor_user_id: actorUserId,
     account_user_id: accountUserId,
-    base_revision: body.base_revision as number,
-    role_definition_ids: body.role_definition_ids as string[],
+    base_revision: body.base_revision,
+    role_definition_ids: body.role_definition_ids,
     idempotency_key: idempotencyKey,
     now: new Date().toISOString(),
     audit_id: crypto.randomUUID(),
@@ -291,16 +272,8 @@ export async function handleSearchEligibleAccounts(
     return auth;
   }
   const url = new URL(request.url);
-  const query = url.searchParams.get("q") ?? "";
-  const offsetValue = Number(url.searchParams.get("offset") ?? "0");
-  const limitValue = Number(url.searchParams.get("limit") ?? "20");
-  if (
-    !Number.isInteger(offsetValue) ||
-    offsetValue < 0 ||
-    !Number.isInteger(limitValue) ||
-    limitValue < 1 ||
-    limitValue > 100
-  ) {
+  const search = parseAccountSearchQuery(url.searchParams);
+  if (search === null) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -313,10 +286,14 @@ export async function handleSearchEligibleAccounts(
     const data = await searchEligibleAccounts(
       env.DB,
       auth.account.user_id,
-      query,
-      offsetValue,
-      limitValue
+      search.q,
+      search.offset,
+      search.limit
     );
+    if (!EligibleAccountSearchSchema.safeParse(data).success) {
+      console.error(`[identity] search malformed data requestId=${requestId}`);
+      throw new Error("identity contract violation");
+    }
     return roleSuccess(200, data, requestId);
   } catch (error) {
     return mapAccountAccessError(error, requestId);
@@ -340,6 +317,12 @@ export async function handleGetAccountAccess(
       auth.account.user_id,
       accountUserId
     );
+    if (!AccountAccessViewSchema.safeParse(data).success) {
+      console.error(
+        `[identity] account access malformed data requestId=${requestId}`
+      );
+      throw new Error("identity contract violation");
+    }
     return roleSuccess(200, data, requestId);
   } catch (error) {
     return mapAccountAccessError(error, requestId);
@@ -450,6 +433,12 @@ export async function handleRevokeAccountAssignments(
       )
     );
     const { responseRequestId, ...publicData } = data;
+    if (!AccountAccessMutationResultSchema.safeParse(publicData).success) {
+      console.error(
+        `[identity] assignments malformed data requestId=${requestId}`
+      );
+      throw new Error("identity contract violation");
+    }
     return roleSuccess(200, publicData, responseRequestId ?? requestId);
   } catch (error) {
     return mapAccountAccessError(error, requestId);
@@ -498,18 +487,8 @@ export async function handleRoleDefinitionLifecycle(
       requestId
     );
   }
-  const candidate = body as Record<string, unknown>;
-  const action = candidate.action;
-  const baseRevision = candidate.base_revision;
-  const reason = candidate.reason;
-  if (
-    !hasOnlyKeys(candidate, ["action", "base_revision", "reason"]) ||
-    (action !== "archive" && action !== "restore") ||
-    typeof baseRevision !== "number" ||
-    !Number.isInteger(baseRevision) ||
-    baseRevision < 1 ||
-    (reason !== undefined && typeof reason !== "string")
-  ) {
+  const parsedLifecycle = LifecycleBodySchema.safeParse(body);
+  if (!parsedLifecycle.success) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -519,20 +498,25 @@ export async function handleRoleDefinitionLifecycle(
     );
   }
   try {
-    const typed = body as LifecycleBody;
     const data: RoleDefinitionLifecycleResult =
       await mutateRoleDefinitionLifecycle(env.DB, {
         actor_user_id: auth.account.user_id,
         role_definition_id: roleDefinitionId,
-        action: typed.action as "archive" | "restore",
-        base_revision: typed.base_revision as number,
-        reason: (typed.reason as string | undefined)?.trim() || null,
+        action: parsedLifecycle.data.action,
+        base_revision: parsedLifecycle.data.base_revision,
+        reason: parsedLifecycle.data.reason?.trim() || null,
         idempotency_key: idempotencyKey,
         now: new Date().toISOString(),
         audit_id: crypto.randomUUID(),
         correlation_id: requestId,
       });
     const { responseRequestId, ...publicData } = data;
+    if (!RoleDefinitionLifecycleResultSchema.safeParse(publicData).success) {
+      console.error(
+        `[identity] lifecycle malformed data requestId=${requestId}`
+      );
+      throw new Error("identity contract violation");
+    }
     return roleSuccess(200, publicData, responseRequestId ?? requestId);
   } catch (error) {
     return mapAccountAccessError(error, requestId);
@@ -550,8 +534,10 @@ export async function handleGetRoleDefinitionLifecyclePreview(
   if (auth instanceof Response) {
     return auth;
   }
-  const action = new URL(request.url).searchParams.get("action");
-  if (action !== "archive" && action !== "restore") {
+  const previewAction = LifecycleActionSchema.safeParse(
+    new URL(request.url).searchParams.get("action")
+  );
+  if (!previewAction.success) {
     return roleProblem(
       422,
       "VALIDATION",
@@ -565,8 +551,14 @@ export async function handleGetRoleDefinitionLifecyclePreview(
       env.DB,
       auth.account.user_id,
       roleDefinitionId,
-      action
+      previewAction.data
     );
+    if (!RoleDefinitionLifecyclePreviewSchema.safeParse(data).success) {
+      console.error(
+        `[identity] lifecycle preview malformed data requestId=${requestId}`
+      );
+      throw new Error("identity contract violation");
+    }
     return roleSuccess(200, data, requestId);
   } catch (error) {
     return mapAccountAccessError(error, requestId);

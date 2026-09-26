@@ -198,7 +198,7 @@ describe("PRG-03 enrollment panel", () => {
           };
           return HttpResponse.json({
             requestId: "rid-3",
-            data: { request: requests[0] },
+            data: { request: requests[0], enrollment: null },
           });
         }
       ),
@@ -210,7 +210,7 @@ describe("PRG-03 enrollment panel", () => {
           requests[1] = { ...requests[1], status: "Rejected" };
           return HttpResponse.json({
             requestId: "rid-4",
-            data: { request: requests[1] },
+            data: { request: requests[1], enrollment: null },
           });
         }
       )

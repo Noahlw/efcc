@@ -147,7 +147,22 @@ function rosterHandler(event: AttendanceEvent, rows: AttendanceRow[]) {
   return http.get(`/api/v1/attendance/events/${event.event_id}/roster`, () =>
     HttpResponse.json({
       requestId: "rid-roster",
-      data: { event, attendances: rows },
+      data: {
+        event,
+        attendances: rows,
+        guests: [],
+        expected: [],
+        snapshot: null,
+        counts: {
+          expected: 0,
+          present: 0,
+          not_yet: 0,
+          absent: 0,
+          excused: 0,
+          guests: 0,
+        },
+        materialization_required: false,
+      },
     })
   );
 }
@@ -226,7 +241,22 @@ describe(AttendanceOperatorPanel, () => {
         }
         return HttpResponse.json({
           requestId: "rid-roster",
-          data: { event: ACTIVE, attendances: [ROW] },
+          data: {
+            event: ACTIVE,
+            attendances: [ROW],
+            guests: [],
+            expected: [],
+            snapshot: null,
+            counts: {
+              expected: 0,
+              present: 0,
+              not_yet: 0,
+              absent: 0,
+              excused: 0,
+              guests: 0,
+            },
+            materialization_required: false,
+          },
         });
       })
     );
@@ -278,7 +308,22 @@ describe(AttendanceOperatorPanel, () => {
         }
         return HttpResponse.json({
           requestId: "rid-roster",
-          data: { event: ACTIVE, attendances: [ROW] },
+          data: {
+            event: ACTIVE,
+            attendances: [ROW],
+            guests: [],
+            expected: [],
+            snapshot: null,
+            counts: {
+              expected: 0,
+              present: 0,
+              not_yet: 0,
+              absent: 0,
+              excused: 0,
+              guests: 0,
+            },
+            materialization_required: false,
+          },
         });
       })
     );
@@ -327,7 +372,22 @@ describe(AttendanceOperatorPanel, () => {
           }
           return HttpResponse.json({
             requestId: "rid-closed-roster",
-            data: { event: closedEvent, attendances: [] },
+            data: {
+              event: closedEvent,
+              attendances: [],
+              guests: [],
+              expected: [],
+              snapshot: null,
+              counts: {
+                expected: 0,
+                present: 0,
+                not_yet: 0,
+                absent: 0,
+                excused: 0,
+                guests: 0,
+              },
+              materialization_required: false,
+            },
           });
         }
       )
@@ -408,6 +468,17 @@ describe(AttendanceOperatorPanel, () => {
                 ? EXPECTED_MEMBER
                 : { ...EXPECTED_MEMBER, state: "Present", attendance: ROW },
             ],
+            guests: [],
+            snapshot: null,
+            counts: {
+              expected: 1,
+              present: 0,
+              not_yet: 0,
+              absent: 0,
+              excused: 0,
+              guests: 0,
+            },
+            materialization_required: false,
           },
         });
       }),
@@ -420,7 +491,11 @@ describe(AttendanceOperatorPanel, () => {
       http.post(`/api/v1/attendance/events/${ACTIVE.event_id}/check-in`, () =>
         HttpResponse.json({
           requestId: "rid-checkin",
-          data: { outcome: "success", attendance_id: "att-1" },
+          data: {
+            outcome: "success",
+            attendance_id: "att-1",
+            checked_in_at: "2026-08-13T11:35:00.000Z",
+          },
         })
       )
     );
@@ -633,6 +708,18 @@ describe(AttendanceOperatorPanel, () => {
                 ? { ...ROW, status: "Voided", void_reason: "輸入錯誤" }
                 : ROW,
             ],
+            guests: [],
+            expected: [],
+            snapshot: null,
+            counts: {
+              expected: 0,
+              present: 0,
+              not_yet: 0,
+              absent: 0,
+              excused: 0,
+              guests: 0,
+            },
+            materialization_required: false,
           },
         })
       ),
@@ -707,6 +794,18 @@ describe(AttendanceOperatorPanel, () => {
                   }
                 : guestRow,
             ],
+            guests: [],
+            expected: [],
+            snapshot: null,
+            counts: {
+              expected: 0,
+              present: 0,
+              not_yet: 0,
+              absent: 0,
+              excused: 0,
+              guests: 0,
+            },
+            materialization_required: false,
           },
         })
       ),
@@ -769,7 +868,22 @@ describe(AttendanceOperatorPanel, () => {
       http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () =>
         HttpResponse.json({
           requestId: "rid-roster",
-          data: { event: ACTIVE, attendances: [ROW] },
+          data: {
+            event: ACTIVE,
+            attendances: [ROW],
+            guests: [],
+            expected: [],
+            snapshot: null,
+            counts: {
+              expected: 0,
+              present: 0,
+              not_yet: 0,
+              absent: 0,
+              excused: 0,
+              guests: 0,
+            },
+            materialization_required: false,
+          },
         })
       ),
       http.post("/api/v1/attendance/att-1/void", () =>
@@ -835,7 +949,22 @@ describe(AttendanceOperatorPanel, () => {
         if (rosterCalls === 1) {
           return HttpResponse.json({
             requestId: "rid-roster",
-            data: { event: ACTIVE, attendances: [ROW] },
+            data: {
+              event: ACTIVE,
+              attendances: [ROW],
+              guests: [],
+              expected: [],
+              snapshot: null,
+              counts: {
+                expected: 0,
+                present: 0,
+                not_yet: 0,
+                absent: 0,
+                excused: 0,
+                guests: 0,
+              },
+              materialization_required: false,
+            },
           });
         }
         if (rosterCalls === 2 || rosterCalls === 4) {
@@ -853,12 +982,42 @@ describe(AttendanceOperatorPanel, () => {
         if (rosterCalls === 3) {
           return HttpResponse.json({
             requestId: "rid-mismatch",
-            data: { event: ACTIVE, attendances: [ROW] },
+            data: {
+              event: ACTIVE,
+              attendances: [ROW],
+              guests: [],
+              expected: [],
+              snapshot: null,
+              counts: {
+                expected: 0,
+                present: 0,
+                not_yet: 0,
+                absent: 0,
+                excused: 0,
+                guests: 0,
+              },
+              materialization_required: false,
+            },
           });
         }
         return HttpResponse.json({
           requestId: "rid-reconciled",
-          data: { event: ACTIVE, attendances: [voidedRow] },
+          data: {
+            event: ACTIVE,
+            attendances: [voidedRow],
+            guests: [],
+            expected: [],
+            snapshot: null,
+            counts: {
+              expected: 0,
+              present: 0,
+              not_yet: 0,
+              absent: 0,
+              excused: 0,
+              guests: 0,
+            },
+            materialization_required: false,
+          },
         });
       }),
       http.post(`/api/v1/attendance/${ROW.attendance_id}/void`, () =>
@@ -963,7 +1122,22 @@ describe(AttendanceOperatorPanel, () => {
       http.get(`/api/v1/attendance/events/${ACTIVE.event_id}/roster`, () =>
         HttpResponse.json({
           requestId: "rid-reload-roster",
-          data: { event: ACTIVE, attendances: [voidedRow] },
+          data: {
+            event: ACTIVE,
+            attendances: [voidedRow],
+            guests: [],
+            expected: [],
+            snapshot: null,
+            counts: {
+              expected: 0,
+              present: 0,
+              not_yet: 0,
+              absent: 0,
+              excused: 0,
+              guests: 0,
+            },
+            materialization_required: false,
+          },
         })
       )
     );
@@ -1001,14 +1175,44 @@ describe(AttendanceOperatorPanel, () => {
         if (rosterCalls === 1) {
           return HttpResponse.json({
             requestId: "rid-roster",
-            data: { event: ACTIVE, attendances: [ROW] },
+            data: {
+              event: ACTIVE,
+              attendances: [ROW],
+              guests: [],
+              expected: [],
+              snapshot: null,
+              counts: {
+                expected: 0,
+                present: 0,
+                not_yet: 0,
+                absent: 0,
+                excused: 0,
+                guests: 0,
+              },
+              materialization_required: false,
+            },
           });
         }
         return rosterCalls === 2
           ? reconciliation.promise
           : HttpResponse.json({
               requestId: "rid-late",
-              data: { event: ACTIVE, attendances: [voidedRow] },
+              data: {
+                event: ACTIVE,
+                attendances: [voidedRow],
+                guests: [],
+                expected: [],
+                snapshot: null,
+                counts: {
+                  expected: 0,
+                  present: 0,
+                  not_yet: 0,
+                  absent: 0,
+                  excused: 0,
+                  guests: 0,
+                },
+                materialization_required: false,
+              },
             });
       }),
       http.post(`/api/v1/attendance/${ROW.attendance_id}/void`, () =>
@@ -1047,7 +1251,22 @@ describe(AttendanceOperatorPanel, () => {
     reconciliation.resolve(
       HttpResponse.json({
         requestId: "rid-reconciled",
-        data: { event: ACTIVE, attendances: [voidedRow] },
+        data: {
+          event: ACTIVE,
+          attendances: [voidedRow],
+          guests: [],
+          expected: [],
+          snapshot: null,
+          counts: {
+            expected: 0,
+            present: 0,
+            not_yet: 0,
+            absent: 0,
+            excused: 0,
+            guests: 0,
+          },
+          materialization_required: false,
+        },
       })
     );
     await screen.findAllByText(COPY.programs.workspaceReconciled);

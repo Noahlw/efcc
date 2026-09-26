@@ -308,7 +308,6 @@ async function createFixture(page: Page, suffix: string): Promise<Fixture> {
         description,
         category: "T05",
         behavior_type: "Recurring",
-        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "MemberRequest",
       }
@@ -490,7 +489,6 @@ async function createProgramForDepartment(
       description: `Disposable parity fixture ${name}.`,
       category: "T05",
       behavior_type: behaviorType,
-      lifecycle: "Active",
       discoverability: "Listed",
       enrollment_mode: enrollmentMode,
     }

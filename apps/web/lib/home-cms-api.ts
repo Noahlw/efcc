@@ -6,34 +6,34 @@
  * `RpcError`, matching the rest of the management client.
  */
 
+import type {
+  FeaturedEventPreview,
+  HomeAuditItem,
+  HomeContent,
+  HomeContentStatus,
+  HomePublishMode,
+  HomeTemplateType,
+} from "@efcc/contracts";
+import {
+  FeaturedEventPreviewSchema,
+  HomeAuditListSchema,
+  HomeContentSchema,
+  parseProblemDetails,
+  parseSuccessEnvelope,
+  problemFallback,
+} from "@efcc/contracts";
+
 import { RpcError } from "@/lib/api";
 import type { ProblemDetails } from "@/lib/api";
 
-export type HomeTemplateType = "A" | "B";
-export type HomeContentStatus = "Draft" | "Published" | "Archived";
-export type HomePublishMode = "immediate" | "scheduled";
-
-export interface HomeContent {
-  contentId: string;
-  version: number;
-  templateType: HomeTemplateType;
-  status: HomeContentStatus;
-  publishMode: HomePublishMode;
-  startAt: string | null;
-  endAt: string | null;
-  title: string | null;
-  summary: string | null;
-  bodyMarkdown: string | null;
-  ctaLabel: string | null;
-  ctaUrl: string | null;
-  imageUrl: string | null;
-  imageAlt: string | null;
-  featuredEventId: string | null;
-  updatedBy: string | null;
-  updatedAt: string;
-  publishedBy: string | null;
-  publishedAt: string | null;
-}
+export type {
+  FeaturedEventPreview,
+  HomeAuditItem,
+  HomeContent,
+  HomeContentStatus,
+  HomePublishMode,
+  HomeTemplateType,
+};
 
 export interface HomeDraftInput {
   content_id?: string;
@@ -58,45 +58,6 @@ export interface HomePublishInput {
   publish_mode: HomePublishMode;
   start_at?: string | null;
   end_at?: string | null;
-}
-
-export interface HomeAuditItem {
-  auditId: string;
-  insertedAt: string;
-  actorUserId: string;
-  actorName?: string | null;
-  action: string;
-  entityId: string;
-  version: number;
-  templateType: HomeTemplateType;
-}
-
-export interface FeaturedEventPreview {
-  eventId: string;
-  programId: string;
-  programTitle: string;
-  title: string;
-  startsAt: string;
-  endsAt: string;
-  location: string;
-  status: string;
-}
-
-interface SuccessEnvelope<T> {
-  requestId: string;
-  data: T;
-}
-
-function fallbackProblem(status: number): ProblemDetails {
-  return {
-    status,
-    code: status >= 500 ? "UNAVAILABLE" : "MALFORMED_RESPONSE",
-    title: status >= 500 ? "Upstream error" : "Malformed error response",
-    detail:
-      status >= 500
-        ? "系統暫時無法處理請求，請稍後再試。"
-        : "伺服器回應格式錯誤。",
-  };
 }
 
 function requestIdFrom(response: Response): string | undefined {
@@ -124,6 +85,7 @@ async function readJson(response: Response): Promise<unknown> {
 async function homeCmsFetch<T>(
   path: string,
   method: "GET" | "POST",
+  payloadSchema: { safeParse: (value: unknown) => { success: boolean } },
   body?: unknown
 ): Promise<T> {
   let response: Response;
@@ -149,51 +111,76 @@ async function homeCmsFetch<T>(
   }
 
   const parsed = await readJson(response);
+  const headerRequestId = requestIdFrom(response);
   if (!response.ok) {
-    const problem =
-      typeof parsed === "object" && parsed !== null
-        ? ({ ...(parsed as ProblemDetails) } as ProblemDetails)
-        : fallbackProblem(response.status);
-    problem.status ??= response.status;
-    problem.requestId ??= requestIdFrom(response);
-    throw new RpcError(problem);
+    // Shared error contract (#646): a well-formed Problem Details keeps
+    // its codes and extensions; anything else falls back with the HTTP
+    // status and request reference — never success.
+    const resolved =
+      parseProblemDetails(parsed, response.status, headerRequestId) ??
+      problemFallback(
+        response.status,
+        headerRequestId,
+        "UNAVAILABLE",
+        "Upstream error",
+        "系統暫時無法處理請求，請稍後再試。"
+      );
+    throw new RpcError(resolved as ProblemDetails);
   }
 
-  if (typeof parsed !== "object" || parsed === null || !("data" in parsed)) {
+  const envelope = parseSuccessEnvelope(parsed);
+  // Shared contract gate (#646): malformed 2xx data is
+  // MALFORMED_RESPONSE, never a partial success.
+  if (!envelope || !payloadSchema.safeParse(envelope.data).success) {
     throw new RpcError({
       status: response.status,
       code: "MALFORMED_RESPONSE",
       title: "Malformed success response",
       detail: "伺服器回應格式錯誤。",
-      requestId: requestIdFrom(response),
+      requestId: headerRequestId,
     });
   }
 
-  return (parsed as SuccessEnvelope<T>).data;
+  return envelope.data as T;
 }
 
 /** GET /api/v1/home/content — latest editable draft/published content. */
 export function getHomeContent(): Promise<HomeContent | null> {
-  return homeCmsFetch<HomeContent | null>("/api/v1/home/content", "GET");
+  return homeCmsFetch<HomeContent | null>(
+    "/api/v1/home/content",
+    "GET",
+    HomeContentSchema.nullable()
+  );
 }
 
 /** POST /api/v1/home/draft — persist the current editor as an unpublished draft. */
 export function saveHomeDraft(input: HomeDraftInput): Promise<HomeContent> {
-  return homeCmsFetch<HomeContent>("/api/v1/home/draft", "POST", input);
+  return homeCmsFetch<HomeContent>(
+    "/api/v1/home/draft",
+    "POST",
+    HomeContentSchema,
+    input
+  );
 }
 
 /** POST /api/v1/home/publish — publish now or queue a Hong Kong-time window. */
 export function publishHomeContent(
   input: HomePublishInput
 ): Promise<HomeContent> {
-  return homeCmsFetch<HomeContent>("/api/v1/home/publish", "POST", input);
+  return homeCmsFetch<HomeContent>(
+    "/api/v1/home/publish",
+    "POST",
+    HomeContentSchema,
+    input
+  );
 }
 
 /** GET /api/v1/home/audit — visible publication accountability history. */
 export function listHomeAudit(limit = 25): Promise<{ items: HomeAuditItem[] }> {
   return homeCmsFetch<{ items: HomeAuditItem[] }>(
     `/api/v1/home/audit?limit=${encodeURIComponent(String(limit))}`,
-    "GET"
+    "GET",
+    HomeAuditListSchema
   );
 }
 
@@ -203,6 +190,7 @@ export function getFeaturedEventPreview(
 ): Promise<FeaturedEventPreview> {
   return homeCmsFetch<FeaturedEventPreview>(
     `/api/v1/home/cms/featured-event/${encodeURIComponent(eventId)}`,
-    "GET"
+    "GET",
+    FeaturedEventPreviewSchema
   );
 }

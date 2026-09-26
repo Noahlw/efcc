@@ -29,7 +29,6 @@ const PROGRAMS = [
     description: "每週聚會的本機示範課程。",
     category: "門徒訓練",
     behavior_type: "Recurring" as const,
-    lifecycle: "Active" as const,
     discoverability: "Listed" as const,
     enrollment_mode: "MemberRequest" as const,
     display_order: 1,
@@ -39,7 +38,6 @@ const PROGRAMS = [
     description: "一次性聚會的本機示範課程。",
     category: "團契",
     behavior_type: "OneOff" as const,
-    lifecycle: "Active" as const,
     discoverability: "Listed" as const,
     enrollment_mode: "MemberRequest" as const,
     display_order: 2,
@@ -49,7 +47,6 @@ const PROGRAMS = [
     description: "供管理者預備中的本機示範課程。",
     category: "關懷",
     behavior_type: "Recurring" as const,
-    lifecycle: "Active" as const,
     discoverability: "Unlisted" as const,
     enrollment_mode: "ManagerOnly" as const,
     display_order: 3,
@@ -59,7 +56,6 @@ const PROGRAMS = [
     description: "由管理者安排成員加入的本機示範課程。",
     category: "事工安排",
     behavior_type: "Recurring" as const,
-    lifecycle: "Active" as const,
     discoverability: "Listed" as const,
     enrollment_mode: "ManagerOnly" as const,
     display_order: 4,
@@ -95,7 +91,6 @@ const MODULE_GATE_PROGRAM = {
   description: "聚會與出席模組已停用的示範課程。",
   category: "測試",
   behavior_type: "Recurring" as const,
-  lifecycle: "Active" as const,
   discoverability: "Unlisted" as const,
   enrollment_mode: "MemberRequest" as const,
   // Deliberately last: management-directory.tsx sorts by display_order
@@ -126,6 +121,8 @@ interface ProgramRow {
   program_id: string;
   name: string;
   behavior_type: "Recurring" | "OneOff";
+  lifecycle: "Draft" | "Active" | "Archived";
+  discoverability: "Listed" | "Unlisted";
 }
 
 interface ScheduleRuleRow {
@@ -343,17 +340,39 @@ async function seedDemo(): Promise<void> {
     listedPrograms.programs.map((program) => [program.name, program])
   );
   for (const definition of PROGRAMS) {
-    if (programs.has(definition.name)) {
-      continue;
+    let program = programs.get(definition.name);
+    if (!program) {
+      const created = payload<{ program: ProgramRow }>(
+        await request(
+          "POST",
+          `/api/v1/programs/departments/${encodeURIComponent(department.department_id)}/programs`,
+          definition
+        )
+      );
+      program = created.program;
     }
-    const created = payload<{ program: ProgramRow }>(
+    if (
+      program.lifecycle !== "Active" ||
+      program.discoverability !== definition.discoverability
+    ) {
       await request(
-        "POST",
-        `/api/v1/programs/departments/${encodeURIComponent(department.department_id)}/programs`,
-        definition
-      )
-    );
-    programs.set(created.program.name, created.program);
+        "PATCH",
+        `/api/v1/programs/${encodeURIComponent(program.program_id)}`,
+        {
+          lifecycle: "Active",
+          discoverability: definition.discoverability,
+        }
+      );
+      program = {
+        ...program,
+        lifecycle: "Active",
+        discoverability: definition.discoverability,
+      };
+    }
+    if (!program) {
+      throw new Error(`The ${definition.name} program was not seeded`);
+    }
+    programs.set(definition.name, program);
   }
 
   const recurring = programs.get(PROGRAMS[0].name);

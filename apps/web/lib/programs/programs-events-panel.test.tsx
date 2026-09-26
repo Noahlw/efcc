@@ -54,7 +54,9 @@ const WEEKLY_RULE: ScheduleRule = {
   start_time: "19:30",
   end_time: "21:00",
   location: null,
+  created_by: null,
   created_at: "2026-01-01T00:00:00.000Z",
+  updated_by: null,
   updated_at: "2026-01-01T00:00:00.000Z",
 };
 
@@ -87,6 +89,7 @@ const CANCEL_EXCEPTION: ScheduleException = {
   action: "CANCEL",
   new_start_time: null,
   new_end_time: null,
+  created_by: null,
   created_at: "2026-08-01T00:00:00.000Z",
 };
 
@@ -226,7 +229,7 @@ describe("PRG-02 events panel", () => {
           });
           return HttpResponse.json({
             requestId: "rid-3",
-            data: { rule: rules[0] },
+            data: { rule: rules[0], idempotent: false },
           });
         }
       )
@@ -615,6 +618,7 @@ describe("PRG-02 events panel", () => {
       action: "RESCHEDULE",
       new_start_time: "08:30",
       new_end_time: "10:00",
+      created_by: null,
       created_at: "2026-08-01T00:00:00.000Z",
     };
     server.use(

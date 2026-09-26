@@ -107,7 +107,11 @@ describe(AttendancePanel, () => {
         http.post("/api/v1/attendance/guest", () =>
           HttpResponse.json({
             requestId: "rid-busy-guest",
-            data: { outcome: "success", attendance_id: "a-busy" },
+            data: {
+              outcome: "success",
+              attendance_id: "a-busy",
+              checked_in_at: "2026-08-13T11:35:00.000Z",
+            },
           })
         )
       );
@@ -152,7 +156,11 @@ describe(AttendancePanel, () => {
           guestPosts += 1;
           return HttpResponse.json({
             requestId: "rid-2",
-            data: { outcome: "success", attendance_id: "a1" },
+            data: {
+              outcome: "success",
+              attendance_id: "a1",
+              checked_in_at: "2026-08-13T11:35:00.000Z",
+            },
           });
         })
       );
@@ -205,7 +213,11 @@ describe(AttendancePanel, () => {
         http.post("/api/v1/attendance/guest", () =>
           HttpResponse.json({
             requestId: "rid-2",
-            data: { outcome: "success", attendance_id: "a1" },
+            data: {
+              outcome: "success",
+              attendance_id: "a1",
+              checked_in_at: "2026-08-13T11:35:00.000Z",
+            },
           })
         )
       );
@@ -444,7 +456,11 @@ describe(AttendancePanel, () => {
           guestPosts += 1;
           return HttpResponse.json({
             requestId: "rid-should-not-replay",
-            data: { outcome: "success", attendance_id: "a-replay" },
+            data: {
+              outcome: "success",
+              attendance_id: "a-replay",
+              checked_in_at: "2026-08-13T11:35:00.000Z",
+            },
           });
         }),
         http.post("/api/v1/attendance/guest/reconcile", ({ request }) => {
@@ -506,7 +522,11 @@ describe(AttendancePanel, () => {
             ? HttpResponse.error()
             : HttpResponse.json({
                 requestId: "rid-unknown-retry",
-                data: { outcome: "success", attendance_id: "a-retry" },
+                data: {
+                  outcome: "success",
+                  attendance_id: "a-retry",
+                  checked_in_at: "2026-08-13T11:35:00.000Z",
+                },
               });
         }),
         http.post("/api/v1/attendance/guest/reconcile", () =>
@@ -577,7 +597,7 @@ describe(AttendancePanel, () => {
         http.post("/api/v1/attendance/guest", () =>
           HttpResponse.json({
             requestId: "rid-2",
-            data: { outcome: "duplicate", attendance_id: "private-id" },
+            data: { outcome: "duplicate" },
           })
         )
       );
@@ -634,7 +654,11 @@ describe(AttendancePanel, () => {
             .event_id;
           return HttpResponse.json({
             requestId: "rid-guest",
-            data: { outcome: "success", attendance_id: "a1" },
+            data: {
+              outcome: "success",
+              attendance_id: "a1",
+              checked_in_at: "2026-08-13T11:35:00.000Z",
+            },
           });
         })
       );
@@ -689,7 +713,11 @@ describe(AttendancePanel, () => {
             .event_id;
           return HttpResponse.json({
             requestId: "rid-deep-guest",
-            data: { outcome: "success", attendance_id: "a1" },
+            data: {
+              outcome: "success",
+              attendance_id: "a1",
+              checked_in_at: "2026-08-13T11:35:00.000Z",
+            },
           });
         })
       );
@@ -730,14 +758,18 @@ describe(AttendancePanel, () => {
         http.get("/api/v1/attendance/resolve", () =>
           HttpResponse.json({
             requestId: "rid-empty",
-            data: { events: [] },
+            data: { events: [], latest: null, enrolled: false },
           })
         ),
         http.post("/api/v1/attendance/guest", () => {
           guestPosts += 1;
           return HttpResponse.json({
             requestId: "rid-guest",
-            data: { outcome: "success", attendance_id: "a1" },
+            data: {
+              outcome: "success",
+              attendance_id: "a1",
+              checked_in_at: "2026-08-13T11:35:00.000Z",
+            },
           });
         })
       );
@@ -761,7 +793,11 @@ describe(AttendancePanel, () => {
           guestPosts += 1;
           return HttpResponse.json({
             requestId: "rid-guest",
-            data: { outcome: "success", attendance_id: "a1" },
+            data: {
+              outcome: "success",
+              attendance_id: "a1",
+              checked_in_at: "2026-08-13T11:35:00.000Z",
+            },
           });
         })
       );

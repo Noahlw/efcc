@@ -6,6 +6,71 @@
  * are RFC 9457 Problem Details surfaced as RpcError (shared with api.ts).
  */
 
+import {
+  AccountDirectoryMemberSchema,
+  AccountDirectoryViewSchema,
+  AttendanceMembersSchema,
+  AttendanceResultSchema,
+  AttendanceResolveResponseSchema,
+  ManageableEventsSchema,
+  MaterializeResponseSchema,
+  OwnAttendanceResponseSchema,
+  ReconcileResponseSchema,
+  RosterResponseSchema,
+  ApprovalRunActionResponseSchema,
+  ApprovalRunResponseSchema,
+  ApprovalRunStartResponseSchema,
+  ApprovalRunsSchema,
+  AssistedEnrollResponseSchema,
+  CancelEnrollmentResponseSchema,
+  DepartmentCreateResponseSchema,
+  EnrollmentDecisionResponseSchema,
+  EnrollmentRequestCreateResponseSchema,
+  EnrollmentRequestsSchema,
+  EnrollmentSnapshotSchema,
+  EnrollmentWithdrawResponseSchema,
+  EnrollmentsSchema,
+  EventCreateResponseSchema,
+  EventDetailResponseSchema,
+  EventResponseSchema,
+  EventsListSchema,
+  GenerateEventsResponseSchema,
+  PreviewEventsResponseSchema,
+  ScheduleExceptionCreateResponseSchema,
+  ScheduleExceptionDeleteResponseSchema,
+  ScheduleExceptionsSchema,
+  ScheduleRuleCreateResponseSchema,
+  ScheduleRuleResponseSchema,
+  ScheduleRulesSchema,
+  DepartmentDetailSchema,
+  DepartmentUpdateResponseSchema,
+  DepartmentsListSchema,
+  ManagementAccessViewSchema,
+  ManagementAttentionViewSchema,
+  ManagementCockpitViewSchema,
+  ManagementDirectoryViewSchema,
+  ManagementHubViewSchema,
+  ManagementNotificationsViewSchema,
+  ManagementProgramWorkspaceViewSchema,
+  MarkedCountSchema,
+  MemberOptionsSchema,
+  MembersSearchResultSchema,
+  NoticeCreateResponseSchema,
+  ParticipantCatalogSchema,
+  ParticipantNoticesViewSchema,
+  ParticipantProgramDetailSchema,
+  ProgramAttendanceArtifactSchema,
+  ProgramCreateResponseSchema,
+  ProgramGetSchema,
+  ProgramTokenRotationSchema,
+  ProgramUpdateResponseSchema,
+  ProgramsListSchema,
+  SetModuleResponseSchema,
+  parseProblemDetails,
+  parseSuccessEnvelope,
+  problemFallback,
+} from "@efcc/contracts";
+
 import { RpcError } from "@/lib/api";
 import type { ProblemDetails } from "@/lib/api";
 import type {
@@ -378,7 +443,9 @@ export interface ScheduleRule {
   retired_at?: string | null;
   retired_by?: string | null;
   has_generated_events?: number | boolean;
+  created_by: string | null;
   created_at: string;
+  updated_by: string | null;
   updated_at: string;
 }
 
@@ -393,6 +460,7 @@ export interface ScheduleException {
   new_start_time: string | null;
   new_end_time: string | null;
   new_date?: string | null;
+  created_by: string | null;
   created_at: string;
 }
 
@@ -604,7 +672,6 @@ export interface ProgramInput {
   description?: string;
   behavior_type: Program["behavior_type"];
   discoverability?: Program["discoverability"];
-  lifecycle: Program["lifecycle"];
   enrollment_mode: Program["enrollment_mode"];
   category?: string;
   display_order?: number;
@@ -614,16 +681,12 @@ export type ProgramPatch = Omit<
   Partial<ProgramInput>,
   "description" | "category"
 > & {
+  lifecycle?: Program["lifecycle"];
   description?: string | null;
   category?: string | null;
   check_in_opens_at_minutes_before_start?: number;
   check_in_closes_at_minutes_after_end?: number;
 };
-
-interface ProgramsSuccess<T> {
-  requestId: string;
-  data: T;
-}
 
 function idempotencyHeaders(
   method: "POST" | "GET" | "PATCH" | "DELETE",
@@ -674,6 +737,7 @@ async function programsFetch<T>(
   options: {
     idempotencyKey?: string | null;
     cache?: "no-store";
+    schema?: { safeParse: (value: unknown) => { success: boolean } };
   } = {}
 ): Promise<T> {
   let res: Response;
@@ -697,6 +761,7 @@ async function programsFetch<T>(
     });
   }
 
+  const requestId = res.headers.get("X-Request-Id") ?? undefined;
   if (res.ok) {
     let parsed: unknown;
     try {
@@ -707,40 +772,45 @@ async function programsFetch<T>(
         code: "MALFORMED_RESPONSE",
         title: "Malformed success response",
         detail: "伺服器回應格式錯誤。",
+        requestId,
       });
     }
+    const envelope = parseSuccessEnvelope(parsed);
+    // Shared contract gate (#656): malformed 2xx data is
+    // MALFORMED_RESPONSE, never a partial success. Routes whose
+    // schemas land in later #646 tickets keep today's envelope-only
+    // check until their slice wires them.
     if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      (parsed as { data?: unknown }).data === undefined
+      !envelope ||
+      (options.schema && !options.schema.safeParse(envelope.data).success)
     ) {
       throw new RpcError({
         status: res.status,
         code: "MALFORMED_RESPONSE",
         title: "Malformed success envelope",
         detail: "伺服器回應格式錯誤。",
+        requestId,
       });
     }
-    return (parsed as ProgramsSuccess<T>).data as T;
+    return envelope.data as T;
   }
 
-  const requestId = res.headers.get("X-Request-Id") ?? undefined;
-  let problem: ProblemDetails;
+  let parsedError: unknown;
   try {
-    problem = (await res.json()) as ProblemDetails;
+    parsedError = await res.json();
   } catch {
-    problem = { status: res.status, code: "UNAVAILABLE", requestId };
+    parsedError = null;
   }
-  if (typeof problem !== "object" || problem === null) {
-    problem = { status: res.status, code: "UNAVAILABLE", requestId };
-  }
-  if (typeof problem.status !== "number") {
-    problem.status = res.status;
-  }
-  if (requestId && !problem.requestId) {
-    problem.requestId = requestId;
-  }
-  throw new RpcError(problem);
+  const problem =
+    parseProblemDetails(parsedError, res.status, requestId) ??
+    problemFallback(
+      res.status,
+      requestId,
+      "UNAVAILABLE",
+      "Upstream error",
+      "系統暫時無法處理請求，請稍後再試。"
+    );
+  throw new RpcError(problem as ProblemDetails);
 }
 
 /** POST /api/v1/programs/:programId/enrollment-requests */
@@ -752,7 +822,7 @@ export function submitEnrollmentRequest(
     `/api/v1/programs/${programId}/enrollment-requests`,
     "POST",
     {},
-    { idempotencyKey }
+    { idempotencyKey, schema: EnrollmentRequestCreateResponseSchema }
   );
 }
 /** GET /api/v1/programs/:programId/enrollment-requests */
@@ -761,7 +831,9 @@ export function listEnrollmentRequests(
 ): Promise<{ requests: EnrollmentRequest[] }> {
   return programsFetch(
     `/api/v1/programs/${programId}/enrollment-requests`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: EnrollmentRequestsSchema }
   );
 }
 
@@ -771,7 +843,9 @@ export function listEnrollmentSnapshot(
 ): Promise<EnrollmentSnapshot> {
   return programsFetch(
     `/api/v1/programs/${programId}/enrollment-snapshot`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: EnrollmentSnapshotSchema }
   );
 }
 
@@ -785,7 +859,7 @@ export function startEnrollmentApprovalRun(
     `/api/v1/programs/${programId}/enrollment-approval-runs`,
     "POST",
     { request_ids: requestIds },
-    { idempotencyKey }
+    { idempotencyKey, schema: ApprovalRunStartResponseSchema }
   );
 }
 
@@ -797,7 +871,7 @@ export function listEnrollmentApprovalRuns(
     `/api/v1/programs/${programId}/enrollment-approval-runs`,
     "GET",
     undefined,
-    { cache: "no-store" }
+    { cache: "no-store", schema: ApprovalRunsSchema }
   );
 }
 
@@ -811,7 +885,7 @@ export function reconcileEnrollmentApprovalRun(
     `/api/v1/programs/${programId}/enrollment-approval-runs/${runId}/reconcile`,
     "POST",
     {},
-    { idempotencyKey }
+    { idempotencyKey, schema: ApprovalRunResponseSchema }
   );
 }
 
@@ -828,7 +902,7 @@ export function continueEnrollmentApprovalRun(
     `/api/v1/programs/${programId}/enrollment-approval-runs/${runId}/continue`,
     "POST",
     {},
-    { idempotencyKey }
+    { idempotencyKey, schema: ApprovalRunActionResponseSchema }
   );
 }
 
@@ -842,7 +916,7 @@ export function cancelEnrollmentApprovalRun(
     `/api/v1/programs/${programId}/enrollment-approval-runs/${runId}/cancel`,
     "POST",
     {},
-    { idempotencyKey }
+    { idempotencyKey, schema: ApprovalRunResponseSchema }
   );
 }
 
@@ -866,7 +940,7 @@ export function decideEnrollmentRequest(
       note: note?.trim() ? note.trim() : null,
       request_version: requestVersion ?? null,
     },
-    { idempotencyKey }
+    { idempotencyKey, schema: EnrollmentDecisionResponseSchema }
   );
 }
 
@@ -880,7 +954,7 @@ export function withdrawEnrollmentRequest(
     `/api/v1/programs/${programId}/enrollment-requests/${requestId}/withdraw`,
     "POST",
     {},
-    { idempotencyKey }
+    { idempotencyKey, schema: EnrollmentWithdrawResponseSchema }
   );
 }
 
@@ -889,16 +963,24 @@ export function assistedEnroll(
   programId: string,
   memberUserId: string
 ): Promise<{ enrollment: Enrollment }> {
-  return programsFetch(`/api/v1/programs/${programId}/enrollments`, "POST", {
-    member_user_id: memberUserId,
-  });
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollments`,
+    "POST",
+    { member_user_id: memberUserId },
+    { schema: AssistedEnrollResponseSchema }
+  );
 }
 
 /** GET /api/v1/programs/:programId/enrollments */
 export function listEnrollments(
   programId: string
 ): Promise<{ enrollments: Enrollment[] }> {
-  return programsFetch(`/api/v1/programs/${programId}/enrollments`, "GET");
+  return programsFetch(
+    `/api/v1/programs/${programId}/enrollments`,
+    "GET",
+    undefined,
+    { schema: EnrollmentsSchema }
+  );
 }
 
 export function cancelEnrollment(
@@ -911,7 +993,7 @@ export function cancelEnrollment(
     `/api/v1/programs/${programId}/enrollments/${enrollmentId}/cancel`,
     "POST",
     { reason: cancellationReason?.trim() || null },
-    { idempotencyKey }
+    { idempotencyKey, schema: CancelEnrollmentResponseSchema }
   );
 }
 
@@ -919,7 +1001,9 @@ export function cancelEnrollment(
 export function listDepartments(): Promise<{
   departments: Department[];
 }> {
-  return programsFetch("/api/v1/programs/departments", "GET");
+  return programsFetch("/api/v1/programs/departments", "GET", undefined, {
+    schema: DepartmentsListSchema,
+  });
 }
 /** GET /api/v1/programs/management-directory — scoped, redacted manager rows. */
 export function getManagementDirectory(): Promise<ManagementDirectory> {
@@ -927,7 +1011,7 @@ export function getManagementDirectory(): Promise<ManagementDirectory> {
     "/api/v1/programs/management-directory",
     "GET",
     undefined,
-    { cache: "no-store" }
+    { cache: "no-store", schema: ManagementDirectoryViewSchema }
   );
 }
 
@@ -936,7 +1020,14 @@ export function getManagementAttention(
   limit = 5
 ): Promise<ManagementAttention> {
   const query = new URLSearchParams({ limit: String(limit) });
-  return programsFetch(`/api/v1/programs/attention?${query}`, "GET");
+  return programsFetch(
+    `/api/v1/programs/attention?${query}`,
+    "GET",
+    undefined,
+    {
+      schema: ManagementAttentionViewSchema,
+    }
+  );
 }
 
 /** GET /api/v1/programs/notifications — current scoped read-state overlay. */
@@ -944,7 +1035,12 @@ export function getManagementNotifications(
   limit = 20
 ): Promise<ManagementNotifications> {
   const query = new URLSearchParams({ limit: String(limit) });
-  return programsFetch(`/api/v1/programs/notifications?${query}`, "GET");
+  return programsFetch(
+    `/api/v1/programs/notifications?${query}`,
+    "GET",
+    undefined,
+    { schema: ManagementNotificationsViewSchema }
+  );
 }
 
 /** POST /api/v1/programs/notifications/read — idempotent read-state write. */
@@ -954,9 +1050,12 @@ export function markManagementNotificationsRead(
     source_revision: string;
   }[]
 ): Promise<{ marked_count: number }> {
-  return programsFetch("/api/v1/programs/notifications/read", "POST", {
-    items,
-  });
+  return programsFetch(
+    "/api/v1/programs/notifications/read",
+    "POST",
+    { items },
+    { schema: MarkedCountSchema }
+  );
 }
 
 let accessCache: { data: ProgramsManagementAccess; at: number } | null = null;
@@ -983,7 +1082,9 @@ export function getManagementAccess(): Promise<ProgramsManagementAccess> {
     try {
       const data = await programsFetch<ProgramsManagementAccess>(
         "/api/v1/programs/access",
-        "GET"
+        "GET",
+        undefined,
+        { schema: ManagementAccessViewSchema }
       );
       if (isCurrentAccessRequest(marker)) {
         accessCache = { data, at: Date.now() };
@@ -1012,6 +1113,7 @@ export function clearAccessCache(): void {
 export function getManagementHub(): Promise<ManagementHubView> {
   return programsFetch("/api/v1/programs/hub", "GET", undefined, {
     cache: "no-store",
+    schema: ManagementHubViewSchema,
   });
 }
 
@@ -1050,7 +1152,9 @@ export function listParticipantCatalog(): Promise<{
   }
   return programsFetch<{ catalog: ParticipantCatalogEntry[] }>(
     "/api/v1/programs/catalog",
-    "GET"
+    "GET",
+    undefined,
+    { schema: ParticipantCatalogSchema }
   ).then((data) => {
     primeCatalogCache(data.catalog);
     return data;
@@ -1062,7 +1166,9 @@ export function getParticipantProgramDetail(
 ): Promise<ParticipantProgramDetail> {
   return programsFetch<{ detail: ParticipantProgramDetail }>(
     `/api/v1/programs/${encodeURIComponent(programId)}/participant-detail`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: ParticipantProgramDetailSchema }
   ).then(({ detail }) => detail);
 }
 
@@ -1070,7 +1176,9 @@ export function getParticipantProgramDetail(
 export function createDepartment(
   input: DepartmentInput
 ): Promise<{ department: Department }> {
-  return programsFetch("/api/v1/programs/departments", "POST", input);
+  return programsFetch("/api/v1/programs/departments", "POST", input, {
+    schema: DepartmentCreateResponseSchema,
+  });
 }
 
 /** PATCH /api/v1/programs/departments/:id */
@@ -1083,7 +1191,7 @@ export function updateDepartment(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}`,
     "PATCH",
     patch,
-    { idempotencyKey }
+    { idempotencyKey, schema: DepartmentUpdateResponseSchema }
   );
 }
 
@@ -1091,7 +1199,9 @@ export function updateDepartment(
 export function getDepartment(departmentId: string): Promise<DepartmentDetail> {
   return programsFetch(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: DepartmentDetailSchema }
   );
 }
 
@@ -1101,7 +1211,9 @@ export function listPrograms(
 ): Promise<{ programs: Program[] }> {
   return programsFetch(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/programs`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: ProgramsListSchema }
   );
 }
 
@@ -1116,7 +1228,7 @@ export function getManagementProgram(programId: string): Promise<{
     `/api/v1/programs/${encodeURIComponent(programId)}/management`,
     "GET",
     undefined,
-    { cache: "no-store" }
+    { cache: "no-store", schema: ManagementProgramWorkspaceViewSchema }
   );
 }
 
@@ -1128,7 +1240,7 @@ export function getProgramAttendanceArtifact(programId: string): Promise<{
     `/api/v1/programs/${encodeURIComponent(programId)}/attendance-artifact`,
     "GET",
     undefined,
-    { cache: "no-store" }
+    { cache: "no-store", schema: ProgramAttendanceArtifactSchema }
   );
 }
 
@@ -1147,7 +1259,7 @@ export function rotateProgramAttendanceArtifact(
     `/api/v1/programs/${encodeURIComponent(programId)}/attendance-artifact/rotate`,
     "POST",
     {},
-    { idempotencyKey }
+    { idempotencyKey, schema: ProgramTokenRotationSchema }
   );
 }
 
@@ -1159,7 +1271,7 @@ export function getManagementCockpit(
     `/api/v1/programs/${encodeURIComponent(programId)}/cockpit`,
     "GET",
     undefined,
-    { cache: "no-store" }
+    { cache: "no-store", schema: ManagementCockpitViewSchema }
   );
 }
 /** POST /api/v1/programs/departments/:id/programs */
@@ -1172,7 +1284,7 @@ export function createProgram(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/programs`,
     "POST",
     input,
-    { idempotencyKey }
+    { idempotencyKey, schema: ProgramCreateResponseSchema }
   );
 }
 
@@ -1186,7 +1298,7 @@ export function updateProgram(
     `/api/v1/programs/${encodeURIComponent(programId)}`,
     "PATCH",
     patch,
-    { idempotencyKey }
+    { idempotencyKey, schema: ProgramUpdateResponseSchema }
   );
 }
 
@@ -1202,7 +1314,9 @@ export function searchMemberOptions(
   }
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/member-options?${params.toString()}`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: MemberOptionsSchema }
   );
 }
 /** GET /api/v1/programs/members?q=...&limit=... — server-scoped directory. */
@@ -1214,7 +1328,14 @@ export function searchManagementMembers(
   if (options?.limit !== undefined) {
     params.set("limit", String(options.limit));
   }
-  return programsFetch(`/api/v1/programs/members?${params.toString()}`, "GET");
+  return programsFetch(
+    `/api/v1/programs/members?${params.toString()}`,
+    "GET",
+    undefined,
+    {
+      schema: MembersSearchResultSchema,
+    }
+  );
 }
 
 /** GET /api/v1/programs/accounts?q=...&status=... — Account Directory. */
@@ -1240,7 +1361,14 @@ export function searchAccountDirectory(
   if (options?.status !== undefined) {
     params.set("status", options.status);
   }
-  return programsFetch(`/api/v1/programs/accounts?${params.toString()}`, "GET");
+  return programsFetch(
+    `/api/v1/programs/accounts?${params.toString()}`,
+    "GET",
+    undefined,
+    {
+      schema: AccountDirectoryViewSchema,
+    }
+  );
 }
 
 /** GET /api/v1/programs/accounts/:id — authorized Account Detail. */
@@ -1249,7 +1377,9 @@ export function getAccountDirectoryDetail(
 ): Promise<AccountDirectoryDetail> {
   return programsFetch(
     `/api/v1/programs/accounts/${encodeURIComponent(userId)}`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: AccountDirectoryMemberSchema }
   );
 }
 
@@ -1264,7 +1394,7 @@ export function setDepartmentModule(
     `/api/v1/programs/departments/${encodeURIComponent(departmentId)}/modules/${encodeURIComponent(moduleKey)}/${enabled ? "enable" : "disable"}`,
     "POST",
     undefined,
-    { idempotencyKey }
+    { idempotencyKey, schema: SetModuleResponseSchema }
   );
 }
 
@@ -1274,7 +1404,9 @@ export function listScheduleRules(
 ): Promise<{ rules: ScheduleRule[] }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: ScheduleRulesSchema }
   );
 }
 
@@ -1288,7 +1420,7 @@ export function createScheduleRule(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules`,
     "POST",
     input,
-    options
+    { ...options, schema: ScheduleRuleCreateResponseSchema }
   );
 }
 
@@ -1299,7 +1431,9 @@ export function listScheduleExceptions(
 ): Promise<{ exceptions: ScheduleException[] }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/exceptions`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: ScheduleExceptionsSchema }
   );
 }
 
@@ -1314,7 +1448,7 @@ export function updateScheduleRule(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}`,
     "PATCH",
     patch,
-    { idempotencyKey }
+    { idempotencyKey, schema: ScheduleRuleResponseSchema }
   );
 }
 
@@ -1328,7 +1462,7 @@ export function retireScheduleRule(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/retire`,
     "POST",
     undefined,
-    { idempotencyKey }
+    { idempotencyKey, schema: ScheduleRuleResponseSchema }
   );
 }
 
@@ -1349,7 +1483,7 @@ export function createScheduleException(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/exceptions`,
     "POST",
     input,
-    options
+    { ...options, schema: ScheduleExceptionCreateResponseSchema }
   );
 }
 
@@ -1364,7 +1498,7 @@ export function deleteScheduleException(
     `/api/v1/programs/${encodeURIComponent(programId)}/schedule-rules/${encodeURIComponent(ruleId)}/exceptions/${encodeURIComponent(exceptionId)}`,
     "DELETE",
     undefined,
-    { idempotencyKey }
+    { idempotencyKey, schema: ScheduleExceptionDeleteResponseSchema }
   );
 }
 
@@ -1386,7 +1520,8 @@ export function previewEvents(
     "POST",
     typeof range === "number"
       ? { horizon_days: range }
-      : { from_date: range.from_date, until_date: range.until_date }
+      : { from_date: range.from_date, until_date: range.until_date },
+    { schema: PreviewEventsResponseSchema }
   );
 }
 
@@ -1398,7 +1533,8 @@ export function generateEvents(
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/generate`,
     "POST",
-    { plan_id: planId }
+    { plan_id: planId },
+    { schema: GenerateEventsResponseSchema }
   );
 }
 
@@ -1413,12 +1549,14 @@ export function createEvent(
     check_in_window_opens_at?: string | null;
     check_in_window_closes_at?: string | null;
     event_type?: EventType | null;
-  }
+  },
+  idempotencyKey?: string
 ): Promise<{ event: ProgramEvent }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events`,
     "POST",
-    input
+    input,
+    { idempotencyKey, schema: EventCreateResponseSchema }
   );
 }
 
@@ -1428,7 +1566,9 @@ export function listEvents(
 ): Promise<{ events: ProgramEvent[] }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: EventsListSchema }
   );
 }
 
@@ -1439,7 +1579,9 @@ export function getEvent(
 ): Promise<EventDetail> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: EventDetailResponseSchema }
   );
 }
 
@@ -1456,12 +1598,14 @@ export function updateEvent(
     check_in_window_opens_at?: string | null;
     check_in_window_closes_at?: string | null;
     reason?: string | null;
-  }
+  },
+  idempotencyKey?: string
 ): Promise<{ event: ProgramEvent }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
     "PATCH",
-    patch
+    patch,
+    { idempotencyKey, schema: EventResponseSchema }
   );
 }
 
@@ -1470,12 +1614,14 @@ export function setEventAvailability(
   programId: string,
   eventId: string,
   availability: "Active" | "Inactive",
-  confirm = false
+  confirm = false,
+  idempotencyKey?: string
 ): Promise<{ event: ProgramEvent }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
     "PATCH",
-    { availability, confirm }
+    { availability, confirm },
+    { idempotencyKey, schema: EventResponseSchema }
   );
 }
 
@@ -1483,12 +1629,14 @@ export function setEventAvailability(
 export function cancelEvent(
   programId: string,
   eventId: string,
-  reason?: string | null
+  reason?: string | null,
+  idempotencyKey?: string
 ): Promise<{ event: ProgramEvent }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
     "PATCH",
-    { reason: reason ?? null }
+    { reason: reason ?? null },
+    { idempotencyKey, schema: EventResponseSchema }
   );
 }
 
@@ -1532,7 +1680,14 @@ export function resolveAttendance(input: {
   if (input.event) {
     search.set("event", input.event);
   }
-  return programsFetch(`/api/v1/attendance/resolve?${search}`, "GET");
+  return programsFetch(
+    `/api/v1/attendance/resolve?${search}`,
+    "GET",
+    undefined,
+    {
+      schema: AttendanceResolveResponseSchema,
+    }
+  );
 }
 
 /** POST /api/v1/attendance/self */
@@ -1548,6 +1703,7 @@ export function selfCheckIn(
 ): Promise<AttendanceResult> {
   return programsFetch("/api/v1/attendance/self", "POST", input, {
     idempotencyKey,
+    schema: AttendanceResultSchema,
   });
 }
 
@@ -1566,6 +1722,7 @@ export function guestCheckIn(
 ): Promise<AttendanceResult> {
   return programsFetch("/api/v1/attendance/guest", "POST", input, {
     idempotencyKey,
+    schema: AttendanceResultSchema,
   });
 }
 
@@ -1584,6 +1741,7 @@ export function reconcileGuestCheckIn(
 ): Promise<{ outcome: "found" | "not_found" }> {
   return programsFetch("/api/v1/attendance/guest/reconcile", "POST", input, {
     idempotencyKey: idempotencyKey ?? null,
+    schema: ReconcileResponseSchema,
   });
 }
 
@@ -1591,14 +1749,18 @@ export function reconcileGuestCheckIn(
 export function listManageableEvents(): Promise<{
   events: AttendanceEventSummaryType[];
 }> {
-  return programsFetch("/api/v1/attendance/events", "GET");
+  return programsFetch("/api/v1/attendance/events", "GET", undefined, {
+    schema: ManageableEventsSchema,
+  });
 }
 
 /** GET /api/v1/attendance/scanner-events — eligible Assisted context */
 export function listScannerEvents(): Promise<{
   events: AttendanceEventSummaryType[];
 }> {
-  return programsFetch("/api/v1/attendance/scanner-events", "GET");
+  return programsFetch("/api/v1/attendance/scanner-events", "GET", undefined, {
+    schema: ManageableEventsSchema,
+  });
 }
 
 /** GET /api/v1/attendance/events/:eventId/members */
@@ -1608,7 +1770,9 @@ export function searchAttendanceMembers(
 ): Promise<{ members: AttendanceMemberType[] }> {
   return programsFetch(
     `/api/v1/attendance/events/${encodeURIComponent(eventId)}/members?q=${encodeURIComponent(query)}`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: AttendanceMembersSchema }
   );
 }
 
@@ -1621,7 +1785,10 @@ export function assistedCheckIn(
   return programsFetch(
     `/api/v1/attendance/events/${encodeURIComponent(eventId)}/check-in`,
     "POST",
-    { member_user_id, method }
+    { member_user_id, method },
+    {
+      schema: AttendanceResultSchema,
+    }
   );
 }
 
@@ -1631,7 +1798,9 @@ export function listAttendanceRoster(
 ): Promise<AttendanceRosterResponseType> {
   return programsFetch(
     `/api/v1/attendance/events/${encodeURIComponent(eventId)}/roster`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: RosterResponseSchema }
   );
 }
 
@@ -1641,7 +1810,9 @@ export function materializeAttendanceSnapshot(
 ): Promise<AttendanceMaterializeResponseType> {
   return programsFetch(
     `/api/v1/attendance/events/${encodeURIComponent(eventId)}/materialize`,
-    "POST"
+    "POST",
+    undefined,
+    { schema: MaterializeResponseSchema }
   );
 }
 
@@ -1654,7 +1825,10 @@ export function recordExcusedAttendance(
   return programsFetch(
     `/api/v1/attendance/events/${encodeURIComponent(eventId)}/excused`,
     "POST",
-    { enrollment_id: enrollmentId, reason }
+    { enrollment_id: enrollmentId, reason },
+    {
+      schema: AttendanceResultSchema,
+    }
   );
 }
 
@@ -1664,7 +1838,9 @@ export function getOwnAttendance(
 ): Promise<AttendanceParticipantViewType> {
   return programsFetch(
     `/api/v1/attendance/events/${encodeURIComponent(eventId)}/me`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: OwnAttendanceResponseSchema }
   );
 }
 
@@ -1676,7 +1852,10 @@ export function voidAttendance(
   return programsFetch(
     `/api/v1/attendance/${encodeURIComponent(attendanceId)}/void`,
     "POST",
-    { reason }
+    { reason },
+    {
+      schema: AttendanceResultSchema,
+    }
   );
 }
 
@@ -1688,6 +1867,9 @@ export function correctGuestAttendance(
   return programsFetch(
     `/api/v1/attendance/${encodeURIComponent(attendanceId)}/guest-correction`,
     "PATCH",
-    input
+    input,
+    {
+      schema: AttendanceResultSchema,
+    }
   );
 }

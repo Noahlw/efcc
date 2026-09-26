@@ -68,12 +68,58 @@ describe("Account Access API", () => {
       })
     );
 
-    fetchMock.mockImplementation(
-      async () =>
-        new Response(JSON.stringify({ requestId: "r-2", data: {} }), {
-          status: 200,
-        })
-    );
+    const lifecycleResult = {
+      roleDefinitionId: "role-a",
+      action: "archive",
+      isArchived: true,
+      revision: 7,
+      affectedAccountUserIds: [],
+      impact: [],
+      idempotent: false,
+    };
+    const accessView = {
+      account: {
+        userId: "target",
+        name: "Target",
+        username: "target",
+        status: "Active",
+      },
+      activeAssignments: [],
+      revokedAssignments: [],
+      assignmentHistory: [],
+      assignableRoles: [],
+      effectiveAccess: { Global: [], Department: [], Program: [] },
+      lifecycleImpacts: {},
+      revision: 1,
+      actions: {
+        assign: true,
+        revoke: true,
+        archive: false,
+        restore: false,
+        revokeRoleDefinitionIds: [],
+        archiveRoleDefinitionIds: [],
+        restoreRoleDefinitionIds: [],
+      },
+      idempotent: false,
+      duplicateRoleDefinitionIds: [],
+    };
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.endsWith("/api/v1/identity/roles")
+        ? {
+            categories: [],
+            revision: 1,
+            caller: { userId: "u", highestPosition: 0 },
+          }
+        : url.includes("/lifecycle")
+          ? url.includes("action=")
+            ? { ...lifecycleResult, idempotent: undefined }
+            : lifecycleResult
+          : accessView;
+      return new Response(JSON.stringify({ requestId: "r-2", data }), {
+        status: 200,
+      });
+    });
     await getAccountAccess("user/target");
     await mutateAccountAssignments(
       "target",
@@ -124,5 +170,40 @@ describe("Account Access API", () => {
     expect(
       (calls[2]?.[1]?.headers as Record<string, string>)["Authorization"]
     ).toBeUndefined();
+  });
+
+  test("rejects malformed success data with MALFORMED_RESPONSE", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          requestId: "r-bad",
+          data: { account: null },
+        }),
+        {
+          status: 200,
+          headers: { "X-Request-Id": "r-bad" },
+        }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(getAccountAccess("target")).rejects.toMatchObject({
+      problem: expect.objectContaining({
+        code: "MALFORMED_RESPONSE",
+        requestId: "r-bad",
+      }),
+    });
+  });
+
+  test("preserves status and requestId on malformed error bodies", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ unexpected: true }), {
+        status: 403,
+        headers: { "X-Request-Id": "r-bad-2" },
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(getAccountAccess("target")).rejects.toMatchObject({
+      problem: expect.objectContaining({ status: 403, requestId: "r-bad-2" }),
+    });
   });
 });

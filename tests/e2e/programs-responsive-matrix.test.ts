@@ -233,7 +233,6 @@ async function createFixture(
           "A deterministic responsive fixture with enough copy to exercise wrapping without changing domain state.",
         category: "T05 Responsive",
         behavior_type: "Recurring",
-        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "MemberRequest",
       },

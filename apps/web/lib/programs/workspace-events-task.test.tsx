@@ -42,7 +42,14 @@ import {
 import { WorkspaceTaskProvider } from "./workspace-context";
 import { EventsTask, RecurringSchedulePanel } from "./workspace-events-task";
 const mocks = vi.hoisted(() => ({
-  createEvent: vi.fn<() => Promise<{ event: ProgramEvent }>>(),
+  createEvent:
+    vi.fn<
+      (
+        programId: string,
+        input: unknown,
+        idempotencyKey?: string
+      ) => Promise<{ event: ProgramEvent }>
+    >(),
   listEvents: vi.fn<() => Promise<{ events: ProgramEvent[] }>>(),
   listScheduleRules: vi.fn<() => Promise<{ rules: ScheduleRule[] }>>(),
   previewEvents: vi.fn<() => Promise<PreviewResult>>(),
@@ -120,7 +127,9 @@ const rule: ScheduleRule = {
   start_time: "11:30",
   end_time: "13:00",
   location: "主堂",
+  created_by: null,
   created_at: "2026-01-01T00:00:00.000Z",
+  updated_by: null,
   updated_at: "2026-01-01T00:00:00.000Z",
 };
 
@@ -776,7 +785,16 @@ describe("EventsTask operations-first composition", () => {
       .mockReset()
       .mockResolvedValueOnce({ events: [event] })
       .mockResolvedValueOnce({ events: [event, createdEvent] });
-    mocks.createEvent.mockResolvedValueOnce({ event: createdEvent });
+    mocks.createEvent.mockImplementationOnce(
+      async (_programId, _input, idempotencyKey) => {
+        const recovery = readWorkspaceMutationRecovery();
+        expect(recovery?.surface).toBe("events");
+        if (recovery?.surface === "events") {
+          expect(recovery.idempotencyKey).toBe(idempotencyKey);
+        }
+        return { event: createdEvent };
+      }
+    );
 
     renderTask(
       vi.fn<(dirty: boolean) => void>(),
@@ -1653,6 +1671,7 @@ describe("F02 Preview 調整 uses Management Drafts (#632)", () => {
         new_start_time: "11:30",
         new_end_time: "13:00",
         new_date: "2026-09-17",
+        created_by: null,
         created_at: "2026-09-18T00:00:00.000Z",
       },
     });

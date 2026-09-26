@@ -1,3 +1,30 @@
+import {
+  AssistedCheckInBodySchema,
+  AttendanceMembersSchema,
+  CheckInResponseSchema,
+  ExcusedResponseSchema,
+  GuestCheckInBodySchema,
+  GuestCorrectionBodySchema,
+  ManageableEventsSchema,
+  MaterializeResponseSchema,
+  OwnAttendanceResponseSchema,
+  ReconcileResponseSchema,
+  ResolveEventsSchema,
+  ResolveNoEventsSchema,
+  RosterResponseSchema,
+  SelfCheckInBodySchema,
+  VoidResponseSchema,
+  GuestCorrectionResponseSchema,
+  GUEST_NAME_MAX_LENGTH,
+  isValidGuestName,
+  normalizeGuestPhone as normalizeGuestPhoneContract,
+  parseExcuseReason,
+  parseGuestIdempotencyKey,
+  parseResolveQuery,
+  parseVoidReason,
+} from "@efcc/contracts";
+import type { AttendanceMethod as SharedAttendanceMethod } from "@efcc/contracts";
+
 import { findAccountByUserId } from "./auth/accounts";
 import type { AccountRow } from "./auth/accounts";
 import { resolveRequestSession } from "./auth/sessions";
@@ -7,16 +34,7 @@ import {
 } from "./identity/role-hierarchy";
 import { resolveProgramAccess } from "./programs/program-resolver";
 
-type AttendanceMethod =
-  | "self_qr_scan"
-  | "self_manual_code"
-  | "leader_qr_scan"
-  | "leader_manual_search"
-  | "guest_qr_scan"
-  | "guest_manual_code";
-
-/** Guest-name cap shared by check-in and guest correction (UI maxLength). */
-const GUEST_NAME_MAX_LENGTH = 80;
+type AttendanceMethod = SharedAttendanceMethod;
 
 export interface AttendanceEnv {
   DB: D1Database;
@@ -203,34 +221,8 @@ export interface AttendanceMember {
   qr_code_string: string | null;
 }
 
-const EXCUSE_CATEGORIES = new Set([
-  "身體不適",
-  "工作或上課",
-  "家庭事務",
-  "其他",
-]);
-
 export function normalizeGuestPhone(input: string): string | null {
-  const compact = input.trim().replaceAll(/[\s().-]/gu, "");
-  if (!compact) {
-    return null;
-  }
-  if (/^\+852\d{8}$/u.test(compact)) {
-    return `hk:${compact.slice(1)}`;
-  }
-  if (/^852\d{8}$/u.test(compact)) {
-    return `hk:${compact}`;
-  }
-  if (/^\d{8}$/u.test(compact)) {
-    return `hk:852${compact}`;
-  }
-  if (/^\+[1-9]\d{6,14}$/u.test(compact)) {
-    return `intl:${compact.slice(1)}`;
-  }
-  if (/^\d{7,15}$/u.test(compact)) {
-    return `intl:${compact}`;
-  }
-  return null;
+  return normalizeGuestPhoneContract(input);
 }
 
 interface GuestReconciliationProof {
@@ -451,6 +443,11 @@ function json(status: number, data: unknown, id: string): Response {
   );
 }
 
+function contractUnavailable(id: string, operation: string): Response {
+  console.error(`[attendance] ${operation} malformed data requestId=${id}`);
+  return problem(503, "UNAVAILABLE", "暫時無法處理請求。", id);
+}
+
 async function body<T>(request: Request): Promise<T | null> {
   try {
     return (await request.json()) as T;
@@ -463,23 +460,19 @@ async function readGuestCheckInInput(
   request: Request,
   id: string
 ): Promise<{ input: GuestCheckInInput; normalized: string } | Response> {
-  const input = await body<GuestCheckInBody>(request);
+  const raw = await body<GuestCheckInBody>(request);
+  const parsed = GuestCheckInBodySchema.safeParse(raw);
   if (
-    !input ||
-    typeof input.event_id !== "string" ||
-    typeof input.name !== "string" ||
-    typeof input.phone !== "string" ||
-    (input.method !== undefined &&
-      input.method !== "guest_qr_scan" &&
-      input.method !== "guest_manual_code") ||
-    (typeof input.entry !== "string" &&
-      typeof input.program_token !== "string" &&
-      typeof input.manual_code !== "string") ||
-    !input.name.trim()
+    !parsed.success ||
+    (typeof parsed.data.entry !== "string" &&
+      typeof parsed.data.program_token !== "string" &&
+      typeof parsed.data.manual_code !== "string") ||
+    !parsed.data.name.trim()
   ) {
     return problem(422, "VALIDATION", "姓名和電話都是必填資料。", id);
   }
-  if (input.name.trim().length > GUEST_NAME_MAX_LENGTH) {
+  const input = parsed.data;
+  if (!isValidGuestName(input.name)) {
     return problem(
       422,
       "VALIDATION",
@@ -513,10 +506,13 @@ function readGuestIdempotencyKey(
   request: Request,
   id: string
 ): string | null | Response {
-  const key = request.headers.get("Idempotency-Key")?.trim() || null;
-  return key && key.length > 200
-    ? problem(422, "VALIDATION", "Idempotency-Key 太長。", id)
-    : key;
+  const parsed = parseGuestIdempotencyKey(
+    request.headers.get("Idempotency-Key")
+  );
+  if (parsed === "invalid") {
+    return problem(422, "VALIDATION", "Idempotency-Key 太長。", id);
+  }
+  return parsed;
 }
 
 async function prepareGuestProof(
@@ -898,7 +894,11 @@ async function resolveNoEvents(
   if (latest && memberUserId) {
     enrolled = await hasActiveEnrollment(db, latest.program_id, memberUserId);
   }
-  return json(200, { events: [], latest: latest ?? null, enrolled }, id);
+  const noEventsData = { events: [], latest: latest ?? null, enrolled };
+  if (!ResolveNoEventsSchema.safeParse(noEventsData).success) {
+    return contractUnavailable(id, "resolve empty");
+  }
+  return json(200, noEventsData, id);
 }
 
 async function audit(
@@ -1521,17 +1521,11 @@ export async function handleResolve(
 ): Promise<Response> {
   const id = requestId();
   const url = new URL(request.url);
-  const token = url.searchParams.get("program_token");
-  const code = url.searchParams.get("manual_code");
-  const entry = url.searchParams.get("entry");
-  const eventId = url.searchParams.get("event");
-  // The scanner deep-link (?event=<id>) is an explicit pre-select and is
-  // mutually exclusive with the credential-shaped params; otherwise the
-  // caller is asking the server to resolve ambiguity it cannot.
-  const explicitCount = [token, code, eventId].filter(Boolean).length;
-  if (explicitCount > 1) {
+  const resolved = parseResolveQuery(url.searchParams);
+  if (!resolved.ok) {
     return problem(422, "VALIDATION", "請提供課程 QR 或聚會代碼。", id);
   }
+  const { token, code, entry, eventId } = resolved;
   // The typed-input path sends an ambiguous `entry`: the server resolves it
   // as a manual code first (globally unique per migration 0003), then as a
   // Program token. No client-side length heuristic decides identity.
@@ -1545,6 +1539,9 @@ export async function handleResolve(
     const { events, latest } = await resolveByEventId(env.DB, eventId);
     if (events.length === 0) {
       return resolveNoEvents(env.DB, latest, memberUserId, id);
+    }
+    if (!ResolveEventsSchema.safeParse({ events }).success) {
+      return contractUnavailable(id, "resolve");
     }
     return json(200, { events }, id);
   }
@@ -1560,6 +1557,9 @@ export async function handleResolve(
   const { events, latest } = await resolveLookup(env.DB, token, code, value);
   if (events.length === 0) {
     return resolveNoEvents(env.DB, latest, memberUserId, id);
+  }
+  if (!ResolveEventsSchema.safeParse({ events }).success) {
+    return contractUnavailable(id, "resolve");
   }
   return json(200, { events }, id);
 }
@@ -1863,7 +1863,11 @@ async function insertAttendance(
       // problem+json 409. The existing record's id is never returned to the
       // caller (Spec #244 dec 14 / #259 AC4: duplicate responses reveal no
       // existing guest identity or time — the id would be an oracle).
-      return json(200, { outcome: "duplicate" }, id);
+      const duplicateData = { outcome: "duplicate" };
+      if (!CheckInResponseSchema.safeParse(duplicateData).success) {
+        return contractUnavailable(id, "duplicate");
+      }
+      return json(200, duplicateData, id);
     }
     return problem(
       409,
@@ -1880,15 +1884,15 @@ async function insertAttendance(
     outcome: "SUCCESS",
     correlationId: id,
   });
-  return json(
-    201,
-    {
-      outcome: "success",
-      attendance_id: attendanceId,
-      checked_in_at: checkedInAt,
-    },
-    id
-  );
+  const successData = {
+    outcome: "success",
+    attendance_id: attendanceId,
+    checked_in_at: checkedInAt,
+  };
+  if (!CheckInResponseSchema.safeParse(successData).success) {
+    return contractUnavailable(id, "check-in");
+  }
+  return json(201, successData, id);
 }
 
 export async function handleSelfCheckIn(
@@ -1907,26 +1911,23 @@ export async function handleSelfCheckIn(
     manual_code?: unknown;
     entry?: unknown;
   }>(request);
+  const parsedSelf = SelfCheckInBodySchema.safeParse(input);
   if (
-    !input ||
-    typeof input.event_id !== "string" ||
-    (input.method !== undefined &&
-      input.method !== "self_qr_scan" &&
-      input.method !== "self_manual_code") ||
-    (typeof input.entry !== "string" &&
-      typeof input.program_token !== "string" &&
-      typeof input.manual_code !== "string")
+    !parsedSelf.success ||
+    (typeof parsedSelf.data.entry !== "string" &&
+      typeof parsedSelf.data.program_token !== "string" &&
+      typeof parsedSelf.data.manual_code !== "string")
   ) {
     return problem(422, "VALIDATION", "簽到資料無效。", id);
   }
-  const event = await findEvent(env.DB, input.event_id);
+  const event = await findEvent(env.DB, parsedSelf.data.event_id);
   if (!event) {
     return problem(404, "NOT_FOUND", "找不到聚會。", id);
   }
   const derived = await deriveCheckInMethod(
     env,
     event,
-    input,
+    parsedSelf.data,
     "self_manual_code",
     "self_qr_scan",
     id
@@ -2214,7 +2215,11 @@ export async function handleReconcileGuestCheckIn(
     idempotencyKey
   );
   const found = await guestProofExists(env.DB, event, proof);
-  return json(200, found ? { outcome: "found" } : { outcome: "not_found" }, id);
+  const reconcileData = found ? { outcome: "found" } : { outcome: "not_found" };
+  if (!ReconcileResponseSchema.safeParse(reconcileData).success) {
+    return contractUnavailable(id, "reconcile");
+  }
+  return json(200, reconcileData, id);
 }
 
 export async function handleListRoster(
@@ -2229,7 +2234,11 @@ export async function handleListRoster(
   }
   const { event } = operator;
   const roster = await loadAttendanceRoster(env.DB, event);
-  return json(200, { event, ...roster }, id);
+  const rosterData = { event, ...roster };
+  if (!RosterResponseSchema.safeParse(rosterData).success) {
+    return contractUnavailable(id, "roster");
+  }
+  return json(200, rosterData, id);
 }
 
 /** POST /api/v1/attendance/events/:eventId/materialize */
@@ -2347,7 +2356,11 @@ export async function handleMaterializeAttendance(
     });
     return problem(503, "UNAVAILABLE", "暫時無法更新出席名單。", id);
   }
-  return json(200, { event, ...roster, materialization }, id);
+  const materializeData = { event, ...roster, materialization };
+  if (!MaterializeResponseSchema.safeParse(materializeData).success) {
+    return contractUnavailable(id, "materialize");
+  }
+  return json(200, materializeData, id);
 }
 
 async function parseExcuseInput(
@@ -2361,28 +2374,28 @@ async function parseExcuseInput(
   if (
     !input ||
     typeof input.enrollment_id !== "string" ||
-    !input.enrollment_id.trim() ||
-    typeof input.reason !== "string" ||
-    !input.reason.trim()
+    !input.enrollment_id.trim()
   ) {
     return problem(422, "VALIDATION", "請輸入請假原因。", id);
   }
   const enrollmentId = input.enrollment_id.trim();
-  const reason = input.reason.trim();
-  if (reason.length > 500) {
-    return problem(422, "VALIDATION", "請假原因不可超過 500 個字元。", id);
-  }
-  const separator = reason.indexOf("：");
-  const category = (
-    separator === -1 ? reason : reason.slice(0, separator)
-  ).trim();
-  const details = separator === -1 ? "" : reason.slice(separator + 1).trim();
-  if (!EXCUSE_CATEGORIES.has(category) || (category === "其他" && !details)) {
-    return problem(422, "VALIDATION", "請選擇有效的請假原因。", id);
+  const parsedReason = parseExcuseReason(input.reason);
+  if (!parsedReason.ok) {
+    if (typeof input.reason === "string" && input.reason.trim().length > 500) {
+      return problem(422, "VALIDATION", "請假原因不可超過 500 個字元。", id);
+    }
+    if (
+      typeof input.reason === "string" &&
+      input.reason.trim() &&
+      input.reason.trim().length <= 500
+    ) {
+      return problem(422, "VALIDATION", "請選擇有效的請假原因。", id);
+    }
+    return problem(422, "VALIDATION", "請輸入請假原因。", id);
   }
   return {
     enrollmentId,
-    reason: details ? `${category}：${details}` : category,
+    reason: parsedReason.reason,
   };
 }
 
@@ -2525,15 +2538,15 @@ export async function handleRecordExcused(
       reason,
       correlationId: id,
     });
-    return json(
-      200,
-      {
-        outcome: "already_excused",
-        disposition_id: existing.disposition_id,
-        enrollment_id: enrollmentId,
-      },
-      id
-    );
+    const alreadyData = {
+      outcome: "already_excused",
+      disposition_id: existing.disposition_id,
+      enrollment_id: enrollmentId,
+    };
+    if (!ExcusedResponseSchema.safeParse(alreadyData).success) {
+      return contractUnavailable(id, "already-excused");
+    }
+    return json(200, alreadyData, id);
   }
 
   const dispositionId = existing?.disposition_id ?? crypto.randomUUID();
@@ -2619,15 +2632,15 @@ export async function handleRecordExcused(
     reason,
     correlationId: id,
   });
-  return json(
-    existing ? 200 : 201,
-    {
-      outcome: "excused",
-      disposition_id: dispositionId,
-      enrollment_id: enrollmentId,
-    },
-    id
-  );
+  const excusedData = {
+    outcome: "excused",
+    disposition_id: dispositionId,
+    enrollment_id: enrollmentId,
+  };
+  if (!ExcusedResponseSchema.safeParse(excusedData).success) {
+    return contractUnavailable(id, "excused");
+  }
+  return json(existing ? 200 : 201, excusedData, id);
 }
 
 /** GET /api/v1/attendance/events/:eventId/me — participant self projection. */
@@ -2716,16 +2729,16 @@ export async function handleListOwnAttendance(
           : eventWindowHasClosed(event)
             ? "Absent"
             : "Not Yet";
-  return json(
-    200,
-    {
-      event: participantEvent(event),
-      state,
-      attendance: activeAttendance,
-      disposition: projectedDisposition,
-    } satisfies AttendanceParticipantView,
-    id
-  );
+  const ownData = {
+    event: participantEvent(event),
+    state,
+    attendance: activeAttendance,
+    disposition: projectedDisposition,
+  } satisfies AttendanceParticipantView;
+  if (!OwnAttendanceResponseSchema.safeParse(ownData).success) {
+    return contractUnavailable(id, "own");
+  }
+  return json(200, ownData, id);
 }
 
 export async function handleAssistedCheckIn(
@@ -2744,19 +2757,12 @@ export async function handleAssistedCheckIn(
     return operator;
   }
   const { current, event } = operator;
-  const input = await body<{
-    member_user_id?: unknown;
-    method?: unknown;
-  }>(request);
-  if (
-    !input ||
-    typeof input.member_user_id !== "string" ||
-    (input.method !== undefined &&
-      input.method !== "leader_qr_scan" &&
-      input.method !== "leader_manual_search")
-  ) {
+  const rawInput = await body<unknown>(request);
+  const parsedAssisted = AssistedCheckInBodySchema.safeParse(rawInput);
+  if (!parsedAssisted.success) {
     return problem(422, "VALIDATION", "請選擇已報名成員。", id);
   }
+  const input = parsedAssisted.data;
   if (
     !(await hasActiveEnrollment(env.DB, event.program_id, input.member_user_id))
   ) {
@@ -2834,7 +2840,11 @@ export async function handleSearchMembers(
   )
     .bind(event.program_id, `%${query}%`, `%${query}%`, query)
     .all<AttendanceMember>();
-  return json(200, { members: result.results ?? [] }, id);
+  const membersData = { members: result.results ?? [] };
+  if (!AttendanceMembersSchema.safeParse(membersData).success) {
+    return contractUnavailable(id, "members");
+  }
+  return json(200, membersData, id);
 }
 /**
  * Resolve active Programs the actor may manage through the normalized
@@ -2974,7 +2984,11 @@ export async function handleListManageableEvents(
     events.push(...(result.results ?? []));
   }
   events.sort((left, right) => right.starts_at.localeCompare(left.starts_at));
-  return json(200, { events: events.slice(0, 50) }, id);
+  const eventsData = { events: events.slice(0, 50) };
+  if (!ManageableEventsSchema.safeParse(eventsData).success) {
+    return contractUnavailable(id, "events");
+  }
+  return json(200, eventsData, id);
 }
 
 /**
@@ -3029,7 +3043,11 @@ export async function handleListScannerEvents(
     events.push(...(result.results ?? []));
   }
   events.sort((left, right) => right.starts_at.localeCompare(left.starts_at));
-  return json(200, { events: events.slice(0, 50) }, id);
+  const eventsData = { events: events.slice(0, 50) };
+  if (!ManageableEventsSchema.safeParse(eventsData).success) {
+    return contractUnavailable(id, "events");
+  }
+  return json(200, eventsData, id);
 }
 
 export async function handleVoidAttendance(
@@ -3043,7 +3061,8 @@ export async function handleVoidAttendance(
     return current;
   }
   const input = await body<{ reason?: unknown }>(request);
-  if (!input || typeof input.reason !== "string" || !input.reason.trim()) {
+  const voidReason = parseVoidReason(input?.reason);
+  if (voidReason === null) {
     return problem(422, "VALIDATION", "取消簽到需要原因。", id);
   }
   const existing = await env.DB.prepare(
@@ -3070,22 +3089,23 @@ export async function handleVoidAttendance(
       reason: "ALREADY_VOIDED",
       correlationId: id,
     });
-    return json(
-      200,
-      { outcome: "already_voided", attendance_id: attendanceId },
-      id
-    );
+    const duplicateVoidData = {
+      outcome: "already_voided",
+
+      attendance_id: attendanceId,
+    };
+
+    if (!VoidResponseSchema.safeParse(duplicateVoidData).success) {
+      return contractUnavailable(id, "void duplicate");
+    }
+
+    return json(200, duplicateVoidData, id);
   }
   const updateResult = await env.DB.prepare(
     `UPDATE attendances SET status = 'Voided', voided_by = ?, voided_at = ?, void_reason = ?
         WHERE attendance_id = ? AND status = 'Active'`
   )
-    .bind(
-      current.user_id,
-      new Date().toISOString(),
-      input.reason.trim(),
-      attendanceId
-    )
+    .bind(current.user_id, new Date().toISOString(), voidReason, attendanceId)
     .run();
   if ((updateResult.meta?.changes ?? 0) === 0) {
     const latest = await env.DB.prepare(
@@ -3103,11 +3123,17 @@ export async function handleVoidAttendance(
         reason: "ALREADY_VOIDED",
         correlationId: id,
       });
-      return json(
-        200,
-        { outcome: "already_voided", attendance_id: attendanceId },
-        id
-      );
+      const duplicateVoidData = {
+        outcome: "already_voided",
+
+        attendance_id: attendanceId,
+      };
+
+      if (!VoidResponseSchema.safeParse(duplicateVoidData).success) {
+        return contractUnavailable(id, "void duplicate");
+      }
+
+      return json(200, duplicateVoidData, id);
     }
     return problem(404, "NOT_FOUND", "找不到簽到記錄。", id);
   }
@@ -3117,10 +3143,14 @@ export async function handleVoidAttendance(
     entityType: "Attendance",
     entityId: attendanceId,
     outcome: "SUCCESS",
-    reason: input.reason.trim(),
+    reason: voidReason,
     correlationId: id,
   });
-  return json(200, { outcome: "voided", attendance_id: attendanceId }, id);
+  const voidedData = { outcome: "voided", attendance_id: attendanceId };
+  if (!VoidResponseSchema.safeParse(voidedData).success) {
+    return contractUnavailable(id, "void");
+  }
+  return json(200, voidedData, id);
 }
 
 export async function handleCorrectGuest(
@@ -3133,22 +3163,17 @@ export async function handleCorrectGuest(
   if (current instanceof Response) {
     return current;
   }
-  const input = await body<{
-    name?: unknown;
-    phone?: unknown;
-    reason?: unknown;
-  }>(request);
+  const rawInput = await body<unknown>(request);
+  const parsedInput = GuestCorrectionBodySchema.safeParse(rawInput);
   if (
-    !input ||
-    typeof input.name !== "string" ||
-    typeof input.phone !== "string" ||
-    typeof input.reason !== "string" ||
-    !input.name.trim() ||
-    !input.reason.trim()
+    !parsedInput.success ||
+    !parsedInput.data.name.trim() ||
+    !parsedInput.data.reason.trim()
   ) {
     return problem(422, "VALIDATION", "姓名、電話和原因都是必填資料。", id);
   }
-  if (input.name.trim().length > GUEST_NAME_MAX_LENGTH) {
+  const input = parsedInput.data;
+  if (!isValidGuestName(input.name)) {
     return problem(
       422,
       "VALIDATION",
@@ -3224,5 +3249,9 @@ export async function handleCorrectGuest(
     reason: input.reason.trim(),
     correlationId: id,
   });
-  return json(200, { outcome: "corrected", attendance_id: attendanceId }, id);
+  const correctedData = { outcome: "corrected", attendance_id: attendanceId };
+  if (!GuestCorrectionResponseSchema.safeParse(correctedData).success) {
+    return contractUnavailable(id, "guest correction");
+  }
+  return json(200, correctedData, id);
 }

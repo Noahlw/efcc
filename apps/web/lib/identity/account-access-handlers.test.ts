@@ -662,4 +662,50 @@ describe("#486 Account Access handlers", () => {
     );
     expect(bulkResponse.status).toBe(404);
   });
+
+  test("rejects out-of-range search pagination with 422", async () => {
+    const headers = { Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}` };
+    for (const query of ["offset=-1", "limit=0", "limit=101", "limit=abc"]) {
+      const response = await worker.fetch(
+        request(`/api/v1/identity/accounts?q=x&${query}`, { headers }),
+        testEnv()
+      );
+      expect(response.status).toBe(422);
+    }
+  });
+
+  test("rejects assignment bodies with unknown keys", async () => {
+    const response = await worker.fetch(
+      request(`/api/v1/identity/accounts/${STAFF}/assignments`, {
+        method: "POST",
+        headers: {
+          Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": "account-access-extra-key",
+        },
+        body: { base_revision: 1, role_definition_ids: [], actor_user_id: "x" },
+      }),
+      testEnv()
+    );
+    expect(response.status).toBe(422);
+  });
+
+  test("rejects lifecycle bodies with unknown keys", async () => {
+    const response = await worker.fetch(
+      request(
+        `/api/v1/identity/role-definitions/${DEPARTMENT_ROLE}/lifecycle`,
+        {
+          method: "POST",
+          headers: {
+            Cookie: `${ACCESS_COOKIE_NAME}=${adminCookie}`,
+            "Content-Type": "application/json",
+            "Idempotency-Key": "account-access-lifecycle-extra",
+          },
+          body: { action: "archive", base_revision: 1, extra: true },
+        }
+      ),
+      testEnv()
+    );
+    expect(response.status).toBe(422);
+  });
 });

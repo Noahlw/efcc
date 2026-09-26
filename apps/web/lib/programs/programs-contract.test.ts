@@ -166,7 +166,6 @@ async function createProgram(
         description: "Representative Worker Contract Gate program",
         category: "T05",
         behavior_type: "Recurring",
-        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "MemberRequest",
       },

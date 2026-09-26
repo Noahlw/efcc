@@ -102,7 +102,6 @@ async function createProgram(
         name,
         category: "E2E Category",
         behavior_type: behaviorType,
-        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "MemberRequest",
       },
@@ -363,7 +362,7 @@ describe("MUI-02: Program lifecycle and behavior", () => {
     assert.equal(body.code, "VALIDATION");
     assert.equal(
       body.detail,
-      "Programs cannot be created directly in the Archived state."
+      "Programs must be created as Draft; update lifecycle after creation."
     );
     assert.ok(
       !body.detail?.includes("transition"),
@@ -371,7 +370,7 @@ describe("MUI-02: Program lifecycle and behavior", () => {
     );
   });
 
-  test("create ignores alternate lifecycle and discoverability values", async () => {
+  test("create rejects a non-Draft lifecycle with an honest validation message", async () => {
     const admin = await access("alice", "alice-secret");
     const departmentId = await createDepartment(
       admin,
@@ -383,7 +382,7 @@ describe("MUI-02: Program lifecycle and behavior", () => {
         cookie: admin,
         body: {
           name: `Guarded-${Date.now()}`,
-          description: "Creation must not publish or list",
+          description: "Creation must start as Draft",
           category: "E2E Category",
           behavior_type: "OneOff",
           lifecycle: "Active",
@@ -393,25 +392,16 @@ describe("MUI-02: Program lifecycle and behavior", () => {
       }),
       testEnv()
     );
-    assert.equal(response.status, 201);
+    assert.equal(response.status, 422);
     const body = (await response.json()) as {
-      data: {
-        program: {
-          program_id: string;
-          lifecycle: string;
-          discoverability: string;
-        };
-      };
+      code: string;
+      detail?: string;
     };
-    assert.equal(body.data.program.lifecycle, "Draft");
-    assert.equal(body.data.program.discoverability, "Unlisted");
-    const row = await testDb()
-      .prepare(
-        "SELECT lifecycle, discoverability FROM programs WHERE program_id = ?"
-      )
-      .bind(body.data.program.program_id)
-      .first<{ lifecycle: string; discoverability: string }>();
-    assert.deepEqual(row, { lifecycle: "Draft", discoverability: "Unlisted" });
+    assert.equal(body.code, "VALIDATION");
+    assert.equal(
+      body.detail,
+      "Programs must be created as Draft; update lifecycle after creation."
+    );
   });
 
   test("cross-scope mutation is denied and leaves the Program unchanged", async () => {

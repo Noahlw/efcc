@@ -650,7 +650,6 @@ export interface CreateProgramCommand {
   description: string;
   category?: string;
   behavior_type: "Recurring" | "OneOff";
-  lifecycle?: ProgramLifecycle;
   discoverability?: "Listed" | "Unlisted";
   enrollment_mode?: "MemberRequest" | "ManagerOnly";
   display_order?: number;
@@ -1924,6 +1923,7 @@ export class DepartmentWorkspace {
   async createProgram(
     ctx: AuthorizationContext,
     cmd: CreateProgramCommand,
+    requestedLifecycle: unknown,
     correlationId: string | null
   ): Promise<ProgramRow> {
     await this.ensure(ctx, CAPABILITY.PROGRAM_MANAGE, {
@@ -1936,25 +1936,21 @@ export class DepartmentWorkspace {
     if (!(await this.isModuleEnabled(cmd.department_id))) {
       throw new AuthorizationDeniedError(CAPABILITY.PROGRAM_MANAGE);
     }
-    if (cmd.lifecycle === "Archived") {
-      // Create-time validation, not a lifecycle transition: Draft is merely
-      // the default create state, so the transition-pair message would lie.
-      throw new InvalidProgramLifecycleError(
-        "Draft",
-        "Archived",
-        "Programs cannot be created directly in the Archived state."
-      );
-    }
-    if (cmd.lifecycle === "Active") {
-      await this.ensure(ctx, CAPABILITY.PROGRAM_PUBLISH, {
-        departmentId: cmd.department_id,
-      });
-    }
     const existing = await this.store.listProgramsForDepartment(
       cmd.department_id
     );
     if (existing.some((p) => p.name === cmd.name)) {
       throw new DuplicateProgramNameError(cmd.name);
+    }
+    if (requestedLifecycle !== undefined && requestedLifecycle !== "Draft") {
+      // Owner decision: creation always starts Draft; activation is a
+      // separate PATCH. Validated here (after authorization) so denied
+      // actors still receive 403, never a validation-shaped 422.
+      throw new InvalidProgramLifecycleError(
+        "Draft",
+        "Draft",
+        "Programs must be created as Draft; update lifecycle after creation."
+      );
     }
     const now = new Date().toISOString();
     const row = await this.store.createProgram({
