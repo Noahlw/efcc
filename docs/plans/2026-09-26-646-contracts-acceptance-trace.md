@@ -466,3 +466,6 @@ Worker build, static export, and the consuming suites.
   headers themselves; the global `HttpResponse.json` normalization is removed
   so missing headers fail at the client boundary. Identity geometry route
   fixtures also include the matching headers.
+- The Programs management date helper advances to the target month when a
+  future date falls outside the currently rendered calendar month, removing a
+  month-boundary assumption from the browser acceptance journey.
