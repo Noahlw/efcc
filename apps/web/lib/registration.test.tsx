@@ -64,7 +64,7 @@ describe(RegistrationForm, () => {
         };
         return HttpResponse.json(
           { requestId: "rid-1", data: { status: "pending" } },
-          { status: 200 }
+          { status: 200, headers: { "X-Request-Id": "rid-1" } }
         );
       })
     );
@@ -187,7 +187,7 @@ describe(RegistrationForm, () => {
     release?.(
       HttpResponse.json(
         { requestId: "rid-busy", data: { status: "pending" } },
-        { status: 200 }
+        { status: 200, headers: { "X-Request-Id": "rid-busy" } }
       )
     );
     await expect(
@@ -252,7 +252,7 @@ describe(RegistrationForm, () => {
       http.post("/api/v1/auth/register", () =>
         HttpResponse.json(
           { requestId: "rid-3", data: { status: "pending" } },
-          { status: 200 }
+          { status: 200, headers: { "X-Request-Id": "rid-3" } }
         )
       )
     );

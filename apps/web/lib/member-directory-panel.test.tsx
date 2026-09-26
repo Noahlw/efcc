@@ -123,10 +123,13 @@ const MEMBER_ROWS: MemberRow[] = [
 ];
 
 function membersResponse(members: MemberRow[]) {
-  return HttpResponse.json({
-    requestId: "rid-member-directory",
-    data: { members },
-  });
+  return HttpResponse.json(
+    {
+      requestId: "rid-member-directory",
+      data: { members },
+    },
+    { headers: { "X-Request-Id": "rid-member-directory" } }
+  );
 }
 
 function problemResponse(status: number, code: string, detail: string) {

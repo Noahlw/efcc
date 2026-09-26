@@ -99,20 +99,26 @@ describe("Assisted Scanner panel", () => {
   test("pins the selected Program/Event and checks in a searched enrolled member", async () => {
     server.use(
       http.get("/api/v1/attendance/events/event-1/members", () =>
-        HttpResponse.json({
-          requestId: "rid-members",
-          data: { members: [MEMBER] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-members",
+            data: { members: [MEMBER] },
+          },
+          { headers: { "X-Request-Id": "rid-members" } }
+        )
       ),
       http.post("/api/v1/attendance/events/event-1/check-in", () =>
-        HttpResponse.json({
-          requestId: "rid-checkin",
-          data: {
-            outcome: "success",
-            attendance_id: "attendance-1",
-            checked_in_at: "2026-08-13T11:35:00.000Z",
+        HttpResponse.json(
+          {
+            requestId: "rid-checkin",
+            data: {
+              outcome: "success",
+              attendance_id: "attendance-1",
+              checked_in_at: "2026-08-13T11:35:00.000Z",
+            },
           },
-        })
+          { headers: { "X-Request-Id": "rid-checkin" } }
+        )
       )
     );
     const user = userEvent.setup();
@@ -147,10 +153,13 @@ describe("Assisted Scanner panel", () => {
   test("searches an enrolled member by phone", async () => {
     server.use(
       http.get("/api/v1/attendance/events/event-1/members", () =>
-        HttpResponse.json({
-          requestId: "rid-phone",
-          data: { members: [MEMBER] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-phone",
+            data: { members: [MEMBER] },
+          },
+          { headers: { "X-Request-Id": "rid-phone" } }
+        )
       )
     );
     const user = userEvent.setup();
@@ -186,10 +195,13 @@ describe("Assisted Scanner panel", () => {
     await waitFor(() => expect(search).toBeDisabled());
     expect(search).toHaveAttribute("aria-busy", "true");
     response.resolve(
-      HttpResponse.json({
-        requestId: "rid-empty",
-        data: { members: [] },
-      })
+      HttpResponse.json(
+        {
+          requestId: "rid-empty",
+          data: { members: [] },
+        },
+        { headers: { "X-Request-Id": "rid-empty" } }
+      )
     );
     await waitFor(() => expect(search).not.toBeDisabled());
   });
@@ -197,10 +209,13 @@ describe("Assisted Scanner panel", () => {
   test("shows the empty state when member search returns no matches", async () => {
     server.use(
       http.get("/api/v1/attendance/events/event-1/members", () =>
-        HttpResponse.json({
-          requestId: "rid-empty",
-          data: { members: [] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-empty",
+            data: { members: [] },
+          },
+          { headers: { "X-Request-Id": "rid-empty" } }
+        )
       )
     );
     const user = userEvent.setup();
@@ -287,15 +302,22 @@ describe("Assisted Scanner panel", () => {
   test("QR scans with multiple matching members stop before check-in", async () => {
     server.use(
       http.get("/api/v1/attendance/events/event-1/members", () =>
-        HttpResponse.json({
-          requestId: "rid-ambiguous",
-          data: {
-            members: [
-              MEMBER,
-              { ...MEMBER, user_id: "member-2", qr_code_string: "MEMBER-QR-2" },
-            ],
+        HttpResponse.json(
+          {
+            requestId: "rid-ambiguous",
+            data: {
+              members: [
+                MEMBER,
+                {
+                  ...MEMBER,
+                  user_id: "member-2",
+                  qr_code_string: "MEMBER-QR-2",
+                },
+              ],
+            },
           },
-        })
+          { headers: { "X-Request-Id": "rid-ambiguous" } }
+        )
       )
     );
     const stop = vi.fn<() => void>();
@@ -331,10 +353,13 @@ describe("Assisted Scanner panel", () => {
   test("changing context clears the search result and stops using the old Event", async () => {
     server.use(
       http.get("/api/v1/attendance/events/event-1/members", () =>
-        HttpResponse.json({
-          requestId: "rid-members",
-          data: { members: [MEMBER] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-members",
+            data: { members: [MEMBER] },
+          },
+          { headers: { "X-Request-Id": "rid-members" } }
+        )
       )
     );
     const user = userEvent.setup();
@@ -405,10 +430,13 @@ describe("Assisted Scanner panel", () => {
     const onAuthRequired = vi.fn();
     server.use(
       http.get("/api/v1/attendance/events/event-1/members", () =>
-        HttpResponse.json({
-          requestId: "rid-members",
-          data: { members: [MEMBER] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-members",
+            data: { members: [MEMBER] },
+          },
+          { headers: { "X-Request-Id": "rid-members" } }
+        )
       ),
       http.post("/api/v1/attendance/events/event-1/check-in", () =>
         HttpResponse.json(

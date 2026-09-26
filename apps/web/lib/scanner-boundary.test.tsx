@@ -57,7 +57,10 @@ const EVENT: AttendanceEvent = {
 
 function eventsHandler(events: AttendanceEvent[]) {
   return http.get("/api/v1/attendance/scanner-events", () =>
-    HttpResponse.json({ requestId: "rid-events", data: { events } })
+    HttpResponse.json(
+      { requestId: "rid-events", data: { events } },
+      { headers: { "X-Request-Id": "rid-events" } }
+    )
   );
 }
 

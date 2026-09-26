@@ -115,48 +115,55 @@ const SAMPLE_PROGRAM: HomeProgram = {
 
 const server = setupServer(
   http.get("/api/v1/home", () =>
-    HttpResponse.json({
-      requestId: "r-home-test",
-      data: {
-        featuredEvent: {
-          eventId: "e-101",
-          programId: "p-disc",
-          programTitle: "門徒訓練基礎課",
-          title: "第三課聚會",
-          startsAt: "2026-08-20T11:30:00.000Z",
-          endsAt: "2026-08-20T13:00:00.000Z",
-          location: "二樓禮堂",
-          status: "Active",
-          isEnrolled: true,
-        },
-        announcement: {
-          contentId: "c-001",
-          version: 1,
-          title: "本週崇拜及聚會安排",
-          summary: "請留意本週三晚聚會改於二樓禮堂舉行。其他聚會時間維持不變。",
-          bodyMarkdown: null,
-          ctaLabel: "聚會場地資料",
-          ctaUrl: "https://example.com/venue-details",
-          imageUrl: null,
-          imageAlt: null,
-          publishedAt: "8月15日",
-        },
-        exploreProgram: {
-          programId: "p-intro",
-          title: "慕道入門課程",
-          summary: "現正接受報名 · 9月7日開始",
-          category: "Faith",
-          enrollmentType: "Open",
-          nextEventStartAt: "2026-09-07T02:00:00.000Z",
+    HttpResponse.json(
+      {
+        requestId: "r-home-test",
+        data: {
+          featuredEvent: {
+            eventId: "e-101",
+            programId: "p-disc",
+            programTitle: "門徒訓練基礎課",
+            title: "第三課聚會",
+            startsAt: "2026-08-20T11:30:00.000Z",
+            endsAt: "2026-08-20T13:00:00.000Z",
+            location: "二樓禮堂",
+            status: "Active",
+            isEnrolled: true,
+          },
+          announcement: {
+            contentId: "c-001",
+            version: 1,
+            title: "本週崇拜及聚會安排",
+            summary:
+              "請留意本週三晚聚會改於二樓禮堂舉行。其他聚會時間維持不變。",
+            bodyMarkdown: null,
+            ctaLabel: "聚會場地資料",
+            ctaUrl: "https://example.com/venue-details",
+            imageUrl: null,
+            imageAlt: null,
+            publishedAt: "8月15日",
+          },
+          exploreProgram: {
+            programId: "p-intro",
+            title: "慕道入門課程",
+            summary: "現正接受報名 · 9月7日開始",
+            category: "Faith",
+            enrollmentType: "Open",
+            nextEventStartAt: "2026-09-07T02:00:00.000Z",
+          },
         },
       },
-    })
+      { headers: { "X-Request-Id": "r-home-test" } }
+    )
   ),
   http.get("/api/v1/programs/catalog", () =>
-    HttpResponse.json({
-      requestId: "r-catalog",
-      data: { catalog: [] },
-    })
+    HttpResponse.json(
+      {
+        requestId: "r-catalog",
+        data: { catalog: [] },
+      },
+      { headers: { "X-Request-Id": "r-catalog" } }
+    )
   )
 );
 
@@ -456,14 +463,17 @@ describe("HomeView Component", () => {
     expect(screen.queryByTestId("home-empty-state")).not.toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     pending.resolve(
-      HttpResponse.json({
-        requestId: "r-home-empty",
-        data: {
-          featuredEvent: null,
-          announcement: null,
-          exploreProgram: null,
+      HttpResponse.json(
+        {
+          requestId: "r-home-empty",
+          data: {
+            featuredEvent: null,
+            announcement: null,
+            exploreProgram: null,
+          },
         },
-      })
+        { headers: { "X-Request-Id": "r-home-empty" } }
+      )
     );
     await expect(
       screen.findByTestId("home-empty-state")
@@ -488,14 +498,17 @@ describe("HomeView Component", () => {
 
     server.use(
       http.get("/api/v1/home", () =>
-        HttpResponse.json({
-          requestId: "r-home-retry",
-          data: {
-            featuredEvent: null,
-            announcement: null,
-            exploreProgram: null,
+        HttpResponse.json(
+          {
+            requestId: "r-home-retry",
+            data: {
+              featuredEvent: null,
+              announcement: null,
+              exploreProgram: null,
+            },
           },
-        })
+          { headers: { "X-Request-Id": "r-home-retry" } }
+        )
       )
     );
     await user.click(screen.getByRole("button", { name: COPY.home.retry }));

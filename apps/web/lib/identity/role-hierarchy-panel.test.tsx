@@ -205,10 +205,13 @@ const VIEW: RoleHierarchyView = {
 };
 
 function hierarchyResponse(overrides: Partial<RoleHierarchyView> = {}) {
-  return HttpResponse.json({
-    requestId: "rid-role-hierarchy",
-    data: { ...VIEW, ...overrides },
-  });
+  return HttpResponse.json(
+    {
+      requestId: "rid-role-hierarchy",
+      data: { ...VIEW, ...overrides },
+    },
+    { headers: { "X-Request-Id": "rid-role-hierarchy" } }
+  );
 }
 
 describe(RoleHierarchyPanel, () => {
@@ -423,15 +426,18 @@ describe(RoleHierarchyPanel, () => {
     server.use(
       http.get("/api/v1/identity/roles", () => hierarchyResponse()),
       http.patch(`/api/v1/identity/roles/${MANAGER_ROLE}/name`, () =>
-        HttpResponse.json({
-          requestId: "rid-rename",
-          data: {
-            roleDefinitionId: MANAGER_ROLE,
-            label: "成人部門主管",
-            revision: 5,
-            idempotent: false,
+        HttpResponse.json(
+          {
+            requestId: "rid-rename",
+            data: {
+              roleDefinitionId: MANAGER_ROLE,
+              label: "成人部門主管",
+              revision: 5,
+              idempotent: false,
+            },
           },
-        })
+          { headers: { "X-Request-Id": "rid-rename" } }
+        )
       )
     );
     render(
@@ -591,19 +597,22 @@ describe(RoleHierarchyPanel, () => {
       http.get("/api/v1/identity/roles", () => hierarchyResponse()),
       http.post("/api/v1/identity/role-definitions", async ({ request }) => {
         createBody = await request.json();
-        return HttpResponse.json({
-          requestId: "rid-create",
-          data: {
-            roleDefinitionId: "018f3b8a-0000-7000-8000-1000000000aa",
-            categoryKey: "Department",
-            label: "成區新角色",
-            scopeKind: "Department",
-            scopeId: "018f3b8a-0000-7000-8000-000000000002",
-            position: 12,
-            revision: 5,
-            idempotent: false,
+        return HttpResponse.json(
+          {
+            requestId: "rid-create",
+            data: {
+              roleDefinitionId: "018f3b8a-0000-7000-8000-1000000000aa",
+              categoryKey: "Department",
+              label: "成區新角色",
+              scopeKind: "Department",
+              scopeId: "018f3b8a-0000-7000-8000-000000000002",
+              position: 12,
+              revision: 5,
+              idempotent: false,
+            },
           },
-        });
+          { headers: { "X-Request-Id": "rid-create" } }
+        );
       }),
       http.get("/api/v1/identity/roles", () => hierarchyResponse())
     );
@@ -648,15 +657,18 @@ describe(RoleHierarchyPanel, () => {
       http.get("/api/v1/identity/roles", () => hierarchyResponse()),
       http.patch("/api/v1/identity/roles/order", async ({ request }) => {
         reorderBody = await request.json();
-        return HttpResponse.json({
-          requestId: "rid-reorder",
-          data: {
-            categoryKey: "Department",
-            orderedRoleDefinitionIds: [MANAGER_ROLE, "sibling-b"],
-            revision: 5,
-            idempotent: false,
+        return HttpResponse.json(
+          {
+            requestId: "rid-reorder",
+            data: {
+              categoryKey: "Department",
+              orderedRoleDefinitionIds: [MANAGER_ROLE, "sibling-b"],
+              revision: 5,
+              idempotent: false,
+            },
           },
-        });
+          { headers: { "X-Request-Id": "rid-reorder" } }
+        );
       })
     );
     render(
@@ -714,15 +726,18 @@ describe(RoleHierarchyPanel, () => {
         }
         const body = await request.json();
         keepMineBody = body;
-        return HttpResponse.json({
-          requestId: "rid-reorder-retry",
-          data: {
-            categoryKey: "Department",
-            orderedRoleDefinitionIds: [MANAGER_ROLE, "sibling-b"],
-            revision: 10,
-            idempotent: false,
+        return HttpResponse.json(
+          {
+            requestId: "rid-reorder-retry",
+            data: {
+              categoryKey: "Department",
+              orderedRoleDefinitionIds: [MANAGER_ROLE, "sibling-b"],
+              revision: 10,
+              idempotent: false,
+            },
           },
-        });
+          { headers: { "X-Request-Id": "rid-reorder-retry" } }
+        );
       })
     );
     render(
@@ -796,18 +811,21 @@ describe(RoleHierarchyPanel, () => {
         `/api/v1/identity/role-definitions/${MANAGER_ROLE}/scope`,
         async ({ request }) => {
           scopeBody = await request.json();
-          return HttpResponse.json({
-            requestId: "rid-scope",
-            data: {
-              roleDefinitionId: MANAGER_ROLE,
-              categoryKey: "Department",
-              scopeKind: "Department",
-              scopeId: "018f3b8a-0000-7000-8000-000000000002",
-              position: 12,
-              revision: 5,
-              idempotent: false,
+          return HttpResponse.json(
+            {
+              requestId: "rid-scope",
+              data: {
+                roleDefinitionId: MANAGER_ROLE,
+                categoryKey: "Department",
+                scopeKind: "Department",
+                scopeId: "018f3b8a-0000-7000-8000-000000000002",
+                position: 12,
+                revision: 5,
+                idempotent: false,
+              },
             },
-          });
+            { headers: { "X-Request-Id": "rid-scope" } }
+          );
         }
       )
     );
@@ -1039,15 +1057,18 @@ describe(RoleHierarchyPanel, () => {
       http.get("/api/v1/identity/roles", () => hierarchyResponse()),
       http.patch("/api/v1/identity/roles/order", async ({ request }) => {
         reorderBody = await request.json();
-        return HttpResponse.json({
-          requestId: "rid-keyboard-reorder",
-          data: {
-            categoryKey: "Department",
-            orderedRoleDefinitionIds: [MANAGER_ROLE, "sibling-b"],
-            revision: 6,
-            idempotent: false,
+        return HttpResponse.json(
+          {
+            requestId: "rid-keyboard-reorder",
+            data: {
+              categoryKey: "Department",
+              orderedRoleDefinitionIds: [MANAGER_ROLE, "sibling-b"],
+              revision: 6,
+              idempotent: false,
+            },
           },
-        });
+          { headers: { "X-Request-Id": "rid-keyboard-reorder" } }
+        );
       })
     );
     render(

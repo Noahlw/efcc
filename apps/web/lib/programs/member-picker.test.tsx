@@ -56,10 +56,13 @@ describe("member picker keyboard navigation", () => {
           query === "chan"
             ? MEMBERS
             : MEMBERS.filter((member) => member.username.includes(query ?? ""));
-        return HttpResponse.json({
-          requestId: "rid-1",
-          data: { members },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-1",
+            data: { members },
+          },
+          { headers: { "X-Request-Id": "rid-1" } }
+        );
       })
     );
     const user = userEvent.setup();
@@ -103,7 +106,10 @@ describe("member picker keyboard navigation", () => {
   test("Escape closes the list without selecting", async () => {
     server.use(
       http.get("/api/v1/programs/prog-1/member-options", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { members: MEMBERS } })
+        HttpResponse.json(
+          { requestId: "rid-1", data: { members: MEMBERS } },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       )
     );
     const user = userEvent.setup();
@@ -126,7 +132,10 @@ describe("member picker keyboard navigation", () => {
   test("uses the shared screen field and row foundations", async () => {
     server.use(
       http.get("/api/v1/programs/prog-1/member-options", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { members: MEMBERS } })
+        HttpResponse.json(
+          { requestId: "rid-1", data: { members: MEMBERS } },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       )
     );
     const user = userEvent.setup();

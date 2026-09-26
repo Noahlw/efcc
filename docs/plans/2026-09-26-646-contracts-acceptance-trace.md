@@ -462,3 +462,7 @@ Worker build, static export, and the consuming suites.
   official network/API documentation.
 - Existing static-shell Playwright Home/catalog route fixtures now provide
   matching `X-Request-Id` headers to represent the real Worker contract.
+- All component MSW success-envelope fixtures now declare matching transport
+  headers themselves; the global `HttpResponse.json` normalization is removed
+  so missing headers fail at the client boundary. Identity geometry route
+  fixtures also include the matching headers.

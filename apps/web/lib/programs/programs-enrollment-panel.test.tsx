@@ -82,18 +82,27 @@ function requestHandlers(
 ) {
   return [
     http.get(`/api/v1/programs/${programId}/enrollment-requests`, () =>
-      HttpResponse.json({ requestId: "rid-1", data: { requests } })
+      HttpResponse.json(
+        { requestId: "rid-1", data: { requests } },
+        { headers: { "X-Request-Id": "rid-1" } }
+      )
     ),
     http.get(`/api/v1/programs/${programId}/enrollments`, () =>
-      HttpResponse.json({ requestId: "rid-2", data: { enrollments } })
+      HttpResponse.json(
+        { requestId: "rid-2", data: { enrollments } },
+        { headers: { "X-Request-Id": "rid-2" } }
+      )
     ),
     http.get(`/api/v1/programs/${programId}/member-options`, () =>
-      HttpResponse.json({
-        requestId: "rid-members",
-        data: {
-          members: [{ user_id: "U002", name: "Bob Lee", username: "bob" }],
+      HttpResponse.json(
+        {
+          requestId: "rid-members",
+          data: {
+            members: [{ user_id: "U002", name: "Bob Lee", username: "bob" }],
+          },
         },
-      })
+        { headers: { "X-Request-Id": "rid-members" } }
+      )
     ),
   ];
 }
@@ -114,19 +123,25 @@ describe("PRG-03 enrollment panel", () => {
       ...requestHandlers("prog-1", requests, enrollments),
       http.post("/api/v1/programs/prog-1/enrollment-requests", () => {
         requests.push(PENDING_BOB);
-        return HttpResponse.json({
-          requestId: "rid-3",
-          data: { request: PENDING_BOB },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-3",
+            data: { request: PENDING_BOB },
+          },
+          { headers: { "X-Request-Id": "rid-3" } }
+        );
       }),
       http.post(
         "/api/v1/programs/prog-1/enrollment-requests/req-1/withdraw",
         () => {
           requests[0] = { ...requests[0], status: "Withdrawn" };
-          return HttpResponse.json({
-            requestId: "rid-4",
-            data: { request: requests[0] },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-4",
+              data: { request: requests[0] },
+            },
+            { headers: { "X-Request-Id": "rid-4" } }
+          );
         }
       )
     );
@@ -196,10 +211,13 @@ describe("PRG-03 enrollment panel", () => {
             status: "Approved",
             decision_note: "歡迎",
           };
-          return HttpResponse.json({
-            requestId: "rid-3",
-            data: { request: requests[0], enrollment: null },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-3",
+              data: { request: requests[0], enrollment: null },
+            },
+            { headers: { "X-Request-Id": "rid-3" } }
+          );
         }
       ),
       http.post(
@@ -208,10 +226,13 @@ describe("PRG-03 enrollment panel", () => {
           const body = (await request.json()) as { action: string };
           expect(body.action).toBe("Rejected");
           requests[1] = { ...requests[1], status: "Rejected" };
-          return HttpResponse.json({
-            requestId: "rid-4",
-            data: { request: requests[1], enrollment: null },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-4",
+              data: { request: requests[1], enrollment: null },
+            },
+            { headers: { "X-Request-Id": "rid-4" } }
+          );
         }
       )
     );
@@ -251,10 +272,13 @@ describe("PRG-03 enrollment panel", () => {
         const body = (await request.json()) as { member_user_id: string };
         expect(body.member_user_id).toBe("U002");
         enrollments.push(ACTIVE_ENROLLMENT);
-        return HttpResponse.json({
-          requestId: "rid-3",
-          data: { enrollment: ACTIVE_ENROLLMENT },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-3",
+            data: { enrollment: ACTIVE_ENROLLMENT },
+          },
+          { headers: { "X-Request-Id": "rid-3" } }
+        );
       })
     );
     const user = userEvent.setup();
@@ -287,10 +311,13 @@ describe("PRG-03 enrollment panel", () => {
       ...requestHandlers("prog-1", [], enrollments),
       http.post("/api/v1/programs/prog-1/enrollments/enr-1/cancel", () => {
         enrollments[0] = { ...enrollments[0], status: "Cancelled" };
-        return HttpResponse.json({
-          requestId: "rid-3",
-          data: { enrollment: enrollments[0] },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-3",
+            data: { enrollment: enrollments[0] },
+          },
+          { headers: { "X-Request-Id": "rid-3" } }
+        );
       })
     );
     const user = userEvent.setup();

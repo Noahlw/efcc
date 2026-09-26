@@ -118,16 +118,22 @@ describe("PRG-02 events panel", () => {
   test("U1 Members see rules and HK wall times, but no management affordances", async () => {
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({
-          requestId: "rid-1",
-          data: { rules: [WEEKLY_RULE] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-1",
+            data: { rules: [WEEKLY_RULE] },
+          },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({
-          requestId: "rid-2",
-          data: { events: [ACTIVE_EVENT] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-2",
+            data: { events: [ACTIVE_EVENT] },
+          },
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       )
     );
     render(<EventsPanel program={RECURRING} canManage={false} />);
@@ -154,10 +160,16 @@ describe("PRG-02 events panel", () => {
   test("U2 Recurring managers get the rule form, generate button, and empty copy", async () => {
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+        HttpResponse.json(
+          { requestId: "rid-1", data: { rules: [] } },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({ requestId: "rid-2", data: { events: [] } })
+        HttpResponse.json(
+          { requestId: "rid-2", data: { events: [] } },
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       )
     );
     render(<EventsPanel program={RECURRING} canManage />);
@@ -178,10 +190,16 @@ describe("PRG-02 events panel", () => {
   test("U3 OneOff managers get the manual event form, not rule/generate controls", async () => {
     server.use(
       http.get("/api/v1/programs/prog-2/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+        HttpResponse.json(
+          { requestId: "rid-1", data: { rules: [] } },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-2/events", () =>
-        HttpResponse.json({ requestId: "rid-2", data: { events: [] } })
+        HttpResponse.json(
+          { requestId: "rid-2", data: { events: [] } },
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       )
     );
     render(<EventsPanel program={ONE_OFF} canManage />);
@@ -204,10 +222,16 @@ describe("PRG-02 events panel", () => {
     const rules: ScheduleRule[] = [];
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules } })
+        HttpResponse.json(
+          { requestId: "rid-1", data: { rules } },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({ requestId: "rid-2", data: { events: [] } })
+        HttpResponse.json(
+          { requestId: "rid-2", data: { events: [] } },
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       ),
       http.post(
         "/api/v1/programs/prog-1/schedule-rules",
@@ -227,10 +251,13 @@ describe("PRG-02 events panel", () => {
             start_time: "19:30",
             end_time: "21:00",
           });
-          return HttpResponse.json({
-            requestId: "rid-3",
-            data: { rule: rules[0], idempotent: false },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-3",
+              data: { rule: rules[0], idempotent: false },
+            },
+            { headers: { "X-Request-Id": "rid-3" } }
+          );
         }
       )
     );
@@ -257,10 +284,16 @@ describe("PRG-02 events panel", () => {
     const events: ProgramEvent[] = [{ ...ACTIVE_EVENT }];
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+        HttpResponse.json(
+          { requestId: "rid-1", data: { rules: [] } },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({ requestId: "rid-2", data: { events } })
+        HttpResponse.json(
+          { requestId: "rid-2", data: { events } },
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       ),
       http.patch(
         "/api/v1/programs/prog-1/events/evt-1",
@@ -272,10 +305,13 @@ describe("PRG-02 events panel", () => {
             status: "Cancelled",
             cancel_reason: body.reason,
           };
-          return HttpResponse.json({
-            requestId: "rid-3",
-            data: { event: events[0] },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-3",
+              data: { event: events[0] },
+            },
+            { headers: { "X-Request-Id": "rid-3" } }
+          );
         }
       )
     );
@@ -306,13 +342,19 @@ describe("PRG-02 events panel", () => {
     const events: ProgramEvent[] = [{ ...TUESDAY_EVENT }];
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({
-          requestId: "rid-1",
-          data: { rules: [WEEKLY_RULE] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-1",
+            data: { rules: [WEEKLY_RULE] },
+          },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({ requestId: "rid-2", data: { events } })
+        HttpResponse.json(
+          { requestId: "rid-2", data: { events } },
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       ),
       http.post(
         "/api/v1/programs/prog-1/schedule-rules/rule-1/exceptions",
@@ -337,10 +379,13 @@ describe("PRG-02 events panel", () => {
             new_end_time: "22:00",
           };
           events[0] = { ...events[0], exception };
-          return HttpResponse.json({
-            requestId: "rid-3",
-            data: { exception },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-3",
+              data: { exception },
+            },
+            { headers: { "X-Request-Id": "rid-3" } }
+          );
         }
       )
     );
@@ -375,13 +420,19 @@ describe("PRG-02 events panel", () => {
     let deleted = false;
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({
-          requestId: "rid-1",
-          data: { rules: [WEEKLY_RULE] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-1",
+            data: { rules: [WEEKLY_RULE] },
+          },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({ requestId: "rid-2", data: { events } })
+        HttpResponse.json(
+          { requestId: "rid-2", data: { events } },
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       ),
       http.post(
         "/api/v1/programs/prog-1/schedule-rules/rule-1/exceptions",
@@ -395,10 +446,13 @@ describe("PRG-02 events panel", () => {
             action: "CANCEL",
           });
           events[0] = { ...events[0], exception: CANCEL_EXCEPTION };
-          return HttpResponse.json({
-            requestId: "rid-3",
-            data: { exception: CANCEL_EXCEPTION },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-3",
+              data: { exception: CANCEL_EXCEPTION },
+            },
+            { headers: { "X-Request-Id": "rid-3" } }
+          );
         }
       ),
       http.delete(
@@ -406,10 +460,13 @@ describe("PRG-02 events panel", () => {
         () => {
           deleted = true;
           events[0] = { ...events[0], exception: null };
-          return HttpResponse.json({
-            requestId: "rid-4",
-            data: { deleted: true },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-4",
+              data: { deleted: true },
+            },
+            { headers: { "X-Request-Id": "rid-4" } }
+          );
         }
       )
     );
@@ -448,10 +505,13 @@ describe("PRG-02 events panel", () => {
     let eventReads = 0;
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({
-          requestId: "rid-1",
-          data: { rules: [WEEKLY_RULE] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-1",
+            data: { rules: [WEEKLY_RULE] },
+          },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-1/events", () => {
         eventReads += 1;
@@ -459,20 +519,26 @@ describe("PRG-02 events panel", () => {
           return HttpResponse.error();
         }
         const exception = eventReads === 1 ? null : CANCEL_EXCEPTION;
-        return HttpResponse.json({
-          requestId: "rid-2",
-          data: {
-            events: [{ ...TUESDAY_EVENT, exception }],
+        return HttpResponse.json(
+          {
+            requestId: "rid-2",
+            data: {
+              events: [{ ...TUESDAY_EVENT, exception }],
+            },
           },
-        });
+          { headers: { "X-Request-Id": "rid-2" } }
+        );
       }),
       http.post(
         "/api/v1/programs/prog-1/schedule-rules/rule-1/exceptions",
         () =>
-          HttpResponse.json({
-            requestId: "rid-3",
-            data: { exception: CANCEL_EXCEPTION },
-          })
+          HttpResponse.json(
+            {
+              requestId: "rid-3",
+              data: { exception: CANCEL_EXCEPTION },
+            },
+            { headers: { "X-Request-Id": "rid-3" } }
+          )
       )
     );
     const user = userEvent.setup();
@@ -522,13 +588,19 @@ describe("PRG-02 events panel", () => {
     const events = [TUESDAY_EVENT, cancelled, manual];
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({
-          requestId: "rid-1",
-          data: { rules: [WEEKLY_RULE] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-1",
+            data: { rules: [WEEKLY_RULE] },
+          },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({ requestId: "rid-2", data: { events } })
+        HttpResponse.json(
+          { requestId: "rid-2", data: { events } },
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       )
     );
     // Member: no exception controls at all.
@@ -546,13 +618,19 @@ describe("PRG-02 events panel", () => {
     // rows do not (the cancelled row shows its reason instead).
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({
-          requestId: "rid-1",
-          data: { rules: [WEEKLY_RULE] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-1",
+            data: { rules: [WEEKLY_RULE] },
+          },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({ requestId: "rid-2", data: { events } })
+        HttpResponse.json(
+          { requestId: "rid-2", data: { events } },
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       )
     );
     render(<EventsPanel program={RECURRING} canManage />);
@@ -585,21 +663,27 @@ describe("PRG-02 events panel", () => {
   test("U11 a cancelled event surfaces its reason in the row", async () => {
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+        HttpResponse.json(
+          { requestId: "rid-1", data: { rules: [] } },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({
-          requestId: "rid-2",
-          data: {
-            events: [
-              {
-                ...TUESDAY_EVENT,
-                status: "Cancelled",
-                cancel_reason: "天氣惡劣",
-              },
-            ],
+        HttpResponse.json(
+          {
+            requestId: "rid-2",
+            data: {
+              events: [
+                {
+                  ...TUESDAY_EVENT,
+                  status: "Cancelled",
+                  cancel_reason: "天氣惡劣",
+                },
+              ],
+            },
           },
-        })
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       )
     );
     render(<EventsPanel program={RECURRING} canManage />);
@@ -623,15 +707,21 @@ describe("PRG-02 events panel", () => {
     };
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+        HttpResponse.json(
+          { requestId: "rid-1", data: { rules: [] } },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({
-          requestId: "rid-2",
-          data: {
-            events: [{ ...TUESDAY_EVENT, exception: RESCHEDULE_EXCEPTION }],
+        HttpResponse.json(
+          {
+            requestId: "rid-2",
+            data: {
+              events: [{ ...TUESDAY_EVENT, exception: RESCHEDULE_EXCEPTION }],
+            },
           },
-        })
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       )
     );
     render(<EventsPanel program={RECURRING} canManage />);
@@ -645,18 +735,24 @@ describe("PRG-02 events panel", () => {
   test("U13 a CANCEL exception renders the 本次已取消 badge, and no exception renders none", async () => {
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+        HttpResponse.json(
+          { requestId: "rid-1", data: { rules: [] } },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({
-          requestId: "rid-2",
-          data: {
-            events: [
-              { ...TUESDAY_EVENT, exception: CANCEL_EXCEPTION },
-              { ...ACTIVE_EVENT, event_id: "evt-2" },
-            ],
+        HttpResponse.json(
+          {
+            requestId: "rid-2",
+            data: {
+              events: [
+                { ...TUESDAY_EVENT, exception: CANCEL_EXCEPTION },
+                { ...ACTIVE_EVENT, event_id: "evt-2" },
+              ],
+            },
           },
-        })
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       )
     );
     render(<EventsPanel program={RECURRING} canManage />);
@@ -678,10 +774,16 @@ describe("PRG-02 events panel", () => {
     } as ProgramEvent;
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+        HttpResponse.json(
+          { requestId: "rid-1", data: { rules: [] } },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({ requestId: "rid-2", data: { events: [meeting] } })
+        HttpResponse.json(
+          { requestId: "rid-2", data: { events: [meeting] } },
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       )
     );
     render(<EventsPanel program={RECURRING} canManage />);
@@ -699,17 +801,26 @@ describe("PRG-02 events panel", () => {
     let submitted = false;
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+        HttpResponse.json(
+          { requestId: "rid-1", data: { rules: [] } },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({ requestId: "rid-2", data: { events: [] } })
+        HttpResponse.json(
+          { requestId: "rid-2", data: { events: [] } },
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       ),
       http.post("/api/v1/programs/prog-1/events", () => {
         submitted = true;
-        return HttpResponse.json({
-          requestId: "rid-3",
-          data: { event: ACTIVE_EVENT },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-3",
+            data: { event: ACTIVE_EVENT },
+          },
+          { headers: { "X-Request-Id": "rid-3" } }
+        );
       })
     );
     const user = userEvent.setup();
@@ -739,17 +850,26 @@ describe("PRG-02 events panel", () => {
     } as ProgramEvent;
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+        HttpResponse.json(
+          { requestId: "rid-1", data: { rules: [] } },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({ requestId: "rid-2", data: { events: [created] } })
+        HttpResponse.json(
+          { requestId: "rid-2", data: { events: [created] } },
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       ),
       http.post("/api/v1/programs/prog-1/events", async ({ request }) => {
         submittedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({
-          requestId: "rid-3",
-          data: { event: created },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-3",
+            data: { event: created },
+          },
+          { headers: { "X-Request-Id": "rid-3" } }
+        );
       })
     );
     const user = userEvent.setup();
@@ -784,17 +904,26 @@ describe("PRG-02 events panel", () => {
     let cancelRequested = false;
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+        HttpResponse.json(
+          { requestId: "rid-1", data: { rules: [] } },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({ requestId: "rid-2", data: { events: [meeting] } })
+        HttpResponse.json(
+          { requestId: "rid-2", data: { events: [meeting] } },
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       ),
       http.patch("/api/v1/programs/prog-1/events/evt-1", () => {
         cancelRequested = true;
-        return HttpResponse.json({
-          requestId: "rid-3",
-          data: { event: meeting },
-        });
+        return HttpResponse.json(
+          {
+            requestId: "rid-3",
+            data: { event: meeting },
+          },
+          { headers: { "X-Request-Id": "rid-3" } }
+        );
       })
     );
     const user = userEvent.setup();
@@ -813,29 +942,41 @@ describe("PRG-02 events panel", () => {
     let cancelled = false;
     server.use(
       http.get("/api/v1/programs/prog-1/schedule-rules", () =>
-        HttpResponse.json({ requestId: "rid-1", data: { rules: [] } })
+        HttpResponse.json(
+          { requestId: "rid-1", data: { rules: [] } },
+          { headers: { "X-Request-Id": "rid-1" } }
+        )
       ),
       http.get("/api/v1/programs/prog-1/events", () =>
-        HttpResponse.json({
-          requestId: "rid-2",
-          data: {
-            events: cancelled
-              ? [{ ...meeting, status: "Cancelled" }]
-              : [meeting],
+        HttpResponse.json(
+          {
+            requestId: "rid-2",
+            data: {
+              events: cancelled
+                ? [{ ...meeting, status: "Cancelled" }]
+                : [meeting],
+            },
           },
-        })
+          { headers: { "X-Request-Id": "rid-2" } }
+        )
       ),
       http.patch(
         "/api/v1/programs/prog-1/events/evt-1",
         async ({ request }) => {
           const body = (await request.json()) as { status?: string };
           if (body.status === "Cancelled") cancelled = true;
-          return HttpResponse.json({
-            requestId: "rid-3",
-            data: {
-              event: { ...meeting, status: cancelled ? "Cancelled" : "Active" },
+          return HttpResponse.json(
+            {
+              requestId: "rid-3",
+              data: {
+                event: {
+                  ...meeting,
+                  status: cancelled ? "Cancelled" : "Active",
+                },
+              },
             },
-          });
+            { headers: { "X-Request-Id": "rid-3" } }
+          );
         }
       )
     );

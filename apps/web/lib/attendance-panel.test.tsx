@@ -105,14 +105,17 @@ describe(AttendancePanel, () => {
       server.use(
         http.get("/api/v1/attendance/resolve", () => pendingResolve),
         http.post("/api/v1/attendance/guest", () =>
-          HttpResponse.json({
-            requestId: "rid-busy-guest",
-            data: {
-              outcome: "success",
-              attendance_id: "a-busy",
-              checked_in_at: "2026-08-13T11:35:00.000Z",
+          HttpResponse.json(
+            {
+              requestId: "rid-busy-guest",
+              data: {
+                outcome: "success",
+                attendance_id: "a-busy",
+                checked_in_at: "2026-08-13T11:35:00.000Z",
+              },
             },
-          })
+            { headers: { "X-Request-Id": "rid-busy-guest" } }
+          )
         )
       );
       const user = userEvent.setup();
@@ -129,10 +132,13 @@ describe(AttendancePanel, () => {
       expect(submitButton).toHaveAttribute("aria-busy", "true");
 
       releaseResolve(
-        HttpResponse.json({
-          requestId: "rid-busy",
-          data: { events: [EVENT] },
-        })
+        HttpResponse.json(
+          {
+            requestId: "rid-busy",
+            data: { events: [EVENT] },
+          },
+          { headers: { "X-Request-Id": "rid-busy" } }
+        )
       );
       const resultHeading = await screen.findByRole("heading", {
         name: COPY.attendance.guestResultTitle,
@@ -147,21 +153,27 @@ describe(AttendancePanel, () => {
       server.use(
         http.get("/api/v1/attendance/resolve", () => {
           resolveCalls += 1;
-          return HttpResponse.json({
-            requestId: "rid-1",
-            data: { events: [EVENT] },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-1",
+              data: { events: [EVENT] },
+            },
+            { headers: { "X-Request-Id": "rid-1" } }
+          );
         }),
         http.post("/api/v1/attendance/guest", () => {
           guestPosts += 1;
-          return HttpResponse.json({
-            requestId: "rid-2",
-            data: {
-              outcome: "success",
-              attendance_id: "a1",
-              checked_in_at: "2026-08-13T11:35:00.000Z",
+          return HttpResponse.json(
+            {
+              requestId: "rid-2",
+              data: {
+                outcome: "success",
+                attendance_id: "a1",
+                checked_in_at: "2026-08-13T11:35:00.000Z",
+              },
             },
-          });
+            { headers: { "X-Request-Id": "rid-2" } }
+          );
         })
       );
       const user = userEvent.setup();
@@ -205,20 +217,26 @@ describe(AttendancePanel, () => {
     test("one open event chains resolve to a real completion card", async () => {
       server.use(
         http.get("/api/v1/attendance/resolve", () =>
-          HttpResponse.json({
-            requestId: "rid-1",
-            data: { events: [EVENT] },
-          })
+          HttpResponse.json(
+            {
+              requestId: "rid-1",
+              data: { events: [EVENT] },
+            },
+            { headers: { "X-Request-Id": "rid-1" } }
+          )
         ),
         http.post("/api/v1/attendance/guest", () =>
-          HttpResponse.json({
-            requestId: "rid-2",
-            data: {
-              outcome: "success",
-              attendance_id: "a1",
-              checked_in_at: "2026-08-13T11:35:00.000Z",
+          HttpResponse.json(
+            {
+              requestId: "rid-2",
+              data: {
+                outcome: "success",
+                attendance_id: "a1",
+                checked_in_at: "2026-08-13T11:35:00.000Z",
+              },
             },
-          })
+            { headers: { "X-Request-Id": "rid-2" } }
+          )
         )
       );
       const user = userEvent.setup();
@@ -252,10 +270,13 @@ describe(AttendancePanel, () => {
       };
       server.use(
         http.get("/api/v1/attendance/resolve", () =>
-          HttpResponse.json({
-            requestId: "rid-closed-guest",
-            data: { events: [], latest, enrolled: false },
-          })
+          HttpResponse.json(
+            {
+              requestId: "rid-closed-guest",
+              data: { events: [], latest, enrolled: false },
+            },
+            { headers: { "X-Request-Id": "rid-closed-guest" } }
+          )
         )
       );
       const user = userEvent.setup();
@@ -287,10 +308,13 @@ describe(AttendancePanel, () => {
       };
       server.use(
         http.get("/api/v1/attendance/resolve", () =>
-          HttpResponse.json({
-            requestId: "rid-cancelled-guest",
-            data: { events: [], latest, enrolled: false },
-          })
+          HttpResponse.json(
+            {
+              requestId: "rid-cancelled-guest",
+              data: { events: [], latest, enrolled: false },
+            },
+            { headers: { "X-Request-Id": "rid-cancelled-guest" } }
+          )
         )
       );
       const user = userEvent.setup();
@@ -316,10 +340,13 @@ describe(AttendancePanel, () => {
     test("invalid phone stays inline, focuses the phone field, and does not complete", async () => {
       server.use(
         http.get("/api/v1/attendance/resolve", () =>
-          HttpResponse.json({
-            requestId: "rid-1",
-            data: { events: [EVENT] },
-          })
+          HttpResponse.json(
+            {
+              requestId: "rid-1",
+              data: { events: [EVENT] },
+            },
+            { headers: { "X-Request-Id": "rid-1" } }
+          )
         ),
         http.post("/api/v1/attendance/guest", () =>
           HttpResponse.json(
@@ -357,10 +384,13 @@ describe(AttendancePanel, () => {
     test("offline guest submit uses B-02 recovery copy without a result", async () => {
       server.use(
         http.get("/api/v1/attendance/resolve", () =>
-          HttpResponse.json({
-            requestId: "rid-1",
-            data: { events: [EVENT] },
-          })
+          HttpResponse.json(
+            {
+              requestId: "rid-1",
+              data: { events: [EVENT] },
+            },
+            { headers: { "X-Request-Id": "rid-1" } }
+          )
         ),
         http.post("/api/v1/attendance/guest", () => HttpResponse.error())
       );
@@ -386,10 +416,13 @@ describe(AttendancePanel, () => {
       let reconciledKey: string | null = null;
       server.use(
         http.get("/api/v1/attendance/resolve", () =>
-          HttpResponse.json({
-            requestId: "rid-reconcile-resolve",
-            data: { events: [EVENT] },
-          })
+          HttpResponse.json(
+            {
+              requestId: "rid-reconcile-resolve",
+              data: { events: [EVENT] },
+            },
+            { headers: { "X-Request-Id": "rid-reconcile-resolve" } }
+          )
         ),
         http.post("/api/v1/attendance/guest", ({ request }) => {
           guestPosts += 1;
@@ -398,10 +431,13 @@ describe(AttendancePanel, () => {
         }),
         http.post("/api/v1/attendance/guest/reconcile", ({ request }) => {
           reconciledKey = request.headers.get("Idempotency-Key");
-          return HttpResponse.json({
-            requestId: "rid-reconcile",
-            data: { outcome: "found" },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-reconcile",
+              data: { outcome: "found" },
+            },
+            { headers: { "X-Request-Id": "rid-reconcile" } }
+          );
         })
       );
       const user = userEvent.setup();
@@ -454,23 +490,29 @@ describe(AttendancePanel, () => {
       server.use(
         http.post("/api/v1/attendance/guest", () => {
           guestPosts += 1;
-          return HttpResponse.json({
-            requestId: "rid-should-not-replay",
-            data: {
-              outcome: "success",
-              attendance_id: "a-replay",
-              checked_in_at: "2026-08-13T11:35:00.000Z",
+          return HttpResponse.json(
+            {
+              requestId: "rid-should-not-replay",
+              data: {
+                outcome: "success",
+                attendance_id: "a-replay",
+                checked_in_at: "2026-08-13T11:35:00.000Z",
+              },
             },
-          });
+            { headers: { "X-Request-Id": "rid-should-not-replay" } }
+          );
         }),
         http.post("/api/v1/attendance/guest/reconcile", ({ request }) => {
           expect(request.headers.get("Idempotency-Key")).toBe(
             "guest-recovery-key"
           );
-          return HttpResponse.json({
-            requestId: "rid-recovered",
-            data: { outcome: "found" },
-          });
+          return HttpResponse.json(
+            {
+              requestId: "rid-recovered",
+              data: { outcome: "found" },
+            },
+            { headers: { "X-Request-Id": "rid-recovered" } }
+          );
         })
       );
       const user = userEvent.setup();
@@ -510,30 +552,39 @@ describe(AttendancePanel, () => {
       const submittedKeys: string[] = [];
       server.use(
         http.get("/api/v1/attendance/resolve", () =>
-          HttpResponse.json({
-            requestId: "rid-unknown-resolve",
-            data: { events: [EVENT, event2] },
-          })
+          HttpResponse.json(
+            {
+              requestId: "rid-unknown-resolve",
+              data: { events: [EVENT, event2] },
+            },
+            { headers: { "X-Request-Id": "rid-unknown-resolve" } }
+          )
         ),
         http.post("/api/v1/attendance/guest", ({ request }) => {
           guestPosts += 1;
           submittedKeys.push(request.headers.get("Idempotency-Key") ?? "");
           return guestPosts === 1
             ? HttpResponse.error()
-            : HttpResponse.json({
-                requestId: "rid-unknown-retry",
-                data: {
-                  outcome: "success",
-                  attendance_id: "a-retry",
-                  checked_in_at: "2026-08-13T11:35:00.000Z",
+            : HttpResponse.json(
+                {
+                  requestId: "rid-unknown-retry",
+                  data: {
+                    outcome: "success",
+                    attendance_id: "a-retry",
+                    checked_in_at: "2026-08-13T11:35:00.000Z",
+                  },
                 },
-              });
+                { headers: { "X-Request-Id": "rid-unknown-retry" } }
+              );
         }),
         http.post("/api/v1/attendance/guest/reconcile", () =>
-          HttpResponse.json({
-            requestId: "rid-unknown-not-found",
-            data: { outcome: "not_found" },
-          })
+          HttpResponse.json(
+            {
+              requestId: "rid-unknown-not-found",
+              data: { outcome: "not_found" },
+            },
+            { headers: { "X-Request-Id": "rid-unknown-not-found" } }
+          )
         )
       );
       clearGuestCredential();
@@ -589,16 +640,22 @@ describe(AttendancePanel, () => {
     test("duplicate is a neutral result without an attendance identifier", async () => {
       server.use(
         http.get("/api/v1/attendance/resolve", () =>
-          HttpResponse.json({
-            requestId: "rid-1",
-            data: { events: [EVENT] },
-          })
+          HttpResponse.json(
+            {
+              requestId: "rid-1",
+              data: { events: [EVENT] },
+            },
+            { headers: { "X-Request-Id": "rid-1" } }
+          )
         ),
         http.post("/api/v1/attendance/guest", () =>
-          HttpResponse.json({
-            requestId: "rid-2",
-            data: { outcome: "duplicate" },
-          })
+          HttpResponse.json(
+            {
+              requestId: "rid-2",
+              data: { outcome: "duplicate" },
+            },
+            { headers: { "X-Request-Id": "rid-2" } }
+          )
         )
       );
       const user = userEvent.setup();
@@ -644,22 +701,28 @@ describe(AttendancePanel, () => {
       let capturedEventId: string | undefined;
       server.use(
         http.get("/api/v1/attendance/resolve", () =>
-          HttpResponse.json({
-            requestId: "rid-multi",
-            data: { events: [EVENT, event2] },
-          })
+          HttpResponse.json(
+            {
+              requestId: "rid-multi",
+              data: { events: [EVENT, event2] },
+            },
+            { headers: { "X-Request-Id": "rid-multi" } }
+          )
         ),
         http.post("/api/v1/attendance/guest", async ({ request }) => {
           capturedEventId = ((await request.json()) as { event_id: string })
             .event_id;
-          return HttpResponse.json({
-            requestId: "rid-guest",
-            data: {
-              outcome: "success",
-              attendance_id: "a1",
-              checked_in_at: "2026-08-13T11:35:00.000Z",
+          return HttpResponse.json(
+            {
+              requestId: "rid-guest",
+              data: {
+                outcome: "success",
+                attendance_id: "a1",
+                checked_in_at: "2026-08-13T11:35:00.000Z",
+              },
             },
-          });
+            { headers: { "X-Request-Id": "rid-guest" } }
+          );
         })
       );
       const user = userEvent.setup();
@@ -703,22 +766,28 @@ describe(AttendancePanel, () => {
       );
       server.use(
         http.get("/api/v1/attendance/resolve", () =>
-          HttpResponse.json({
-            requestId: "rid-deep",
-            data: { events: [EVENT, event2] },
-          })
+          HttpResponse.json(
+            {
+              requestId: "rid-deep",
+              data: { events: [EVENT, event2] },
+            },
+            { headers: { "X-Request-Id": "rid-deep" } }
+          )
         ),
         http.post("/api/v1/attendance/guest", async ({ request }) => {
           capturedEventId = ((await request.json()) as { event_id: string })
             .event_id;
-          return HttpResponse.json({
-            requestId: "rid-deep-guest",
-            data: {
-              outcome: "success",
-              attendance_id: "a1",
-              checked_in_at: "2026-08-13T11:35:00.000Z",
+          return HttpResponse.json(
+            {
+              requestId: "rid-deep-guest",
+              data: {
+                outcome: "success",
+                attendance_id: "a1",
+                checked_in_at: "2026-08-13T11:35:00.000Z",
+              },
             },
-          });
+            { headers: { "X-Request-Id": "rid-deep-guest" } }
+          );
         })
       );
       const user = userEvent.setup();
@@ -756,21 +825,27 @@ describe(AttendancePanel, () => {
       let guestPosts = 0;
       server.use(
         http.get("/api/v1/attendance/resolve", () =>
-          HttpResponse.json({
-            requestId: "rid-empty",
-            data: { events: [], latest: null, enrolled: false },
-          })
+          HttpResponse.json(
+            {
+              requestId: "rid-empty",
+              data: { events: [], latest: null, enrolled: false },
+            },
+            { headers: { "X-Request-Id": "rid-empty" } }
+          )
         ),
         http.post("/api/v1/attendance/guest", () => {
           guestPosts += 1;
-          return HttpResponse.json({
-            requestId: "rid-guest",
-            data: {
-              outcome: "success",
-              attendance_id: "a1",
-              checked_in_at: "2026-08-13T11:35:00.000Z",
+          return HttpResponse.json(
+            {
+              requestId: "rid-guest",
+              data: {
+                outcome: "success",
+                attendance_id: "a1",
+                checked_in_at: "2026-08-13T11:35:00.000Z",
+              },
             },
-          });
+            { headers: { "X-Request-Id": "rid-guest" } }
+          );
         })
       );
       const user = userEvent.setup();
@@ -791,14 +866,17 @@ describe(AttendancePanel, () => {
         http.get("/api/v1/attendance/resolve", () => HttpResponse.error()),
         http.post("/api/v1/attendance/guest", () => {
           guestPosts += 1;
-          return HttpResponse.json({
-            requestId: "rid-guest",
-            data: {
-              outcome: "success",
-              attendance_id: "a1",
-              checked_in_at: "2026-08-13T11:35:00.000Z",
+          return HttpResponse.json(
+            {
+              requestId: "rid-guest",
+              data: {
+                outcome: "success",
+                attendance_id: "a1",
+                checked_in_at: "2026-08-13T11:35:00.000Z",
+              },
             },
-          });
+            { headers: { "X-Request-Id": "rid-guest" } }
+          );
         })
       );
       const user = userEvent.setup();

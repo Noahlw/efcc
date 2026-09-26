@@ -130,6 +130,7 @@ async function stubApi(route: Route) {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
+      headers: { "X-Request-Id": "r-roles" },
       body: JSON.stringify({ requestId: "r-roles", data: HIERARCHY }),
     });
     return;
@@ -138,6 +139,7 @@ async function stubApi(route: Route) {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
+      headers: { "X-Request-Id": "r-account" },
       body: JSON.stringify({ requestId: "r-account", data: VIEW }),
     });
     return;
