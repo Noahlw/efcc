@@ -47,7 +47,7 @@ function createGitComparison({ baseFiles, mutate }) {
     runGit(cwd, ["config", "user.name", "Storybook scope fixture"]);
     for (const [filePath, contents] of Object.entries(
       baseFiles ?? {
-        "web/features/example/example.stories.tsx": "export {}\n",
+        "apps/web/features/example/example.stories.tsx": "export {}\n",
         "docs/note.md": "fixture\n",
       }
     )) {
@@ -95,7 +95,7 @@ describe("Storybook affected scope", () => {
     expect(
       classifyAffectedPaths([
         "docs/implementation/ui-control-recovery-plan.md",
-        "web/migrations/0001_identity.sql",
+        "apps/web/migrations/0001_identity.sql",
       ])
     ).toStrictEqual({
       run: false,
@@ -106,8 +106,8 @@ describe("Storybook affected scope", () => {
   test("runs for Storybook and frontend-capable changes", () => {
     expect(
       classifyAffectedPaths([
-        "web/.storybook/presentation-catalog.ts",
-        "web/app/management/page.tsx",
+        "apps/web/.storybook/presentation-catalog.ts",
+        "apps/web/app/management/page.tsx",
       ]).run
     ).toBe(true);
   });
@@ -126,27 +126,35 @@ describe("Storybook affected scope", () => {
   });
 
   test("keeps the non-presentation allowlist narrow", () => {
-    expect(isClearlyNonPresentationPath("web/lib/identity/roles.ts")).toBe(
+    expect(isClearlyNonPresentationPath("apps/web/lib/identity/roles.ts")).toBe(
       false
     );
-    expect(isClearlyNonPresentationPath("web/migrations/roles.sql")).toBe(true);
-    expect(isClearlyNonPresentationPath("web/worker.ts")).toBe(false);
+    expect(isClearlyNonPresentationPath("apps/web/migrations/roles.sql")).toBe(
+      true
+    );
+    expect(isClearlyNonPresentationPath("apps/web/worker.ts")).toBe(false);
     expect(
-      isClearlyNonPresentationPath("web/lib/programs/program-api.ts")
+      isClearlyNonPresentationPath("apps/web/lib/programs/program-api.ts")
     ).toBe(false);
-    expect(isClearlyNonPresentationPath("web/.storybook/main.ts")).toBe(false);
+    expect(isClearlyNonPresentationPath("apps/web/.storybook/main.ts")).toBe(
+      false
+    );
   });
 
   test("reads deleted Story paths and still runs the affected check", () => {
     withComparison(
       {
         mutate: (cwd) => {
-          rmSync(path.join(cwd, "web/features/example/example.stories.tsx"));
+          rmSync(
+            path.join(cwd, "apps/web/features/example/example.stories.tsx")
+          );
         },
       },
       ({ base, head, cwd }) => {
         const paths = readChangedPaths(base, head, cwd);
-        expect(paths).toContain("web/features/example/example.stories.tsx");
+        expect(paths).toContain(
+          "apps/web/features/example/example.stories.tsx"
+        );
         expect(classifyAffectedPaths(paths).run).toBe(true);
       }
     );
@@ -159,7 +167,7 @@ describe("Storybook affected scope", () => {
           mkdirSync(path.join(cwd, "docs"), { recursive: true });
           runGit(cwd, [
             "mv",
-            "web/features/example/example.stories.tsx",
+            "apps/web/features/example/example.stories.tsx",
             "docs/retired.stories.tsx",
           ]);
         },
@@ -168,7 +176,7 @@ describe("Storybook affected scope", () => {
         const paths = readChangedPaths(base, head, cwd);
         expect(paths).toEqual(
           expect.arrayContaining([
-            "web/features/example/example.stories.tsx",
+            "apps/web/features/example/example.stories.tsx",
             "docs/retired.stories.tsx",
           ])
         );
@@ -182,14 +190,14 @@ describe("Storybook affected scope", () => {
       {
         baseFiles: { "docs/retired story.md": "fixture\n" },
         mutate: (cwd) => {
-          mkdirSync(path.join(cwd, "web/features/example"), {
+          mkdirSync(path.join(cwd, "apps/web/features/example"), {
             recursive: true,
           });
           runGit(cwd, [
             "mv",
             "--",
             "docs/retired story.md",
-            "web/features/example/restored story.stories.tsx",
+            "apps/web/features/example/restored story.stories.tsx",
           ]);
         },
       },
@@ -198,7 +206,7 @@ describe("Storybook affected scope", () => {
         expect(paths).toEqual(
           expect.arrayContaining([
             "docs/retired story.md",
-            "web/features/example/restored story.stories.tsx",
+            "apps/web/features/example/restored story.stories.tsx",
           ])
         );
         expect(classifyAffectedPaths(paths).run).toBe(true);
@@ -210,7 +218,9 @@ describe("Storybook affected scope", () => {
     withComparison(
       {
         mutate: (cwd) => {
-          rmSync(path.join(cwd, "web/features/example/example.stories.tsx"));
+          rmSync(
+            path.join(cwd, "apps/web/features/example/example.stories.tsx")
+          );
           writeFileSync(path.join(cwd, "docs/note.md"), "updated\n");
         },
       },
@@ -219,7 +229,7 @@ describe("Storybook affected scope", () => {
         expect(paths).toEqual(
           expect.arrayContaining([
             "docs/note.md",
-            "web/features/example/example.stories.tsx",
+            "apps/web/features/example/example.stories.tsx",
           ])
         );
         expect(classifyAffectedPaths(paths).run).toBe(true);
@@ -242,11 +252,11 @@ describe("Storybook affected scope", () => {
     withComparison(
       {
         mutate: (cwd) =>
-          writeFixtureFile(cwd, "web/lib/identity/presentation-panel.ts"),
+          writeFixtureFile(cwd, "apps/web/lib/identity/presentation-panel.ts"),
       },
       ({ base, head, cwd }) => {
         const paths = readChangedPaths(base, head, cwd);
-        expect(paths).toContain("web/lib/identity/presentation-panel.ts");
+        expect(paths).toContain("apps/web/lib/identity/presentation-panel.ts");
         expect(classifyAffectedPaths(paths).run).toBe(true);
       }
     );
@@ -278,18 +288,19 @@ describe("Storybook affected scope", () => {
     withComparison(
       {
         baseFiles: {
-          "web/features/example/story with spaces.stories.tsx": "export {}\n",
+          "apps/web/features/example/story with spaces.stories.tsx":
+            "export {}\n",
         },
         mutate: (cwd) => {
           writeFileSync(
             path.join(
               cwd,
-              "web/features/example/story with spaces.stories.tsx"
+              "apps/web/features/example/story with spaces.stories.tsx"
             ),
             readFileSync(
               path.join(
                 cwd,
-                "web/features/example/story with spaces.stories.tsx"
+                "apps/web/features/example/story with spaces.stories.tsx"
               ),
               "utf-8"
             ) + "export const Changed = {};\n"
@@ -299,7 +310,7 @@ describe("Storybook affected scope", () => {
       ({ base, head, cwd }) => {
         const paths = readChangedPaths(base, head, cwd);
         expect(paths).toStrictEqual([
-          "web/features/example/story with spaces.stories.tsx",
+          "apps/web/features/example/story with spaces.stories.tsx",
         ]);
         expect(classifyAffectedPaths(paths).run).toBe(true);
       }

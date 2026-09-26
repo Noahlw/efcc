@@ -3,13 +3,13 @@ import path from "node:path";
 
 import { defineConfig, devices } from "@playwright/test";
 
-import { parseStorybookPort } from "../../web/scripts/storybook-port.mjs";
+import { parseStorybookPort } from "../../apps/web/scripts/storybook-port.mjs";
 
 const dirname = import.meta.dirname;
 const repositoryRoot = path.resolve(dirname, "../..");
 const storybookLauncher = path.join(
   repositoryRoot,
-  "web/scripts/storybook-worktree.mjs"
+  "apps/web/scripts/storybook-worktree.mjs"
 );
 const configuredPort = process.env.STORYBOOK_PORT?.trim();
 const discoveredPort = execFileSync(
@@ -76,7 +76,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `STORYBOOK_PORT=${port} pnpm --dir web storybook --ci --port ${port}`,
+    command: `STORYBOOK_PORT=${port} pnpm --dir apps/web storybook --ci --port ${port}`,
     cwd: repositoryRoot,
     url: `${baseURL}/iframe.html?id=foundations--surface&viewMode=story`,
     reuseExistingServer: true,

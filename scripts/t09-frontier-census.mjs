@@ -5,8 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const EXPECTED_PARENT =
-  "6ab0561f9d79b32e2ca5345325a5cb46f01d2e13";
+export const EXPECTED_PARENT = "6ab0561f9d79b32e2ca5345325a5cb46f01d2e13";
 export const PARENT_BRANCH = "rescue/t08-control-contracts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -29,15 +28,15 @@ const SHARED_OVERLAY_TOKEN =
 const CALLER_LAYOUT_TOKEN =
   /^(?:w-|max-w-|min-w-|h-|sm:|md:|lg:|xl:|top-|right-|bottom-|left-|inset-|translate-|order-|justify-|self-|grid|flex|items-|text-|mt-|mb-|mx-|my-|space-|min-h-|side-)/u;
 const HIGH_RISK_FEEDBACK = new Set([
-  "web/app/page.tsx",
-  "web/lib/recovery-view.tsx",
-  "web/lib/approval-queue.tsx",
+  "apps/web/app/page.tsx",
+  "apps/web/lib/recovery-view.tsx",
+  "apps/web/lib/approval-queue.tsx",
 ]);
-const REFERENCE_FEEDBACK = new Set(["web/lib/programs/program-form.tsx"]);
+const REFERENCE_FEEDBACK = new Set(["apps/web/lib/programs/program-form.tsx"]);
 const OVERLAY_PRIMITIVES = new Set([
-  "web/components/ui/dialog.tsx",
-  "web/components/ui/sheet.tsx",
-  "web/components/ui/alert-dialog.tsx",
+  "apps/web/components/ui/dialog.tsx",
+  "apps/web/components/ui/sheet.tsx",
+  "apps/web/components/ui/alert-dialog.tsx",
 ]);
 const OVERLAY_CALLER_NAMES = new Set([
   "Dialog",
@@ -58,7 +57,7 @@ function git(args) {
 
 function isProductionFile(file) {
   return (
-    file.startsWith("web/") &&
+    file.startsWith("apps/web/") &&
     PRODUCTION_EXTENSIONS.test(file) &&
     !EXCLUDED.test(file)
   );
@@ -211,7 +210,7 @@ function census() {
     });
   };
 
-  const cardPrimitive = "web/components/ui/card.tsx";
+  const cardPrimitive = "apps/web/components/ui/card.tsx";
   add({
     family: "surface",
     file: cardPrimitive,
@@ -225,7 +224,15 @@ function census() {
     evidence: lineAt(read(cardPrimitive), 10),
   });
 
-  const cardTags = new Set(["Card", "CardHeader", "CardTitle", "CardDescription", "CardAction", "CardContent", "CardFooter"]);
+  const cardTags = new Set([
+    "Card",
+    "CardHeader",
+    "CardTitle",
+    "CardDescription",
+    "CardAction",
+    "CardContent",
+    "CardFooter",
+  ]);
   for (const file of files) {
     const source = read(file);
     for (const tag of openingTags(source, cardTags)) {
@@ -243,9 +250,13 @@ function census() {
         disposition = "MIGRATE_NOW";
         laterOwner = "T09.2 / D2-A";
       }
-      if (file === "web/lib/programs/participant-program-detail.tsx" && owned.length) {
+      if (
+        file === "apps/web/lib/programs/participant-program-detail.tsx" &&
+        owned.length
+      ) {
         disposition = "BOUNDED_LATER_DEBT";
-        laterOwner = "T10 composition grammar / nested borderless detail surface";
+        laterOwner =
+          "T10 composition grammar / nested borderless detail surface";
       }
       add({
         family: "surface",
@@ -263,7 +274,7 @@ function census() {
 
   const customSurfaceTags = new Set(["div", "section", "article", "aside"]);
   for (const file of files) {
-    if (file.startsWith("web/components/ui/")) continue;
+    if (file.startsWith("apps/web/components/ui/")) continue;
     const source = read(file);
     for (const tag of openingTags(source, customSurfaceTags)) {
       const info = classInfo(tag.source);
@@ -290,7 +301,7 @@ function census() {
     }
   }
 
-  const alertPrimitive = "web/components/ui/alert.tsx";
+  const alertPrimitive = "apps/web/components/ui/alert.tsx";
   add({
     family: "feedback",
     file: alertPrimitive,
@@ -315,10 +326,14 @@ function census() {
     let match;
     while ((match = matcher.exec(source))) {
       const line = lineNumber(source, match.index);
-      if (file === "web/lib/live-region.tsx" && line === 12) continue;
+      if (file === "apps/web/lib/live-region.tsx" && line === 12) continue;
       announces.push(line);
     }
-    if (alerts.length) alertFiles.set(file, alerts.map((tag) => lineNumber(source, tag.start)));
+    if (alerts.length)
+      alertFiles.set(
+        file,
+        alerts.map((tag) => lineNumber(source, tag.start))
+      );
     if (announces.length) announceFiles.set(file, announces);
 
     for (const tag of alerts) {
@@ -330,7 +345,7 @@ function census() {
       if (
         HIGH_RISK_FEEDBACK.has(file) ||
         variant.dynamic ||
-        (!variant.value && file === "web/app/home/page.tsx")
+        (!variant.value && file === "apps/web/app/home/page.tsx")
       ) {
         disposition = "MIGRATE_NOW";
         laterOwner = "T09.3 / D2-B";
@@ -358,7 +373,10 @@ function census() {
         laterOwner = "T09.3 / D2-B";
       } else if (REFERENCE_FEEDBACK.has(file)) {
         disposition = "REFERENCE_PRESERVE";
-      } else if (alerts.length || /aria-live|role\s*=\s*["'](?:alert|status)["']/u.test(source)) {
+      } else if (
+        alerts.length ||
+        /aria-live|role\s*=\s*["'](?:alert|status)["']/u.test(source)
+      ) {
         disposition = "BOUNDED_LATER_DEBT";
         laterOwner = `T09.6 caller migration / ${file}`;
       }
@@ -366,8 +384,16 @@ function census() {
         family: "feedback-announcement",
         file,
         start: line,
-        symbol: symbolAt(source, source.split("\n").slice(0, line - 1).join("\n").length, "announce"),
-        concern: "Global polite announcement call; verify it is the sole owner for this transition when visible feedback also renders.",
+        symbol: symbolAt(
+          source,
+          source
+            .split("\n")
+            .slice(0, line - 1)
+            .join("\n").length,
+          "announce"
+        ),
+        concern:
+          "Global polite announcement call; verify it is the sole owner for this transition when visible feedback also renders.",
         disposition,
         laterOwner,
         evidence: lineAt(source, line),
@@ -378,16 +404,24 @@ function census() {
     for (let index = 0; index < lines.length; index += 1) {
       const text = lines[index];
       if (hasCommentOnlyLine(text)) continue;
-      if (!/(?:aria-live|aria-atomic|role\s*=\s*(?:["'](?:alert|status)["']|\{[^}]*\b(?:alert|status)\b))/u.test(text)) {
+      if (
+        !/(?:aria-live|aria-atomic|role\s*=\s*(?:["'](?:alert|status)["']|\{[^}]*\b(?:alert|status)\b))/u.test(
+          text
+        )
+      ) {
         continue;
       }
       const line = index + 1;
       let disposition = "REFERENCE_PRESERVE";
       let laterOwner = "";
-      if (file === alertPrimitive || file === "web/lib/live-region.tsx" || file === "web/lib/approval-queue.tsx") {
+      if (
+        file === alertPrimitive ||
+        file === "apps/web/lib/live-region.tsx" ||
+        file === "apps/web/lib/approval-queue.tsx"
+      ) {
         disposition = "MIGRATE_NOW";
         laterOwner = "T09.3 / D2-B";
-      } else if (file === "web/lib/offline-banner.tsx") {
+      } else if (file === "apps/web/lib/offline-banner.tsx") {
         disposition = "NATIVE_EXCEPTION";
       } else if (REFERENCE_FEEDBACK.has(file)) {
         disposition = "REFERENCE_PRESERVE";
@@ -399,8 +433,13 @@ function census() {
         family: "feedback-semantics",
         file,
         start: line,
-        symbol: symbolAt(source, source.split("\n").slice(0, index).join("\n").length, "feedback output"),
-        concern: "Explicit alert/status/live-region ownership; reconcile visual tone and assistive urgency without duplicate transition announcements.",
+        symbol: symbolAt(
+          source,
+          source.split("\n").slice(0, index).join("\n").length,
+          "feedback output"
+        ),
+        concern:
+          "Explicit alert/status/live-region ownership; reconcile visual tone and assistive urgency without duplicate transition announcements.",
         disposition,
         laterOwner,
         evidence: text.trim(),
@@ -419,21 +458,33 @@ function census() {
       end: Math.max(...alertLines, ...announceFiles.get(file)),
       symbol: path.basename(file),
       concern: `Same production module contains visible Alert lines ${alertLines.join(", ")} and announce() lines ${announceFiles.get(file).join(", ")}; source requires an explicit one-owner decision per transition.`,
-      disposition: highRisk ? "MIGRATE_NOW" : REFERENCE_FEEDBACK.has(file) ? "REFERENCE_PRESERVE" : "BOUNDED_LATER_DEBT",
-      laterOwner: highRisk ? "T09.3 / D2-B" : REFERENCE_FEEDBACK.has(file) ? "" : `T09.6 caller migration / ${file}`,
+      disposition: highRisk
+        ? "MIGRATE_NOW"
+        : REFERENCE_FEEDBACK.has(file)
+          ? "REFERENCE_PRESERVE"
+          : "BOUNDED_LATER_DEBT",
+      laterOwner: highRisk
+        ? "T09.3 / D2-B"
+        : REFERENCE_FEEDBACK.has(file)
+          ? ""
+          : `T09.6 caller migration / ${file}`,
       evidence: `${file}:${alertLines.join(",")}; announce:${announceFiles.get(file).join(",")}`,
     });
   }
 
-  const feedSource = read("web/lib/feed-presentation.tsx");
-  const feedLine = feedSource.split("\n").findIndex((line) => line.includes("data-feed-announcement-owner")) + 1;
+  const feedSource = read("apps/web/lib/feed-presentation.tsx");
+  const feedLine =
+    feedSource
+      .split("\n")
+      .findIndex((line) => line.includes("data-feed-announcement-owner")) + 1;
   if (feedLine > 0) {
     add({
       family: "feedback-announcement",
-      file: "web/lib/feed-presentation.tsx",
+      file: "apps/web/lib/feed-presentation.tsx",
       start: feedLine,
       symbol: "FeedPresentation",
-      concern: "Documented visible-error versus global-polite announcement ownership split is the canonical compatibility reference.",
+      concern:
+        "Documented visible-error versus global-polite announcement ownership split is the canonical compatibility reference.",
       disposition: "REFERENCE_PRESERVE",
       evidence: lineAt(feedSource, feedLine),
     });
@@ -450,8 +501,13 @@ function census() {
         family: "overlay-foundation",
         file,
         start: index + 1,
-        symbol: symbolAt(source, source.split("\n").slice(0, index).join("\n").length, path.basename(file)),
-        concern: "Backdrop/content currently share --layer-overlay; explicit backdrop < content ordering and universal containment must be primitive-owned.",
+        symbol: symbolAt(
+          source,
+          source.split("\n").slice(0, index).join("\n").length,
+          path.basename(file)
+        ),
+        concern:
+          "Backdrop/content currently share --layer-overlay; explicit backdrop < content ordering and universal containment must be primitive-owned.",
         disposition: "MIGRATE_NOW",
         laterOwner: "T09.4/T09.5 / D3",
         evidence: lines[index].trim(),
@@ -459,15 +515,19 @@ function census() {
     }
   }
 
-  const globalCss = read("web/app/globals.css");
-  const overlayTokenLine = globalCss.split("\n").findIndex((line) => line.includes("--layer-overlay:")) + 1;
+  const globalCss = read("apps/web/app/globals.css");
+  const overlayTokenLine =
+    globalCss
+      .split("\n")
+      .findIndex((line) => line.includes("--layer-overlay:")) + 1;
   if (overlayTokenLine > 0) {
     add({
       family: "overlay-layer-token",
-      file: "web/app/globals.css",
+      file: "apps/web/app/globals.css",
       start: overlayTokenLine,
       symbol: "theme",
-      concern: "Single overlay layer token is shared by backdrop and content; preserve shell ordering while introducing explicit semantic order.",
+      concern:
+        "Single overlay layer token is shared by backdrop and content; preserve shell ordering while introducing explicit semantic order.",
       disposition: "MIGRATE_NOW",
       laterOwner: "T09.4/T09.5 / D3",
       evidence: lineAt(globalCss, overlayTokenLine),
@@ -479,7 +539,8 @@ function census() {
     const source = read(file);
     const tags = openingTags(source, OVERLAY_CALLER_NAMES);
     const nativeDialogs = openingTags(source, new Set(["dialog"]));
-    const hasOverlayImport = /@\/components\/ui\/(?:dialog|sheet|alert-dialog)/u.test(source);
+    const hasOverlayImport =
+      /@\/components\/ui\/(?:dialog|sheet|alert-dialog)/u.test(source);
     if (!tags.length && !nativeDialogs.length && !hasOverlayImport) continue;
 
     for (const tag of nativeDialogs) {
@@ -490,7 +551,8 @@ function census() {
         start,
         end: lineNumber(source, tag.end),
         symbol: symbolAt(source, tag.start, "dialog"),
-        concern: "Native non-modal notification dialog/popover preserves platform focus and disclosure semantics; do not replace for visual uniformity.",
+        concern:
+          "Native non-modal notification dialog/popover preserves platform focus and disclosure semantics; do not replace for visual uniformity.",
         disposition: "NATIVE_EXCEPTION",
         evidence: tag.source.replace(/\s+/gu, " ").trim(),
       });
@@ -499,7 +561,11 @@ function census() {
     for (const tag of tags) {
       const start = lineNumber(source, tag.start);
       const info = classInfo(tag.source);
-      if (tag.name === "Dialog" || tag.name === "Sheet" || tag.name === "AlertDialog") {
+      if (
+        tag.name === "Dialog" ||
+        tag.name === "Sheet" ||
+        tag.name === "AlertDialog"
+      ) {
         add({
           family: "overlay-caller",
           file,
@@ -507,14 +573,17 @@ function census() {
           end: lineNumber(source, tag.end),
           symbol: symbolAt(source, tag.start, tag.name),
           concern: `${tag.name} root preserves caller-owned open state, route/domain consequence, and dismissal behavior.`,
-          disposition: file === "web/app/management/management-action-framework.tsx" ? "VALID_CALLER_LAYOUT" : "REFERENCE_PRESERVE",
+          disposition:
+            file === "apps/web/app/management/management-action-framework.tsx"
+              ? "VALID_CALLER_LAYOUT"
+              : "REFERENCE_PRESERVE",
           evidence: tag.source.replace(/\s+/gu, " ").trim(),
         });
         continue;
       }
       const shared = info.sharedOverlay;
       const layout = info.layout;
-      if (info.dynamic && file !== "web/lib/attention-panel.tsx") {
+      if (info.dynamic && file !== "apps/web/lib/attention-panel.tsx") {
         add({
           family: "overlay-caller",
           file,
@@ -547,20 +616,33 @@ function census() {
           end: lineNumber(source, tag.end),
           symbol: symbolAt(source, tag.start, tag.name),
           concern: `${tag.name} caller placement/width/layout remains route or workflow-owned: ${layout.join(", ") || "no shared override"}.`,
-          disposition: file === "web/lib/attention-panel.tsx" ? "REFERENCE_PRESERVE" : "VALID_CALLER_LAYOUT",
+          disposition:
+            file === "apps/web/lib/attention-panel.tsx"
+              ? "REFERENCE_PRESERVE"
+              : "VALID_CALLER_LAYOUT",
           evidence: tag.source.replace(/\s+/gu, " ").trim(),
         });
       }
     }
 
     for (const [index, line] of source.split("\n").entries()) {
-      if (!/(?:onOpenAutoFocus|onCloseAutoFocus|onInteractOutside|onEscapeKeyDown|onPointerDownOutside)/u.test(line)) continue;
+      if (
+        !/(?:onOpenAutoFocus|onCloseAutoFocus|onInteractOutside|onEscapeKeyDown|onPointerDownOutside)/u.test(
+          line
+        )
+      )
+        continue;
       add({
         family: "overlay-focus",
         file,
         start: index + 1,
-        symbol: symbolAt(source, source.split("\n").slice(0, index).join("\n").length, "overlay caller"),
-        concern: "Caller focus/dismissal override is retained as a compatibility tracer; primitive migration must preserve Radix focus return and Escape behavior.",
+        symbol: symbolAt(
+          source,
+          source.split("\n").slice(0, index).join("\n").length,
+          "overlay caller"
+        ),
+        concern:
+          "Caller focus/dismissal override is retained as a compatibility tracer; primitive migration must preserve Radix focus return and Escape behavior.",
         disposition: "REFERENCE_PRESERVE",
         evidence: line.trim(),
       });
@@ -569,7 +651,7 @@ function census() {
 
   const special = [
     [
-      "web/app/management/management-action-framework.tsx",
+      "apps/web/app/management/management-action-framework.tsx",
       23,
       "ActionSurface",
       "Existing management action surface owns scroll, action clearance, and shell placement; it is not a new Card/Sheet primitive.",
@@ -577,7 +659,7 @@ function census() {
       "",
     ],
     [
-      "web/lib/offline-banner.tsx",
+      "apps/web/lib/offline-banner.tsx",
       34,
       "OfflineBanner",
       "Native role=status banner uses its own z layer and safe-area top reserve; platform/status semantics are intentionally independent of Alert.",
@@ -585,7 +667,7 @@ function census() {
       "",
     ],
     [
-      "web/app/globals.css",
+      "apps/web/app/globals.css",
       438,
       "attention-panel",
       "Existing attention Dialog tracer owns top-right placement, bounded height, overflow, surface tokens, and overlay z layer in the approved CSS seam.",
@@ -593,7 +675,7 @@ function census() {
       "",
     ],
     [
-      "web/lib/programs/programs-notifications.tsx",
+      "apps/web/lib/programs/programs-notifications.tsx",
       54,
       "notificationPopover",
       "Native dialog notification popover owns local placement, containment, and non-modal disclosure behavior.",
@@ -601,7 +683,14 @@ function census() {
       "",
     ],
   ];
-  for (const [file, line, symbol, concern, disposition, laterOwner] of special) {
+  for (const [
+    file,
+    line,
+    symbol,
+    concern,
+    disposition,
+    laterOwner,
+  ] of special) {
     add({
       family: "overlay-or-surface-exception",
       file,
@@ -615,11 +704,11 @@ function census() {
   }
 
   for (const file of [
-    "web/components/ui/card.tsx",
-    "web/components/ui/alert.tsx",
-    "web/components/ui/dialog.tsx",
-    "web/components/ui/sheet.tsx",
-    "web/components/ui/alert-dialog.tsx",
+    "apps/web/components/ui/card.tsx",
+    "apps/web/components/ui/alert.tsx",
+    "apps/web/components/ui/dialog.tsx",
+    "apps/web/components/ui/sheet.tsx",
+    "apps/web/components/ui/alert-dialog.tsx",
   ]) {
     const source = read(file);
     for (const [index, line] of source.split("\n").entries()) {
@@ -628,8 +717,13 @@ function census() {
         family: "spread-review",
         file,
         start: index + 1,
-        symbol: symbolAt(source, source.split("\n").slice(0, index).join("\n").length, path.basename(file)),
-        concern: "Primitive prop spread forwards the public DOM/Radix API after the owned class; it is not a caller styling escape.",
+        symbol: symbolAt(
+          source,
+          source.split("\n").slice(0, index).join("\n").length,
+          path.basename(file)
+        ),
+        concern:
+          "Primitive prop spread forwards the public DOM/Radix API after the owned class; it is not a caller styling escape.",
         disposition: "PROVEN_FALSE_POSITIVE",
         evidence: line.trim(),
       });
@@ -643,14 +737,17 @@ function summary(result) {
   const byDisposition = Object.fromEntries(
     [...ALLOWED].map((disposition) => [
       disposition,
-      result.records.filter((record) => record.disposition === disposition).length,
+      result.records.filter((record) => record.disposition === disposition)
+        .length,
     ])
   );
   const byFamily = Object.fromEntries(
-    [...new Set(result.records.map((record) => record.family))].sort().map((family) => [
-      family,
-      result.records.filter((record) => record.family === family).length,
-    ])
+    [...new Set(result.records.map((record) => record.family))]
+      .sort()
+      .map((family) => [
+        family,
+        result.records.filter((record) => record.family === family).length,
+      ])
   );
   return {
     fixedParent: git(["rev-parse", PARENT_BRANCH]),
@@ -660,20 +757,27 @@ function summary(result) {
     records: result.records.length,
     byDisposition,
     byFamily,
-    unknownRecords: result.records.filter((record) => !ALLOWED.has(record.disposition)).length,
+    unknownRecords: result.records.filter(
+      (record) => !ALLOWED.has(record.disposition)
+    ).length,
   };
 }
 
 function check(result) {
   const report = summary(result);
   if (report.fixedParent !== EXPECTED_PARENT) {
-    throw new Error(`Parent moved: expected ${EXPECTED_PARENT}, got ${report.fixedParent}`);
+    throw new Error(
+      `Parent moved: expected ${EXPECTED_PARENT}, got ${report.fixedParent}`
+    );
   }
   if (report.mergeBase !== EXPECTED_PARENT) {
-    throw new Error(`Branch is not based on ${EXPECTED_PARENT}; merge-base is ${report.mergeBase}`);
+    throw new Error(
+      `Branch is not based on ${EXPECTED_PARENT}; merge-base is ${report.mergeBase}`
+    );
   }
   if (!result.records.length) throw new Error("Census produced no records");
-  if (report.unknownRecords) throw new Error("Census contains unknown dispositions");
+  if (report.unknownRecords)
+    throw new Error("Census contains unknown dispositions");
   for (const record of result.records) {
     if (
       !record.file ||
@@ -691,11 +795,17 @@ function check(result) {
       throw new Error(`Record outside production scope: ${record.file}`);
     }
   }
-  const protectedChanges = git(["diff", "--name-only", `${EXPECTED_PARENT}...HEAD`])
+  const protectedChanges = git([
+    "diff",
+    "--name-only",
+    `${EXPECTED_PARENT}...HEAD`,
+  ])
     .split("\n")
     .filter((file) => /^(?:web\/(?:app|components|lib)\/)/u.test(file));
   if (protectedChanges.length) {
-    throw new Error(`T09.0 changed protected production files: ${protectedChanges.join(", ")}`);
+    throw new Error(
+      `T09.0 changed protected production files: ${protectedChanges.join(", ")}`
+    );
   }
   return report;
 }
@@ -711,13 +821,15 @@ function markdown(result) {
     "",
     `Fixed parent: \`${report.fixedParent}\` (` + PARENT_BRANCH + ")",
     `Implementation HEAD: \`${report.head}\``,
-    `Production scope: ${report.productionFiles} committed files under \`web/\`; tests, Stories, prototypes, generated output, and dependency output excluded.`,
+    `Production scope: ${report.productionFiles} committed files under \`apps/web/\`; tests, Stories, prototypes, generated output, and dependency output excluded.`,
     "",
     "The complete register below is generated by `node scripts/t09-frontier-census.mjs --markdown`; no production contract is changed by this tool.",
     "",
     "| Disposition | Records |",
     "|---|---:|",
-    ...Object.entries(report.byDisposition).map(([key, value]) => `| ${key} | ${value} |`),
+    ...Object.entries(report.byDisposition).map(
+      ([key, value]) => `| ${key} | ${value} |`
+    ),
     `| **Total** | **${report.records}** |`,
     "",
     "| ID | Family | Source | Symbol | Concern | Evidence | Disposition | Later owner |",
@@ -736,7 +848,13 @@ const args = new Set(process.argv.slice(2));
 if (args.has("--check")) {
   console.log(JSON.stringify({ status: "PASS", ...check(result) }, null, 2));
 } else if (args.has("--json")) {
-  console.log(JSON.stringify({ summary: summary(result), records: result.records }, null, 2));
+  console.log(
+    JSON.stringify(
+      { summary: summary(result), records: result.records },
+      null,
+      2
+    )
+  );
 } else if (args.has("--markdown")) {
   console.log(markdown(result));
 } else {

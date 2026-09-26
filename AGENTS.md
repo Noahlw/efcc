@@ -15,7 +15,7 @@ EFCC is one domain context with one root `CONTEXT.md`. Keep domain terms there, 
 
 - Inspect callers, routes, scripts, and current tests before editing a shared module.
 - Reuse the standard library, platform behavior, or an existing repository helper before adding a dependency or abstraction.
-- Keep domain logic under `web/lib/<domain>`, route composition under `web/app`, and Worker/API routing in `web/worker.ts`.
+- Keep domain logic under `apps/web/lib/<domain>`, route composition under `apps/web/app`, and Worker/API routing in `apps/web/worker.ts`.
 - Keep authentication/session authority separate from the editable scoped Role Definition, Grant, hierarchy, and audit model.
 - Keep the root workspace and root command entrypoints as the default navigation path. Read `package.json` when a command is needed instead of copying a command list into a new document.
 - When an unfamiliar library, framework, or Cloudflare API is needed, read its current official documentation through Context7 or Firecrawl before choosing an implementation.
@@ -33,7 +33,7 @@ Web behavior changes require an acceptance trace before implementation; mechanic
 ## Protect data and external boundaries
 
 - Use only local or inventory-approved disposable development/test D1 targets for reset and seed operations.
-- Verify Worker account, route, D1 ID, environment, rate-limit namespace, and compatibility date before any remote Wrangler action. A placeholder in `web/wrangler.jsonc` is not identity evidence.
+- Verify Worker account, route, D1 ID, environment, rate-limit namespace, and compatibility date before any remote Wrangler action. A placeholder in `apps/web/wrangler.jsonc` is not identity evidence.
 - Never reset production or an unknown target. Never commit credentials, cookies, access tokens, storage state, or `.dev.vars` values.
 - Keep Apps Script, Google Sheets, the old RPC bridge, the external scanner opener, and public `/prototype` route retired. Keep the current Worker scanner and ZXing fallback.
 - Auth provider/library replacement is deferred to [#639](https://github.com/Noahlw/efcc/issues/639); do not fold it into unrelated cleanup.

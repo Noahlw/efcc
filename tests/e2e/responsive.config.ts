@@ -4,7 +4,7 @@
 // tests/e2e/serve-static.ts.
 //
 // Paths in `webServer.command` are resolved relative to the testDir cwd
-// (tests/e2e/), so `../../web` reaches the workspace root.
+// (tests/e2e/), so `../../apps/web` reaches the workspace directory.
 
 import { defineConfig } from "@playwright/test";
 

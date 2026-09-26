@@ -3,7 +3,15 @@ import { rm } from "node:fs/promises";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
-const d1State = path.join(root, "web", ".wrangler", "state", "v3", "d1");
+const d1State = path.join(
+  root,
+  "apps",
+  "web",
+  ".wrangler",
+  "state",
+  "v3",
+  "d1"
+);
 
 console.log(
   `Resetting local Wrangler D1 state at ${path.relative(root, d1State)}`

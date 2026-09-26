@@ -1,6 +1,6 @@
 import { expect as pwExpect, test as pwTest } from "@playwright/test";
 
-import { MANAGEMENT_HUB_STORY_IDS } from "../../web/.storybook/management-hub-story-ids";
+import { MANAGEMENT_HUB_STORY_IDS } from "../../apps/web/.storybook/management-hub-story-ids";
 
 const STORY_IDS = MANAGEMENT_HUB_STORY_IDS;
 

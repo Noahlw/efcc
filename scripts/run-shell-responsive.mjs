@@ -29,7 +29,7 @@ function findAvailablePort() {
   });
 }
 
-const build = spawnSync("pnpm", ["--dir", "web", "build"], {
+const build = spawnSync("pnpm", ["--dir", "apps/web", "build"], {
   cwd: REPO_ROOT,
   stdio: "inherit",
 });

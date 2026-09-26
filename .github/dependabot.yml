@@ -1,6 +1,6 @@
 version: 2
 updates:
-  # Root manifest and pnpm workspace lockfile (including web/).
+  # Root manifest and pnpm workspace lockfile (including apps/web/).
   - package-ecosystem: npm
     directory: "/"
     schedule:

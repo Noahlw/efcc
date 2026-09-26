@@ -19,7 +19,7 @@ pnpm install:browsers
 pnpm verify
 ```
 
-The repository has one pnpm workspace (`pnpm-workspace.yaml`) and one lockfile (`pnpm-lock.yaml`). Keep `web/` as the application package, but run contributor commands from the root so the command and dependency boundary stays obvious. Use `pnpm --filter web <script>` only when a web package script is the explicit owner of the task.
+The repository has one pnpm workspace (`pnpm-workspace.yaml`) and one lockfile (`pnpm-lock.yaml`). Keep `apps/web/` as the application directory (package name `web`), but run contributor commands from the root so the command and dependency boundary stays obvious. Use `pnpm --filter web <script>` only when a web package script is the explicit owner of the task.
 
 `pnpm bootstrap` runs the frozen workspace install. Playwright browser binaries are installed only by the explicit `pnpm install:browsers` command; dependency installation must not silently download them.
 
@@ -58,7 +58,7 @@ The local run builds the static export, applies Wrangler migrations to local D1,
 
 Only local or inventory-approved disposable development/test D1 targets may be reset. A reset must name the target explicitly and happen after the baseline has passed against an empty local D1. Production and unknown targets are outside the development workflow. Do not run remote Wrangler commands until the Worker account, route, D1 ID, environment, and rate-limit namespace are verified from authoritative account evidence; the checked-in placeholder configuration is not that evidence.
 
-The D1 schema ledger is `web/migrations/`. Keep it as the single migration history. The project has no production data, but a development reset still requires a verified target and a reproducible seed.
+The D1 schema ledger is `apps/web/migrations/`. Keep it as the single migration history. The project has no production data, but a development reset still requires a verified target and a reproducible seed.
 
 ## Verification and pre-commit
 
@@ -92,7 +92,7 @@ Every change should state the candidate revision, commands run, results, and kno
 - real device or assistive-technology review;
 - Cloudflare configuration and deployment/promotion evidence.
 
-Routine development does not deploy. When deployment work is explicitly authorized, verify the target identity first and use a disposable development/acceptance resource. Never treat the stale `efcc-prototype-129` name or placeholder IDs in `web/wrangler.jsonc` as a valid target.
+Routine development does not deploy. When deployment work is explicitly authorized, verify the target identity first and use a disposable development/acceptance resource. Never treat the stale `efcc-prototype-129` name or placeholder IDs in `apps/web/wrangler.jsonc` as a valid target.
 
 ## Documentation routing
 

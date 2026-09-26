@@ -8,7 +8,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { resolveRepoRoot } from "../web/lib/governance/index";
+import { resolveRepoRoot } from "../apps/web/lib/governance/index";
 import {
   getAffectedFiles,
   getSanitizedGitEnv,
@@ -51,23 +51,23 @@ describe("Governance CLI", () => {
       mode: "release",
       targetFiles: undefined,
     });
-    expect(parseCliArgs(["--mode=affected", "web/app/page.tsx"])).toEqual({
+    expect(parseCliArgs(["--mode=affected", "apps/web/app/page.tsx"])).toEqual({
       mode: "affected",
-      targetFiles: ["web/app/page.tsx"],
+      targetFiles: ["apps/web/app/page.tsx"],
     });
   });
 
   it("rejects release mode positional target files because release always scans full scope", () => {
-    expect(() => parseCliArgs(["--mode=release", "web/app/page.tsx"])).toThrow(
-      /release.*full.*scope|target files.*not allowed/i
-    );
-    expect(() => parseCliArgs(["web/app/page.tsx", "--release"])).toThrow(
+    expect(() =>
+      parseCliArgs(["--mode=release", "apps/web/app/page.tsx"])
+    ).toThrow(/release.*full.*scope|target files.*not allowed/i);
+    expect(() => parseCliArgs(["apps/web/app/page.tsx", "--release"])).toThrow(
       /release.*full.*scope|target files.*not allowed/i
     );
 
     const result = runGovernanceAudit({
       mode: "release",
-      targetFiles: ["web/app/page.tsx"],
+      targetFiles: ["apps/web/app/page.tsx"],
       now: "2026-09-03T00:00:00Z",
     });
     expect(result.success).toBe(false);
@@ -127,7 +127,7 @@ describe("Governance CLI", () => {
   it("fails and reports scanErrors when given a missing target file", () => {
     const result = runGovernanceAudit({
       mode: "affected",
-      targetFiles: ["web/app/missing-file-for-cli-test.tsx"],
+      targetFiles: ["apps/web/app/missing-file-for-cli-test.tsx"],
     });
     expect(result.success).toBe(false);
     expect(result.auditResult?.passed).toBe(false);
@@ -137,7 +137,7 @@ describe("Governance CLI", () => {
   it("fails and reports scanErrors when given a directory as an explicit target path", () => {
     const result = runGovernanceAudit({
       mode: "affected",
-      targetFiles: ["web/app"],
+      targetFiles: ["apps/web/app"],
       now: "2026-09-03T00:00:00Z",
     });
     expect(result.success).toBe(false);
@@ -431,7 +431,7 @@ describe("Governance CLI", () => {
       const tempRoot = fs.mkdtempSync(
         path.join("/tmp", "efcc-governance-baseline-waiver-")
       );
-      const relativeFile = "web/app/management/directory-frame.tsx";
+      const relativeFile = "apps/web/app/management/directory-frame.tsx";
       const filePath = path.join(tempRoot, relativeFile);
       const baseSource = [
         '"use client";',

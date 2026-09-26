@@ -2,7 +2,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-import { COPY } from "../../web/lib/copy";
+import { COPY } from "../../apps/web/lib/copy";
 import { DEV_ADMIN } from "./dev-fixtures";
 
 const EDITOR = COPY.homeEditor;

@@ -13,14 +13,14 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
-export interface PlaywrightAttachment {
+interface PlaywrightAttachment {
   name: string;
   contentType: string;
   path?: string;
   body?: string;
 }
 
-export interface PlaywrightTestResult {
+interface PlaywrightTestResult {
   workerIndex?: number;
   status: "passed" | "failed" | "timedOut" | "skipped" | "interrupted" | string;
   duration?: number;
@@ -28,32 +28,32 @@ export interface PlaywrightTestResult {
   attachments?: PlaywrightAttachment[];
 }
 
-export interface PlaywrightAnnotation {
+interface PlaywrightAnnotation {
   type: string;
   description?: string;
 }
 
-export interface PlaywrightTest {
+interface PlaywrightTest {
   projectName?: string;
   status?: string;
   results?: PlaywrightTestResult[];
   annotations?: PlaywrightAnnotation[];
 }
 
-export interface PlaywrightSpec {
+interface PlaywrightSpec {
   title: string;
   ok?: boolean;
   tests?: PlaywrightTest[];
 }
 
-export interface PlaywrightSuite {
+interface PlaywrightSuite {
   title: string;
   file?: string;
   specs?: PlaywrightSpec[];
   suites?: PlaywrightSuite[];
 }
 
-export interface PlaywrightProjectConfig {
+interface PlaywrightProjectConfig {
   name: string;
   use?: {
     baseURL?: string;
@@ -87,7 +87,7 @@ export interface TestEvidenceItem {
   numericAttachments: Record<string, unknown>;
 }
 
-export interface AggregatedEvidence {
+interface AggregatedEvidence {
   schemaVersion: "1.0.0";
   generatedAt: string;
   total: number;
@@ -112,7 +112,7 @@ const DEFAULT_DETERMINISTIC_TIMESTAMP = "2026-09-01T00:00:00.000Z";
  * Validates that a given URL is a local loopback URL (http(s)://127.0.0.1:* or http(s)://localhost:*).
  * Rejects remote / external URLs.
  */
-export function validateLoopbackUrl(urlStr: string | undefined): void {
+function validateLoopbackUrl(urlStr: string | undefined): void {
   if (!urlStr) {
     return;
   }
@@ -163,7 +163,7 @@ function collectReportTargetUrls(report: PlaywrightJsonReport): string[] {
 /**
  * Validates attachment metadata to ensure no screenshot/image attachments are present.
  */
-export function validateAttachment(attachment: PlaywrightAttachment): void {
+function validateAttachment(attachment: PlaywrightAttachment): void {
   if (/^image\//iu.test(attachment.contentType)) {
     throw new Error(
       `Image attachment rejected: ${attachment.name} (${attachment.contentType}). Only numeric JSON evidence is permitted.`
@@ -446,9 +446,7 @@ export function parsePlaywrightJsonReport(
 /**
  * Sorts evidence items deterministically.
  */
-export function sortEvidenceItems(
-  items: TestEvidenceItem[]
-): TestEvidenceItem[] {
+function sortEvidenceItems(items: TestEvidenceItem[]): TestEvidenceItem[] {
   return [...items].sort((a, b) => {
     const fileCmp = a.file.localeCompare(b.file);
     if (fileCmp !== 0) {
@@ -469,7 +467,7 @@ export function sortEvidenceItems(
 /**
  * Aggregates structured test evidence items into an aggregated report.
  */
-export function aggregateEvidence(
+function aggregateEvidence(
   items: TestEvidenceItem[],
   options?: { generatedAt?: string }
 ): AggregatedEvidence {
@@ -821,7 +819,7 @@ async function findJsonFiles(dir: string): Promise<string[]> {
 /**
  * Runs the full evidence rendering pipeline from input directory to output files.
  */
-export async function runEvidenceRenderer(options: {
+async function runEvidenceRenderer(options: {
   inputDir: string;
   jsonOutput: string;
   htmlOutput: string;

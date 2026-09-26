@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
  * No hashes are embedded in this file: each run derives fresh PBKDF2-SHA256
  * hashes from the fixed dev-only plaintext credentials below using the
  * repo's real credential hasher (`hashCredential` in
- * web/lib/auth/credentials.ts) — the same function the worker uses at
+ * apps/web/lib/auth/credentials.ts) — the same function the worker uses at
  * registration time — so the seeded rows are byte-compatible with
  * what `verifyCredential` checks at login.
  *
@@ -24,7 +24,7 @@ import { parseArgs } from "node:util";
 import {
   hashCredential,
   normalizeUsername,
-} from "../../web/lib/auth/credentials";
+} from "../../apps/web/lib/auth/credentials";
 import { DEV_ACCOUNTS } from "./dev-fixtures";
 import type { DevFixtureAccount } from "./dev-fixtures";
 

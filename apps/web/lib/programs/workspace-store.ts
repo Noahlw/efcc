@@ -1,0 +1,941 @@
+/**
+ * EFCC Programs domain — persistence seam (WorkspaceStore).
+ *
+ * The D1 adapter is used in production; tests may use an in-memory or test-D1
+ * adapter. The new domain has no Sheet adapter and no dual-write path.
+ */
+
+import type { ModuleKey } from "./capabilities";
+import type {
+  EnrollmentApprovalRun,
+  EnrollmentApprovalRunAuthority,
+  EnrollmentApprovalRunClaim,
+  EnrollmentApprovalRunItem,
+  EnrollmentApprovalRunItemRow,
+  EnrollmentApprovalRunItemStatus,
+  EnrollmentApprovalRunRow,
+} from "./enrollment-approval-run";
+// Domain vocabulary lives in the pure recurrence module; rows and commands
+// reuse it so there is one definition (no drift risk).
+import type { RecurrenceKind, ScheduleExceptionAction } from "./recurrence";
+
+export interface DepartmentInput {
+  code: string;
+  name: string;
+  description?: string;
+  lifecycle: DepartmentLifecycle;
+  display_order?: number;
+  created_by: string | null;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface DepartmentUpdate {
+  name?: string;
+  description?: string;
+  lifecycle?: DepartmentLifecycle;
+  display_order?: number;
+  updated_by: string;
+  updated_at: string;
+}
+
+export type DepartmentLifecycle =
+  | "Draft"
+  | "PendingDevelopment"
+  | "Active"
+  | "Archived";
+
+export interface DepartmentRow {
+  department_id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  lifecycle: DepartmentLifecycle;
+  display_order: number;
+  created_by: string | null;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface ProgramInput {
+  department_id: string;
+  name: string;
+  description?: string;
+  category?: string;
+  behavior_type: ProgramBehaviorType;
+  lifecycle: ProgramLifecycle;
+  discoverability: ProgramDiscoverability;
+  enrollment_mode: ProgramEnrollmentMode;
+  display_order?: number;
+  created_by: string | null;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface ProgramUpdate {
+  name?: string;
+  description?: string | null;
+  category?: string | null;
+  behavior_type?: ProgramBehaviorType;
+  lifecycle?: ProgramLifecycle;
+  discoverability?: ProgramDiscoverability;
+  enrollment_mode?: ProgramEnrollmentMode;
+  display_order?: number;
+  check_in_opens_at_minutes_before_start?: number;
+  check_in_closes_at_minutes_after_end?: number;
+  updated_by: string;
+  updated_at: string;
+}
+
+export interface ProgramTokenRotationInput {
+  program_id: string;
+  actor_user_id: string;
+  idempotency_key: string;
+  request_fingerprint: string;
+  now: string;
+  audit_id: string;
+  correlation_id: string | null;
+}
+
+export interface ProgramTokenRotationResult {
+  program: ProgramRow;
+  idempotent: boolean;
+}
+
+export type ProgramBehaviorType = "Recurring" | "OneOff";
+export type ProgramLifecycle = "Draft" | "Active" | "Archived";
+export type ProgramDiscoverability = "Listed" | "Unlisted";
+export type ProgramEnrollmentMode = "MemberRequest" | "ManagerOnly";
+
+export interface ProgramRow {
+  program_id: string;
+  department_id: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  behavior_type: ProgramBehaviorType;
+  lifecycle: ProgramLifecycle;
+  discoverability: ProgramDiscoverability;
+  enrollment_mode: ProgramEnrollmentMode;
+  display_order: number;
+  created_by: string | null;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+  check_in_token: string | null;
+  check_in_opens_at_minutes_before_start: number;
+  check_in_closes_at_minutes_after_end: number;
+}
+
+/** Minimal server-side identity used for capability projection only. */
+export interface ProgramAccessRow {
+  program_id: string;
+  department_id: string;
+}
+
+export interface DepartmentModuleRow {
+  department_id: string;
+  module_key: ModuleKey;
+  enabled: number;
+  enabled_by: string | null;
+  enabled_at: string;
+}
+
+export interface MemberOptionRow {
+  user_id: string;
+  name: string;
+  username: string;
+}
+
+/**
+ * One flattened row of the Member Directory search (087-04 #321): an Active
+ * account joined with one of its Active-enrollment departments and one
+ * normalized identity assignment.
+ */
+export interface ManagementMemberSearchRow {
+  user_id: string;
+  name: string;
+  username: string;
+  phone: string | null;
+  /** Derived from normalized system assignments, never accounts.role. */
+  account_status: string;
+  /** Whether the account has the protected normalized Admin identity. */
+  is_admin?: number;
+  department_id: string | null;
+  department_name: string | null;
+  identity_id: string | null;
+  identity_label: string | null;
+  identity_stable_key: string | null;
+  identity_scope_kind: "Global" | "Department" | "Program" | null;
+  identity_scope_id: string | null;
+}
+
+export interface AccountDirectorySearchFilters {
+  department?: string;
+  identityId?: string;
+  status?: "Pending" | "Active" | "Suspended" | "Deactivated";
+}
+
+export interface AccountDirectorySummary {
+  total: number;
+  active: number;
+  elevated: number;
+  pending: number;
+}
+
+type EventStatus = "Active" | "Cancelled";
+export type EventAvailability = "Active" | "Inactive";
+type EventSource = "SCHEDULE" | "MANUAL";
+
+export interface ScheduleRuleInput {
+  program_id: string;
+  recurrence: RecurrenceKind;
+  day_of_week: number | null;
+  month_day: number | null;
+  start_time: string;
+  end_time: string;
+  location?: string | null;
+  /** Inclusive HK wall start; omitted only for legacy callers. */
+  effective_start_date?: string | null;
+  /** Inclusive HK wall end; null means the rule is ongoing. */
+  effective_end_date?: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+  /** Present for retry-safe HTTP creates; omitted by legacy callers. */
+  idempotency_key?: string | null;
+  request_fingerprint?: string | null;
+}
+
+export interface ScheduleRuleCreationResult {
+  rule: ScheduleRuleRow;
+  idempotent: boolean;
+}
+
+export interface ScheduleRuleUpdate {
+  recurrence?: RecurrenceKind;
+  day_of_week?: number | null;
+  month_day?: number | null;
+  start_time?: string;
+  end_time?: string;
+  location?: string | null;
+  effective_start_date?: string | null;
+  effective_end_date?: string | null;
+  updated_by: string;
+  updated_at: string;
+}
+
+export interface ScheduleRuleRow {
+  rule_id: string;
+  program_id: string;
+  recurrence: RecurrenceKind;
+  day_of_week: number | null;
+  month_day: number | null;
+  start_time: string;
+  end_time: string;
+  location: string | null;
+  effective_start_date?: string | null;
+  effective_end_date?: string | null;
+  /** A retired rule remains historical and cannot generate future events. */
+  retired_at?: string | null;
+  retired_by?: string | null;
+  /** Server-derived history marker used by the management Schedule surface. */
+  has_generated_events?: number | boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface ScheduleExceptionInput {
+  rule_id: string;
+  override_date: string;
+  action: ScheduleExceptionAction;
+  new_start_time: string | null;
+  new_end_time: string | null;
+  /** Replacement HK wall date; null keeps the original occurrence date. */
+  new_date?: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface ScheduleExceptionRow {
+  exception_id: string;
+  rule_id: string;
+  override_date: string;
+  action: ScheduleExceptionAction;
+  new_start_time: string | null;
+  new_end_time: string | null;
+  new_date?: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+export type EventType = "崇拜" | "訓練" | "小組" | "排練" | "外展" | "其他";
+type RecurrenceTag = "無" | "每週" | "每月";
+
+export interface EventInput {
+  /** Optional caller-owned ID for an atomic generated Event + run-item write. */
+  event_id?: string;
+  program_id: string;
+  starts_at: string;
+  ends_at: string;
+  status: EventStatus;
+  availability: EventAvailability;
+  source: EventSource;
+  /** Immutable provenance for generated schedule Events; null for manual Events. */
+  schedule_rule_id?: string | null;
+  /** Original HK wall occurrence date; never changes on Event reschedule. */
+  occurrence_date?: string | null;
+  name: string | null;
+  event_type?: EventType | null;
+  location: string | null;
+  check_in_window_opens_at?: string | null;
+  check_in_window_closes_at?: string | null;
+  cancel_reason: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+}
+
+export interface EventRow {
+  event_id: string;
+  program_id: string;
+  starts_at: string;
+  ends_at: string;
+  status: EventStatus;
+  availability: EventAvailability;
+  source: EventSource;
+  /** Immutable Schedule Rule provenance for generated Events. */
+  schedule_rule_id?: string | null;
+  /** Original HK wall occurrence date in Church Time. */
+  occurrence_date?: string | null;
+  name: string | null;
+  event_type: EventType | null;
+  location: string | null;
+  cancel_reason: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_by: string | null;
+  updated_at: string;
+  /** Matching schedule exception (attributed rule + HK wall date), if any. */
+  exception?: ScheduleExceptionRow | null;
+  /** Derived recurrence tag (e.g. '每週' | '每月' | '無'). */
+  recurrence_tag?: RecurrenceTag | null;
+  /** Whether active check-in/attendance records exist for this event. */
+  has_attendance?: boolean;
+  manual_check_in_code: string | null;
+  check_in_window_opens_at: string | null;
+  check_in_window_closes_at: string | null;
+}
+
+/** Bounded operator-facing Event state rows for the Management attention seam. */
+export interface ManagementAttentionEventRow {
+  event_id: string;
+  program_id: string;
+  starts_at: string;
+  status: EventStatus;
+  availability: EventAvailability;
+  name: string | null;
+}
+
+/** Current source rows used to project per-user management notifications. */
+export interface ManagementNotificationEventRow {
+  event_id: string;
+  program_id: string;
+  starts_at: string;
+  status: EventStatus;
+  availability: EventAvailability;
+  name: string | null;
+  updated_at: string;
+}
+
+export interface ManagementNotificationEnrollmentRow {
+  program_id: string;
+  count: number;
+  latest_submitted_at: string;
+}
+
+export interface NotificationReadStateInput {
+  source_key: string;
+  source_revision: string;
+}
+
+export interface NotificationReadStateRow extends NotificationReadStateInput {
+  read_at: string;
+}
+
+// 085-07 (#324) — participant Notices. Rows are durable messages created via
+// the admin POST /api/v1/programs/notices endpoint and scoped to exactly one
+// member. read_at/created_at are epoch milliseconds (read_at null = unread).
+export type ParticipantNoticeKind = "event" | "program" | "account";
+
+export interface ParticipantNoticeRow {
+  notice_id: string;
+  member_user_id: string;
+  kind: ParticipantNoticeKind;
+  title: string;
+  body: string;
+  program_id: string | null;
+  event_id: string | null;
+  read_at: number | null;
+  created_at: number;
+}
+
+export interface ParticipantNoticeCreateInput {
+  notice_id: string;
+  member_user_id: string;
+  kind: ParticipantNoticeKind;
+  title: string;
+  body: string;
+  program_id: string | null;
+  event_id: string | null;
+  read_at: number | null;
+  created_at: number;
+}
+
+export interface GenerateResult {
+  run_id: string;
+  plan_id: string;
+  status: GenerationRunStatus;
+  created: number;
+  skipped: number;
+  failed: number;
+  resumed: boolean;
+  requires_review?: boolean;
+  created_event_ids: string[];
+  skipped_occurrences: GenerateSkippedOccurrence[];
+  unresolved_occurrences: GenerateUnresolvedOccurrence[];
+}
+
+interface GenerateSkippedOccurrence {
+  occurrence_id: string;
+  starts_at: string;
+  reason: "CANCEL" | "DUPLICATE";
+}
+
+interface GenerateUnresolvedOccurrence {
+  occurrence_id: string;
+  starts_at: string;
+  detail: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// EVT-02 (#252): preview plans and generation runs.
+// ---------------------------------------------------------------------------
+
+export interface PreviewPlanRow {
+  plan_id: string;
+  program_id: string;
+  plan_hash: string;
+  horizon_days: number;
+  from_date: string;
+  /** Exact inclusive selected end date; nullable for pre-0028 plans. */
+  to_date?: string | null;
+  /** Durable schedule revision captured by the reviewed Preview. */
+  schedule_version: number | null;
+  /** Monotonic durable review recency, separate from original creation time. */
+  reviewed_at: number;
+  rule_count: number;
+  created_by: string | null;
+  created_at: string;
+}
+
+type PreviewSkipReason = "CANCEL" | "DUPLICATE";
+
+export interface PreviewOccurrenceRow {
+  occurrence_id: string;
+  plan_id: string;
+  rule_id: string;
+  occurs_on: string;
+  starts_at: string;
+  ends_at: string;
+  location: string | null;
+  skip_reason: PreviewSkipReason | null;
+  exception_id: string | null;
+  /** Replacement HK wall date; occurs_on remains the original occurrence. */
+  replacement_date?: string | null;
+}
+
+type GenerationRunStatus = "completed" | "partial" | "failed";
+type GenerationRunItemOutcome = "created" | "skipped" | "failed";
+
+export interface GenerationRunRow {
+  run_id: string;
+  program_id: string;
+  plan_id: string;
+  status: GenerationRunStatus;
+  created: number;
+  skipped: number;
+  failed: number;
+  started_at: string;
+  finished_at: string | null;
+  created_by: string | null;
+  correlation_id: string | null;
+}
+
+export interface GenerationRunItemRow {
+  item_id: string;
+  run_id: string;
+  occurrence_id: string;
+  starts_at: string;
+  outcome: GenerationRunItemOutcome;
+  event_id: string | null;
+  detail: string | null;
+}
+
+export interface GenerationRunItemInput {
+  item_id: string;
+  run_id: string;
+  occurrence_id: string;
+  starts_at: string;
+  outcome: GenerationRunItemOutcome;
+  event_id: string | null;
+  detail: string | null;
+}
+
+export type EnrollmentRequestStatus =
+  | "Pending"
+  | "Approved"
+  | "Rejected"
+  | "Withdrawn";
+type EnrollmentStatus = "Active" | "Cancelled";
+
+export interface EnrollmentRequestRow {
+  request_id: string;
+  program_id: string;
+  member_user_id: string;
+  status: EnrollmentRequestStatus;
+  submitted_at: string;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  request_version: number;
+  member_name?: string;
+  member_username?: string;
+}
+
+export interface EnrollmentRow {
+  enrollment_id: string;
+  program_id: string;
+  member_user_id: string;
+  request_id: string | null;
+  status: EnrollmentStatus;
+  enrolled_at: string;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  /** Required for manager cancellation; null for self-exit or uncancelled rows. */
+  cancellation_reason?: string | null;
+  created_by: string | null;
+  created_at: string;
+  member_name?: string;
+  member_username?: string;
+}
+
+export interface EnrollmentRequestInput {
+  request_id: string;
+  program_id: string;
+  member_user_id: string;
+  status: "Pending";
+  submitted_at: string;
+  request_version: number;
+}
+
+export interface EnrollmentInput {
+  enrollment_id: string;
+  program_id: string;
+  member_user_id: string;
+  request_id: string | null;
+  status: "Active";
+  enrolled_at: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface EnrollmentApprovalRunItemUpdate {
+  status: EnrollmentApprovalRunItemStatus;
+  retryable: boolean;
+  enrollment_id: string | null;
+  error_code: string | null;
+  detail: string | null;
+  started_at: string | null;
+  settled_at: string | null;
+}
+
+/** Normalized active identity assignment projected for an Event detail. */
+export interface ProgramIdentityAssignmentRow {
+  program_id: string;
+  user_id: string;
+  role_definition_id: string;
+  label: string;
+  scope_kind: "Global" | "Department" | "Program";
+  scope_id: string | null;
+  granted_at: string;
+  user_name?: string;
+  username?: string;
+}
+
+export interface AuditInput {
+  audit_id: string;
+  inserted_at: string;
+  actor_user_id: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  old_value_json: string | null;
+  new_value_json: string | null;
+  reason: string | null;
+  outcome: AuditOutcome;
+  correlation_id: string | null;
+}
+
+export type AuditOutcome =
+  | "SUCCESS"
+  | "DUPLICATE"
+  | "CONFLICT"
+  | "DENIED"
+  | "FAILED";
+
+export interface WorkspaceStore {
+  createDepartment: (input: DepartmentInput) => Promise<DepartmentRow>;
+  listDepartments: () => Promise<DepartmentRow[]>;
+  findDepartmentById: (id: string) => Promise<DepartmentRow | null>;
+  findDepartmentByCode: (code: string) => Promise<DepartmentRow | null>;
+  updateDepartment: (
+    id: string,
+    update: DepartmentUpdate
+  ) => Promise<DepartmentRow>;
+
+  createProgram: (input: ProgramInput) => Promise<ProgramRow>;
+  listProgramsForDepartment: (departmentId: string) => Promise<ProgramRow[]>;
+  findProgramById: (id: string) => Promise<ProgramRow | null>;
+  listProgramAccessRows: (departmentId: string) => Promise<ProgramAccessRow[]>;
+  updateProgram: (id: string, update: ProgramUpdate) => Promise<ProgramRow>;
+  rotateProgramCheckInToken: (
+    input: ProgramTokenRotationInput
+  ) => Promise<ProgramTokenRotationResult>;
+  archiveProgramIfClear: (
+    id: string,
+    update: ProgramUpdate,
+    now: string
+  ) => Promise<ProgramRow | null>;
+  searchActiveMembers: (
+    query: string,
+    limit: number,
+    programId?: string
+  ) => Promise<MemberOptionRow[]>;
+  /** Department ids the user actively manages (revoked_at IS NULL). */
+  listManagedDepartmentIds: (userId: string) => Promise<string[]>;
+  /** True only for an active Global Staff/Admin identity assignment. */
+  isGlobalStaffOrAdmin: (userId: string) => Promise<boolean>;
+  /**
+   * Active accounts matching identity/contact fields, optionally constrained
+   * to Active enrollments under the supplied departments. Rows are flattened
+   * by department so the domain layer can assemble a stable read-only Member
+   * Directory projection (087-04 #321).
+   */
+  searchManagementMembers: (
+    query: string,
+    limit: number,
+    departmentIds?: readonly string[]
+  ) => Promise<ManagementMemberSearchRow[]>;
+  searchAccountDirectory: (
+    query: string,
+    limit: number,
+    filters?: AccountDirectorySearchFilters,
+    offset?: number
+  ) => Promise<ManagementMemberSearchRow[]>;
+  getAccountDirectoryAccount: (
+    userId: string
+  ) => Promise<ManagementMemberSearchRow[]>;
+  countAccountDirectory: (
+    query: string,
+    filters?: AccountDirectorySearchFilters
+  ) => Promise<AccountDirectorySummary>;
+
+  setDepartmentModule: (
+    departmentId: string,
+    moduleKey: ModuleKey,
+    enabled: boolean,
+    enabledBy: string | null,
+    enabledAt: string
+  ) => Promise<DepartmentModuleRow>;
+  listDepartmentModules: (
+    departmentId: string
+  ) => Promise<DepartmentModuleRow[]>;
+
+  createScheduleRule: (
+    input: ScheduleRuleInput
+  ) => Promise<ScheduleRuleCreationResult>;
+  updateScheduleRule: (
+    ruleId: string,
+    update: ScheduleRuleUpdate
+  ) => Promise<ScheduleRuleRow>;
+  retireScheduleRule: (
+    ruleId: string,
+    retiredBy: string,
+    retiredAt: string
+  ) => Promise<ScheduleRuleRow>;
+  listScheduleRules: (programId: string) => Promise<ScheduleRuleRow[]>;
+  findScheduleRule: (ruleId: string) => Promise<ScheduleRuleRow | null>;
+
+  createScheduleException: (
+    input: ScheduleExceptionInput
+  ) => Promise<ScheduleExceptionRow>;
+  deleteScheduleException: (exceptionId: string) => Promise<boolean>;
+  findScheduleException: (
+    exceptionId: string
+  ) => Promise<ScheduleExceptionRow | null>;
+  listScheduleExceptions: (
+    ruleIds: string[]
+  ) => Promise<ScheduleExceptionRow[]>;
+
+  createEvent: (input: EventInput) => Promise<EventRow>;
+  insertGeneratedEvent: (input: EventInput) => Promise<boolean>;
+  findEventByStart: (
+    programId: string,
+    startsAt: string
+  ) => Promise<EventRow | null>;
+  findEventById: (id: string) => Promise<EventRow | null>;
+  listEvents: (programId: string) => Promise<EventRow[]>;
+  countPendingEnrollmentRequests: (
+    programIds: readonly string[]
+  ) => Promise<{ program_id: string; count: number }[]>;
+  countManagementEventAttention: (
+    programIds: readonly string[],
+    startsAtOrAfter: string
+  ) => Promise<
+    {
+      program_id: string;
+      inactive_event_count: number;
+      cancelled_event_count: number;
+    }[]
+  >;
+  listManagementEventAttention: (
+    programIds: readonly string[],
+    startsAtOrAfter: string,
+    limit: number
+  ) => Promise<ManagementAttentionEventRow[]>;
+  listManagementNotificationEnrollments: (
+    programIds: readonly string[]
+  ) => Promise<ManagementNotificationEnrollmentRow[]>;
+  listManagementNotificationEvents: (
+    programIds: readonly string[],
+    startsAtOrAfter: string
+  ) => Promise<ManagementNotificationEventRow[]>;
+  listNotificationReadStates: (
+    userId: string,
+    sourceKeys: readonly string[]
+  ) => Promise<NotificationReadStateRow[]>;
+  markNotificationReadStates: (
+    userId: string,
+    states: readonly NotificationReadStateInput[],
+    readAt: string
+  ) => Promise<number>;
+  // 085-07 (#324) — participant Notices store seam.
+  listParticipantNotices: (
+    memberUserId: string,
+    retentionCutoffMs: number
+  ) => Promise<ParticipantNoticeRow[]>;
+  markAllParticipantNoticesRead: (
+    memberUserId: string,
+    readAtMs: number
+  ) => Promise<number>;
+  createParticipantNotice: (
+    input: ParticipantNoticeCreateInput
+  ) => Promise<ParticipantNoticeRow>;
+  cancelEvent: (
+    id: string,
+    reason: string | null,
+    updatedBy: string,
+    updatedAt: string
+  ) => Promise<EventRow | null>;
+  updateEvent: (
+    id: string,
+    update: {
+      starts_at?: string;
+      ends_at?: string;
+      name?: string | null;
+      location?: string | null;
+      event_type?: EventType | null;
+      check_in_window_opens_at?: string | null;
+      check_in_window_closes_at?: string | null;
+      availability?: EventAvailability;
+    },
+    updatedBy: string,
+    updatedAt: string
+  ) => Promise<EventRow | null>;
+  getEventParticipantSummary: (
+    eventId: string,
+    programId: string
+  ) => Promise<{
+    active_enrollments: number;
+    checked_in: number;
+  }>;
+  countActiveAttendance: (eventId: string) => Promise<number>;
+  hasAttendanceSnapshot: (eventId: string) => Promise<boolean>;
+  listActiveAttendanceEventIds: (
+    eventIds: readonly string[]
+  ) => Promise<Set<string>>;
+
+  // --- EVT-02 (#252): preview plans and generation runs ---
+
+  findPreviewPlan: (planId: string) => Promise<PreviewPlanRow | null>;
+  findLatestPreviewPlan: (programId: string) => Promise<PreviewPlanRow | null>;
+  findScheduleVersion: (programId: string) => Promise<number>;
+  listPreviewOccurrences: (planId: string) => Promise<PreviewOccurrenceRow[]>;
+  /** Persist a preview plan and its exact occurrence rows idempotently. */
+  replacePreviewPlan: (
+    plan: PreviewPlanRow,
+    occurrences: PreviewOccurrenceRow[]
+  ) => Promise<PreviewPlanRow>;
+  findGenerationRunByPlan: (planId: string) => Promise<GenerationRunRow | null>;
+  /** One durable run per plan; resolves the existing run on repeat. */
+  createGenerationRun: (input: {
+    run_id: string;
+    program_id: string;
+    plan_id: string;
+    started_at: string;
+    created_by: string | null;
+    correlation_id: string | null;
+  }) => Promise<{ run: GenerationRunRow; created: boolean }>;
+  listGenerationRunItems: (runId: string) => Promise<GenerationRunItemRow[]>;
+  /** Record one attempt durably; false when the row already exists. */
+  recordGenerationRunItem: (input: GenerationRunItemInput) => Promise<boolean>;
+  /** Atomically guard the schedule revision, Event write, and run-item outcome. */
+  recordGeneratedOccurrence: (input: {
+    scheduleVersion: number;
+    reviewedAt: number;
+    planId: string;
+    runId: string;
+    programId: string;
+    occurrence: PreviewOccurrenceRow;
+    actorUserId: string | null;
+    createdAt: string;
+  }) => Promise<"created" | "skipped" | "stale">;
+  /** Atomic settle: recompute counts/status from the item rows, CAS first-finisher-wins. */
+  finishGenerationRun: (
+    runId: string,
+    finishedAt: string
+  ) => Promise<GenerationRunRow>;
+
+  createEnrollmentRequest: (
+    input: EnrollmentRequestInput
+  ) => Promise<EnrollmentRequestRow>;
+  findEnrollmentRequestById: (
+    id: string
+  ) => Promise<EnrollmentRequestRow | null>;
+  findPendingRequestByMember: (
+    programId: string,
+    memberUserId: string
+  ) => Promise<EnrollmentRequestRow | null>;
+  listEnrollmentRequests: (
+    programId: string
+  ) => Promise<EnrollmentRequestRow[]>;
+  listEnrollmentSnapshot: (programId: string) => Promise<{
+    requests: EnrollmentRequestRow[];
+    enrollments: EnrollmentRow[];
+  }>;
+  listParticipantEnrollmentSnapshot: (
+    programId: string,
+    memberUserId: string
+  ) => Promise<{
+    requests: EnrollmentRequestRow[];
+    enrollments: EnrollmentRow[];
+  }>;
+  decideRequest: (
+    id: string,
+    decision: "Approved" | "Rejected",
+    decidedBy: string,
+    decidedAt: string,
+    note: string | null,
+    audit: AuditInput,
+    expectedRequestVersion?: number
+  ) => Promise<EnrollmentRequestRow | null>;
+  approveEnrollmentRequest: (input: {
+    request_id: string;
+    program_id: string;
+    member_user_id: string;
+    enrollment_id: string;
+    decided_by: string;
+    decided_at: string;
+    note: string | null;
+    auditCreate: AuditInput;
+    auditDecide: AuditInput;
+    expected_request_version?: number;
+  }) => Promise<{
+    request: EnrollmentRequestRow;
+    enrollment: EnrollmentRow;
+  } | null>;
+  withdrawRequest: (
+    id: string,
+    memberUserId: string,
+    withdrawnAt: string
+  ) => Promise<EnrollmentRequestRow | null>;
+
+  createEnrollment: (input: EnrollmentInput) => Promise<EnrollmentRow>;
+  createEnrollmentWithAudit: (
+    input: EnrollmentInput,
+    audit: AuditInput
+  ) => Promise<EnrollmentRow>;
+  hasActiveEnrollment: (
+    programId: string,
+    memberUserId: string
+  ) => Promise<boolean>;
+  findActiveEnrollment: (
+    programId: string,
+    memberUserId: string
+  ) => Promise<EnrollmentRow | null>;
+  findEnrollmentById: (id: string) => Promise<EnrollmentRow | null>;
+  listEnrollments: (programId: string) => Promise<EnrollmentRow[]>;
+  cancelEnrollment: (
+    id: string,
+    cancelledBy: string,
+    cancelledAt: string,
+    cancellationReason?: string | null
+  ) => Promise<EnrollmentRow | null>;
+  createEnrollmentApprovalRun: (
+    run: EnrollmentApprovalRunRow,
+    items: readonly EnrollmentApprovalRunItem[]
+  ) => Promise<EnrollmentApprovalRunRow>;
+  findEnrollmentApprovalRun: (
+    runId: string
+  ) => Promise<EnrollmentApprovalRunRow | null>;
+  listEnrollmentApprovalRuns: (
+    actorUserId: string,
+    programId: string
+  ) => Promise<EnrollmentApprovalRunRow[]>;
+  claimNextEnrollmentApprovalRunItem: (
+    runId: string,
+    actorUserId: string,
+    startedAt: string
+  ) => Promise<EnrollmentApprovalRunClaim>;
+  updateEnrollmentApprovalRunItem: (
+    runId: string,
+    requestId: string,
+    update: EnrollmentApprovalRunItemUpdate,
+    expectedStatus?: EnrollmentApprovalRunItemStatus
+  ) => Promise<boolean>;
+  updateEnrollmentApprovalRun: (
+    run: Pick<
+      EnrollmentApprovalRun,
+      "run_id" | "status" | "finished_at" | "cancelled_at"
+    >
+  ) => Promise<boolean>;
+  findEnrollmentApprovalAuthority: (
+    programId: string,
+    requestId: string,
+    memberUserId: string,
+    idempotencyKey: string
+  ) => Promise<EnrollmentApprovalRunAuthority | null>;
+  listProgramIdentityAssignments: (
+    programId: string
+  ) => Promise<ProgramIdentityAssignmentRow[]>;
+  isAccountActive: (userId: string) => Promise<boolean>;
+
+  audit: (input: AuditInput) => Promise<void>;
+}

@@ -196,7 +196,7 @@ The implementation evidence is summarized in `docs/qa/2026-09-01-s4-phase-f-rele
 
 **Status:** Spec-authorized shared contract; the coded result still requires the owner L2 visual gate. **Authority:** Spec #586 and the frozen HTML reference set at `docs/design/programs-screen-foundations-v1/`, with `00-screen-foundations.html` as the canonical foundation specimen. This is a token and composition evolution, not a redesign or a replacement for domain authority.
 
-The production runtime mapping for this contract is the `--screen-*` token family in `web/app/globals.css`. The existing Civic Minimal aliases remain a compatibility surface for untouched routes; later consumers adopt the screen tokens as their route-family work lands. No route may invent a competing foundation token set.
+The production runtime mapping for this contract is the `--screen-*` token family in `apps/web/app/globals.css`. The existing Civic Minimal aliases remain a compatibility surface for untouched routes; later consumers adopt the screen tokens as their route-family work lands. No route may invent a competing foundation token set.
 
 ### Four screen families
 

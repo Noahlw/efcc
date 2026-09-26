@@ -27,7 +27,7 @@ The root `pnpm verify` aggregate owns the required local stages. Use `pnpm verif
 Prepare local variables once:
 
 ```sh
-cp web/.dev.vars.example web/.dev.vars
+cp apps/web/.dev.vars.example apps/web/.dev.vars
 openssl rand -hex 32 # place the value in EFCC_ACCESS_TOKEN_SECRET
 ```
 

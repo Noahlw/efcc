@@ -5,8 +5,11 @@
 import { expect, test } from "@playwright/test";
 import type { Route } from "@playwright/test";
 
-import { COPY } from "../../web/lib/copy";
-import { defaultSections, projectNavigation } from "../../web/lib/sections";
+import { COPY } from "../../apps/web/lib/copy";
+import {
+  defaultSections,
+  projectNavigation,
+} from "../../apps/web/lib/sections";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 

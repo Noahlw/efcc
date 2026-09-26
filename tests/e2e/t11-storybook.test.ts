@@ -5,7 +5,7 @@
 import { expect, test } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 
-import { COPY } from "../../web/lib/copy";
+import { COPY } from "../../apps/web/lib/copy";
 
 const story = (id: string) => `/iframe.html?id=${id}&viewMode=story`;
 

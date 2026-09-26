@@ -1,0 +1,9 @@
+{
+  "$comment": "Resolver-only config for dependency-cruiser (#651). Never passed to tsc (no include/files keys, and no tsconfig includes *.json). Mirrors the @/* alias from apps/web/tsconfig.json; update both if the alias moves. options.tsConfig cannot use the real tsconfigs because their include/exclude keys abort every cruise (TS18003).",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./apps/web/*"]
+    }
+  }
+}

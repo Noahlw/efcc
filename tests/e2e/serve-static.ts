@@ -1,4 +1,4 @@
-// Zero-dep static server for web/out. Run via tsx; no framework deps.
+// Zero-dep static server for apps/web/out. Run via tsx; no framework deps.
 // Used by tests/e2e/responsive.config.ts webServer to serve the Next.js
 // static export on 127.0.0.1:4173. The server only serves static assets.
 
@@ -9,7 +9,7 @@ import path from "node:path";
 
 const PORT = Number.parseInt(process.env.PORT ?? "4173", 10);
 const HOST = "127.0.0.1";
-const ROOT = path.resolve(import.meta.dirname, "../../web/out");
+const ROOT = path.resolve(import.meta.dirname, "../../apps/web/out");
 
 const CONTENT_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -87,5 +87,5 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
 });
 
 server.listen(PORT, HOST, () => {
-  process.stdout.write(`serving web/out on http://${HOST}:${PORT}\n`);
+  process.stdout.write(`serving apps/web/out on http://${HOST}:${PORT}\n`);
 });

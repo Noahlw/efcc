@@ -125,7 +125,10 @@ export function assertRoleFreeIdentitySchema(
 
 function readLocalSchema(): LocalIdentitySchemaSnapshot {
   const repositoryRoot = path.resolve(import.meta.dirname, "../..");
-  const wrangler = path.join(repositoryRoot, "web/node_modules/.bin/wrangler");
+  const wrangler = path.join(
+    repositoryRoot,
+    "apps/web/node_modules/.bin/wrangler"
+  );
   const output = execFileSync(
     wrangler,
     [
@@ -138,7 +141,7 @@ function readLocalSchema(): LocalIdentitySchemaSnapshot {
       SCHEMA_QUERY,
     ],
     {
-      cwd: path.join(repositoryRoot, "web"),
+      cwd: path.join(repositoryRoot, "apps", "web"),
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "inherit"],
     }
@@ -146,7 +149,7 @@ function readLocalSchema(): LocalIdentitySchemaSnapshot {
   return parseSchemaRows(output);
 }
 
-export function main(): void {
+function main(): void {
   const snapshot = readLocalSchema();
   assertRoleFreeIdentitySchema(snapshot);
   console.log(

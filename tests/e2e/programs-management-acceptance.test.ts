@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { BrowserContext, Page, Request } from "@playwright/test";
 
-import { COPY as APP_COPY } from "../../web/lib/copy";
+import { COPY as APP_COPY } from "../../apps/web/lib/copy";
 
 const ADMIN = {
   username: process.env.PROGRAMS_ADMIN_USERNAME ?? "E2E_admin",

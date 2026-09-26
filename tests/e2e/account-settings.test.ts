@@ -5,9 +5,12 @@
 import { expect, test } from "@playwright/test";
 import type { Page, Route } from "@playwright/test";
 
-import { ACCOUNT_SETTINGS_COPY } from "../../web/lib/account-settings-copy";
-import { COPY } from "../../web/lib/copy";
-import { defaultSections, projectNavigation } from "../../web/lib/sections";
+import { ACCOUNT_SETTINGS_COPY } from "../../apps/web/lib/account-settings-copy";
+import { COPY } from "../../apps/web/lib/copy";
+import {
+  defaultSections,
+  projectNavigation,
+} from "../../apps/web/lib/sections";
 
 const AUTH_HINT_KEY = "efcc_auth_active";
 

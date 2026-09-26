@@ -32,7 +32,7 @@ import {
   type AuditScanError,
   type AuditViolation,
   type GovernanceValidationResult,
-} from "../web/lib/governance/index";
+} from "../apps/web/lib/governance/index";
 
 const GIT_MAX_BUFFER = 16 * 1024 * 1024;
 

@@ -11,7 +11,7 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "paths": {
-      "@/*": ["../../web/*"]
+      "@/*": ["../../apps/web/*"]
     }
   },
   "include": ["**/*.ts"]
