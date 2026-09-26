@@ -3,10 +3,9 @@
  *
  * Wire shape: `{ type, title, status, code, detail, requestId }` plus
  * `X-Request-Id` and endpoint-specific extensions (e.g. CMS `latest` /
- * `reloadRequired`). Every key is optional at parse time: a partial
- * error body still resolves as an error (missing status falls back to
- * the HTTP status), and only non-records or wrongly-typed known keys
- * resolve to null for the caller fallback. A malformed error body
+ * `reloadRequired`). Known keys stay optional for partial legacy errors,
+ * but a body with no problem meaning or a status contradicting HTTP
+ * resolves to null for the caller fallback. A malformed error body
  * must stay an error with its HTTP status and request reference,
  * never become success.
  */
@@ -54,14 +53,20 @@ export function parseProblemDetails(
   if (!parsed.success) {
     return null;
   }
-  // A passing body keeps its own codes and extensions; only a missing
-  // or non-numeric status falls back to the HTTP status, so the failure
-  // keeps its reference either way. Current clients keep the body
-  // status over the HTTP one — preserved.
+  if (
+    (parsed.data.type === undefined &&
+      parsed.data.title === undefined &&
+      parsed.data.detail === undefined &&
+      parsed.data.code === undefined) ||
+    (parsed.data.status !== undefined && parsed.data.status !== httpStatus)
+  ) {
+    return null;
+  }
+  // HTTP status is authoritative; extensions and body requestId survive.
   const original = value as Record<string, unknown>;
   const resolved: ResolvedProblem = {
     ...original,
-    status: typeof original.status === "number" ? original.status : httpStatus,
+    status: httpStatus,
   };
   if (headerRequestId && !resolved.requestId) {
     resolved.requestId = headerRequestId;

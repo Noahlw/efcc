@@ -37,7 +37,7 @@ describe("envelope", () => {
 });
 
 describe("problem details", () => {
-  test("keeps body status, code, and extensions", () => {
+  test("keeps matching status, code, and extensions", () => {
     const body = {
       status: 409,
       code: "CONFLICT",
@@ -60,6 +60,15 @@ describe("problem details", () => {
     assert.strictEqual(parseProblemDetails(null, 500), null);
     assert.strictEqual(parseProblemDetails("boom", 500), null);
     assert.strictEqual(parseProblemDetails({ status: "503" }, 503), null);
+    assert.strictEqual(parseProblemDetails({}, 503, "hdr"), null);
+    assert.strictEqual(
+      parseProblemDetails({ unexpected: true }, 403, "hdr"),
+      null
+    );
+    assert.strictEqual(
+      parseProblemDetails({ status: 200, code: "CONFLICT" }, 409, "hdr"),
+      null
+    );
   });
   test("fallback preserves status and reference", () => {
     assert.deepStrictEqual(problemFallback(503, "r", "UNAVAILABLE", "t", "d"), {

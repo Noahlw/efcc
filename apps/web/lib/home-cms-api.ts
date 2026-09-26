@@ -121,11 +121,9 @@ async function homeCmsFetch<T>(
       problemFallback(
         response.status,
         headerRequestId,
-        response.status >= 500 ? "UNAVAILABLE" : "MALFORMED_RESPONSE",
-        response.status >= 500 ? "Upstream error" : "Malformed error response",
-        response.status >= 500
-          ? "系統暫時無法處理請求，請稍後再試。"
-          : "伺服器回應格式錯誤。"
+        "UNAVAILABLE",
+        "Upstream error",
+        "系統暫時無法處理請求，請稍後再試。"
       );
     throw new RpcError(resolved as ProblemDetails);
   }

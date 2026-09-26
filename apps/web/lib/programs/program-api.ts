@@ -1314,7 +1314,9 @@ export function searchMemberOptions(
   }
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/member-options?${params.toString()}`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: MemberOptionsSchema }
   );
 }
 /** GET /api/v1/programs/members?q=...&limit=... — server-scoped directory. */
@@ -1547,13 +1549,14 @@ export function createEvent(
     check_in_window_opens_at?: string | null;
     check_in_window_closes_at?: string | null;
     event_type?: EventType | null;
-  }
+  },
+  idempotencyKey?: string
 ): Promise<{ event: ProgramEvent }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events`,
     "POST",
     input,
-    { schema: EventCreateResponseSchema }
+    { idempotencyKey, schema: EventCreateResponseSchema }
   );
 }
 
@@ -1595,13 +1598,14 @@ export function updateEvent(
     check_in_window_opens_at?: string | null;
     check_in_window_closes_at?: string | null;
     reason?: string | null;
-  }
+  },
+  idempotencyKey?: string
 ): Promise<{ event: ProgramEvent }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
     "PATCH",
     patch,
-    { schema: EventResponseSchema }
+    { idempotencyKey, schema: EventResponseSchema }
   );
 }
 
@@ -1610,12 +1614,14 @@ export function setEventAvailability(
   programId: string,
   eventId: string,
   availability: "Active" | "Inactive",
-  confirm = false
+  confirm = false,
+  idempotencyKey?: string
 ): Promise<{ event: ProgramEvent }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
     "PATCH",
-    { availability, confirm }
+    { availability, confirm },
+    { idempotencyKey, schema: EventResponseSchema }
   );
 }
 
@@ -1623,12 +1629,14 @@ export function setEventAvailability(
 export function cancelEvent(
   programId: string,
   eventId: string,
-  reason?: string | null
+  reason?: string | null,
+  idempotencyKey?: string
 ): Promise<{ event: ProgramEvent }> {
   return programsFetch(
     `/api/v1/programs/${encodeURIComponent(programId)}/events/${encodeURIComponent(eventId)}`,
     "PATCH",
-    { reason: reason ?? null }
+    { reason: reason ?? null },
+    { idempotencyKey, schema: EventResponseSchema }
   );
 }
 

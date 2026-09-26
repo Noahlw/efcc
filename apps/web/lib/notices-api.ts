@@ -97,28 +97,15 @@ async function noticesFetch<T>(
   } catch {
     parsedError = null;
   }
-  // Parse-failure fallback preserves the historical split (UNAVAILABLE
-  // on 5xx, MALFORMED_RESPONSE otherwise); a parsed non-record is
-  // always MALFORMED_RESPONSE, exactly as before.
-  const fallbackCode =
-    response.status >= 500 ? "UNAVAILABLE" : "MALFORMED_RESPONSE";
   const problem =
     parseProblemDetails(parsedError, response.status, requestId) ??
-    (parsedError === null
-      ? problemFallback(
-          response.status,
-          requestId,
-          fallbackCode,
-          "Upstream error",
-          "系統暫時無法處理請求，請稍後再試。"
-        )
-      : problemFallback(
-          response.status,
-          requestId,
-          "MALFORMED_RESPONSE",
-          "Malformed error response",
-          "伺服器回應格式錯誤。"
-        ));
+    problemFallback(
+      response.status,
+      requestId,
+      "UNAVAILABLE",
+      "Upstream error",
+      "系統暫時無法處理請求，請稍後再試。"
+    );
   throw new RpcError(problem as ProblemDetails);
 }
 

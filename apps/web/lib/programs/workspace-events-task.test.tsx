@@ -42,7 +42,14 @@ import {
 import { WorkspaceTaskProvider } from "./workspace-context";
 import { EventsTask, RecurringSchedulePanel } from "./workspace-events-task";
 const mocks = vi.hoisted(() => ({
-  createEvent: vi.fn<() => Promise<{ event: ProgramEvent }>>(),
+  createEvent:
+    vi.fn<
+      (
+        programId: string,
+        input: unknown,
+        idempotencyKey?: string
+      ) => Promise<{ event: ProgramEvent }>
+    >(),
   listEvents: vi.fn<() => Promise<{ events: ProgramEvent[] }>>(),
   listScheduleRules: vi.fn<() => Promise<{ rules: ScheduleRule[] }>>(),
   previewEvents: vi.fn<() => Promise<PreviewResult>>(),
@@ -778,7 +785,16 @@ describe("EventsTask operations-first composition", () => {
       .mockReset()
       .mockResolvedValueOnce({ events: [event] })
       .mockResolvedValueOnce({ events: [event, createdEvent] });
-    mocks.createEvent.mockResolvedValueOnce({ event: createdEvent });
+    mocks.createEvent.mockImplementationOnce(
+      async (_programId, _input, idempotencyKey) => {
+        const recovery = readWorkspaceMutationRecovery();
+        expect(recovery?.surface).toBe("events");
+        if (recovery?.surface === "events") {
+          expect(recovery.idempotencyKey).toBe(idempotencyKey);
+        }
+        return { event: createdEvent };
+      }
+    );
 
     renderTask(
       vi.fn<(dirty: boolean) => void>(),

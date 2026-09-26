@@ -10,7 +10,9 @@ import type { HomeAnnouncement, HomeProjection } from "@efcc/contracts";
 import {
   HomeAnnouncementsSchema,
   HomeProjectionSchema,
+  parseProblemDetails,
   parseSuccessEnvelope,
+  problemFallback,
 } from "@efcc/contracts";
 
 import { RpcError } from "@/lib/api";
@@ -32,29 +34,17 @@ function problemFromPayload(
   requestId?: string
 ): ProblemDetails {
   const outer = recordFrom(parsed);
-  if (!outer) {
-    return { status, code: "UNAVAILABLE", requestId };
-  }
-  const source = recordFrom(outer.error) ?? outer;
-  const problem: ProblemDetails = {};
-  for (const key of [
-    "type",
-    "title",
-    "detail",
-    "instance",
-    "code",
-    "requestId",
-  ] as const) {
-    const value = source[key];
-    if (typeof value === "string") {
-      problem[key] = value;
-    }
-  }
-  problem.status = typeof source.status === "number" ? source.status : status;
-  if (requestId && !problem.requestId) {
-    problem.requestId = requestId;
-  }
-  return problem;
+  const source = outer ? (recordFrom(outer.error) ?? outer) : parsed;
+  return (
+    parseProblemDetails(source, status, requestId) ??
+    problemFallback(
+      status,
+      requestId,
+      "UNAVAILABLE",
+      "Upstream error",
+      "系統暫時無法處理請求，請稍後再試。"
+    )
+  );
 }
 
 /** One fetch to the cookie-only home surface. Never builds auth headers. */

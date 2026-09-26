@@ -39,9 +39,9 @@ Auth method/paths (reserved, untouched).
 - Malformed 2xx data → `MALFORMED_RESPONSE` (browser), and on the
   Worker → the endpoint's existing 503 `*_UNAVAILABLE` fallback
   (logged, requestId preserved). No new wire codes.
-- Malformed non-2xx → existing fallback preserving HTTP status and
-  `X-Request-Id` (`UNAVAILABLE` ≥500, `MALFORMED_RESPONSE` <500 on
-  the CMS client; `UNAVAILABLE` on the Home client). Never success.
+- Malformed non-2xx → shared `UNAVAILABLE` fallback preserving HTTP
+  status and `X-Request-Id` in every non-Auth client. An unknown-only
+  object or body status contradicting HTTP is malformed. Never success.
 - Mutation with possibly-committed write + malformed/lost
   acknowledgement → unresolved with request/operation/idempotency
   identity preserved; authoritative Audit Outcome or readback
@@ -49,6 +49,8 @@ Auth method/paths (reserved, untouched).
   every affected mutation path).
 
 ## Route matrix (Worker dispatch = authority)
+
+The [88-row method/path matrix](2026-09-26-646-route-matrix.md) expands every Worker dispatch route with actor, request boundary, response family, mutation reference, and client/test seam. The grouped notes below explain domain-specific policies; they are not a substitute for the per-route inventory.
 
 `A` = actor gate before handler (cookie session → Active account →
 capability where listed). Extra-field policy `ignore` = unknown
@@ -102,7 +104,7 @@ notices/read-all, :id/attendance-artifact/rotate.
 Permission/field-redaction, pagination/query, nullables, and
 extra-field policy preserved; malformed 2xx never renders.
 
-### #657 — Department/Program settings (9)
+### #657 — Department/Program settings (10)
 
 POST|GET departments; GET|PATCH departments/:id;
 POST|GET departments/:id/programs;
@@ -124,7 +126,7 @@ Time, permission/audit semantics. Malformed/lost Generate/Event
 ack → unresolved until authoritative Audit Outcome; Generate's
 Reviewed Plan and guest proof-bound recovery preserved.
 
-### #659 — Enrollment/approval-run (12)
+### #659 — Enrollment/approval-run (13)
 
 POST|GET :id/enrollment-requests; GET :id/enrollment-snapshot;
 POST|GET :id/enrollment-approval-runs;

@@ -2414,7 +2414,7 @@ export const EventsTask = () => {
     };
   })();
   const runEventAction = async (
-    action: () => Promise<unknown>,
+    action: (idempotencyKey: string) => Promise<unknown>,
     successMessage: string,
     pendingMutation: PendingEventMutation
   ): Promise<boolean> => {
@@ -2424,15 +2424,17 @@ export const EventsTask = () => {
     setActionBusy(true);
     setActionError(null);
     setNotice(null);
+    const idempotencyKey = crypto.randomUUID();
     pendingEventMutationRef.current = pendingMutation;
     writeWorkspaceMutationRecovery({
       surface: "events",
       programId,
+      idempotencyKey,
       mutation: pendingMutation,
     });
     const request = { cancelled: false };
     try {
-      await action();
+      await action(idempotencyKey);
       pendingEventMutationRef.current = null;
       clearWorkspaceMutationRecovery("events", {
         programId,
@@ -2517,7 +2519,8 @@ export const EventsTask = () => {
       const reason = String(form.get("cancel_reason") ?? "").trim() || null;
       void (async () => {
         const succeeded = await runEventAction(
-          () => cancelEvent(programId, eventId, reason),
+          (idempotencyKey) =>
+            cancelEvent(programId, eventId, reason, idempotencyKey),
           COPY.programs.eventCancelledNotice,
           { kind: "cancel", eventId }
         );
@@ -2576,24 +2579,30 @@ export const EventsTask = () => {
       opensAt: overrideOpens,
       closesAt: overrideCloses,
     };
+    const idempotencyKey = crypto.randomUUID();
     pendingEventMutationRef.current = pendingMutation;
     writeWorkspaceMutationRecovery({
       surface: "events",
       programId,
+      idempotencyKey,
       mutation: pendingMutation,
     });
     setCreateBusy(true);
     setCreateError(null);
     try {
-      const { event } = await createEvent(programId, {
-        name,
-        event_type: createEventType,
-        starts_at: startsAt,
-        ends_at: endsAt,
-        location: createLocation.trim() || null,
-        check_in_window_opens_at: overrideOpens,
-        check_in_window_closes_at: overrideCloses,
-      });
+      const { event } = await createEvent(
+        programId,
+        {
+          name,
+          event_type: createEventType,
+          starts_at: startsAt,
+          ends_at: endsAt,
+          location: createLocation.trim() || null,
+          check_in_window_opens_at: overrideOpens,
+          check_in_window_closes_at: overrideCloses,
+        },
+        idempotencyKey
+      );
       pendingEventMutationRef.current = null;
       clearWorkspaceMutationRecovery("events", { programId });
       announce(COPY.programs.eventCreatedNotice);

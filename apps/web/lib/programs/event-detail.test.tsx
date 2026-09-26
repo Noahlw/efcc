@@ -16,6 +16,7 @@ import { COPY } from "@/lib/copy";
 import { EventDetail } from "@/lib/programs/event-detail";
 import {
   clearWorkspaceMutationRecovery,
+  readWorkspaceMutationRecovery,
   writeWorkspaceMutationRecovery,
 } from "@/lib/programs/mutation-recovery";
 import type { EventDetail as EventDetailData } from "@/lib/programs/program-api";
@@ -877,12 +878,17 @@ describe("EVT-01 event detail", () => {
       screen.findByText(COPY.programs.editWithAttendanceNotice)
     ).resolves.toBeInTheDocument();
     expect(onAttentionRefresh).toHaveBeenCalledOnce();
-    expect(mocks.updateEvent).toHaveBeenCalledWith("program-1", "event-1", {
-      name: "改名聚會",
-      location: "教會禮堂",
-      event_type: "崇拜",
-      reason: "更正聚會資料",
-    });
+    expect(mocks.updateEvent).toHaveBeenCalledWith(
+      "program-1",
+      "event-1",
+      {
+        name: "改名聚會",
+        location: "教會禮堂",
+        event_type: "崇拜",
+        reason: "更正聚會資料",
+      },
+      expect.any(String)
+    );
   });
 
   test("opens the requested management action from an Event deep link", async () => {
@@ -1039,12 +1045,17 @@ describe("EVT-01 event detail", () => {
     await expect(
       screen.findByText(COPY.programs.eventRescheduledNotice)
     ).resolves.toBeInTheDocument();
-    expect(mocks.updateEvent).toHaveBeenCalledWith("program-1", "event-1", {
-      starts_at: "2026-09-13T10:00:00.000Z",
-      ends_at: "2026-09-13T11:30:00.000Z",
-      check_in_window_opens_at: "2026-09-13T09:30:00.000Z",
-      check_in_window_closes_at: "2026-09-13T12:00:00.000Z",
-    });
+    expect(mocks.updateEvent).toHaveBeenCalledWith(
+      "program-1",
+      "event-1",
+      {
+        starts_at: "2026-09-13T10:00:00.000Z",
+        ends_at: "2026-09-13T11:30:00.000Z",
+        check_in_window_opens_at: "2026-09-13T09:30:00.000Z",
+        check_in_window_closes_at: "2026-09-13T12:00:00.000Z",
+      },
+      expect.any(String)
+    );
   });
 
   test("a window-less event can be edited without inventing a check-in window", async () => {
@@ -1091,12 +1102,17 @@ describe("EVT-01 event detail", () => {
       screen.findByText(COPY.programs.editWithAttendanceNotice)
     ).resolves.toBeInTheDocument();
     // Edit intent owns identity fields only; it does not mutate schedule data.
-    expect(mocks.updateEvent).toHaveBeenCalledWith("program-1", "event-1", {
-      name: "改名聚會",
-      location: null,
-      event_type: "崇拜",
-      reason: "補充聚會資料",
-    });
+    expect(mocks.updateEvent).toHaveBeenCalledWith(
+      "program-1",
+      "event-1",
+      {
+        name: "改名聚會",
+        location: null,
+        event_type: "崇拜",
+        reason: "補充聚會資料",
+      },
+      expect.any(String)
+    );
   });
 
   test("deactivation requires inline confirmation and offers Undo", async () => {
@@ -1120,12 +1136,19 @@ describe("EVT-01 event detail", () => {
           },
         })
       );
-    mocks.setEventAvailability.mockResolvedValue({
-      event: {
-        ...detailFixture().event,
-        availability: "Inactive",
-        updated_at: "2026-01-02T00:00:00.000Z",
-      },
+    mocks.setEventAvailability.mockImplementation((...args: unknown[]) => {
+      const recovery = readWorkspaceMutationRecovery();
+      expect(recovery?.surface).toBe("event");
+      if (recovery?.surface === "event") {
+        expect(recovery.idempotencyKey).toBe(args[4]);
+      }
+      return Promise.resolve({
+        event: {
+          ...detailFixture().event,
+          availability: "Inactive",
+          updated_at: "2026-01-02T00:00:00.000Z",
+        },
+      });
     });
     const user = userEvent.setup();
     render(
@@ -1158,7 +1181,8 @@ describe("EVT-01 event detail", () => {
       "program-1",
       "event-1",
       "Inactive",
-      true
+      true,
+      expect.any(String)
     );
     const undo = screen.getByRole("button", {
       name: COPY.programs.eventAvailabilityUndo,
@@ -1167,7 +1191,9 @@ describe("EVT-01 event detail", () => {
     expect(mocks.setEventAvailability).toHaveBeenLastCalledWith(
       "program-1",
       "event-1",
-      "Active"
+      "Active",
+      false,
+      expect.any(String)
     );
     await expect(
       screen.findByText(COPY.programs.eventAvailabilityRestoredNotice)
@@ -1224,7 +1250,8 @@ describe("EVT-01 event detail", () => {
       "program-1",
       "event-1",
       "Inactive",
-      false
+      false,
+      expect.any(String)
     );
     expect(
       screen.getByRole("button", {
@@ -1490,7 +1517,8 @@ describe("EVT-01 event detail", () => {
     expect(mocks.cancelEvent).toHaveBeenCalledWith(
       "program-1",
       "event-1",
-      null
+      null,
+      expect.any(String)
     );
   });
 
@@ -1597,7 +1625,8 @@ describe("EVT-01 event detail", () => {
       "program-1",
       "event-1",
       "Inactive",
-      false
+      false,
+      expect.any(String)
     );
     // The refusal must surface the inline confirm with the server's
     // fresh operation count — not a dead-end error.
@@ -1619,7 +1648,8 @@ describe("EVT-01 event detail", () => {
       "program-1",
       "event-1",
       "Inactive",
-      true
+      true,
+      expect.any(String)
     );
     expect(
       screen.queryByText(COPY.programs.eventAvailabilityConfirmRequired)
@@ -2413,7 +2443,8 @@ describe("EVT-01 event detail", () => {
     expect(mocks.updateEvent).toHaveBeenCalledWith(
       "program-1",
       "event-b",
-      expect.objectContaining({ name: "聚會 B 更新", location: "B 場地" })
+      expect.objectContaining({ name: "聚會 B 更新", location: "B 場地" }),
+      expect.any(String)
     );
   });
 
@@ -2645,7 +2676,8 @@ describe("EVT-01 event detail", () => {
     expect(mocks.cancelEvent).toHaveBeenCalledWith(
       "program-1",
       "event-1",
-      null
+      null,
+      expect.any(String)
     );
     expect(cancelled).toBeTruthy();
   });

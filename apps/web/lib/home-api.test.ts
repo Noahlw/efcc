@@ -175,6 +175,7 @@ describe("home-api client", () => {
         (error: unknown) => {
           assert.ok(error instanceof RpcError);
           assert.strictEqual(error.problem.status, 403);
+          assert.strictEqual(error.problem.code, "UNAVAILABLE");
           assert.strictEqual(error.problem.requestId, "req-bad-2");
           return true;
         }

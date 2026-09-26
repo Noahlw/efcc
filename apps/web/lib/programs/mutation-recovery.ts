@@ -158,11 +158,15 @@ export type WorkspaceMutationRecovery =
       surface: "event";
       programId: string;
       eventId: string;
+      /** Optional only for recovery records written before this version. */
+      idempotencyKey?: string;
       mutation: EventMutationRecovery;
     }
   | {
       surface: "events";
       programId: string;
+      /** Optional only for recovery records written before this version. */
+      idempotencyKey?: string;
       mutation: EventListMutationRecovery;
     }
   | {
@@ -601,6 +605,9 @@ export function readWorkspaceMutationRecovery(): WorkspaceMutationRecovery | nul
     value.surface === "event" &&
     typeof value.programId === "string" &&
     typeof value.eventId === "string" &&
+    (value.idempotencyKey === undefined ||
+      (typeof value.idempotencyKey === "string" &&
+        value.idempotencyKey.length > 0)) &&
     isEventMutationRecovery(value.mutation)
   ) {
     return value as WorkspaceMutationRecovery;
@@ -608,6 +615,9 @@ export function readWorkspaceMutationRecovery(): WorkspaceMutationRecovery | nul
   if (
     value.surface === "events" &&
     typeof value.programId === "string" &&
+    (value.idempotencyKey === undefined ||
+      (typeof value.idempotencyKey === "string" &&
+        value.idempotencyKey.length > 0)) &&
     isEventListMutationRecovery(value.mutation)
   ) {
     return value as WorkspaceMutationRecovery;

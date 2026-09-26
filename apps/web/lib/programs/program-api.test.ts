@@ -9,6 +9,9 @@ import {
   guestCheckIn,
   listParticipantCatalog,
   reconcileGuestCheckIn,
+  searchMemberOptions,
+  setEventAvailability,
+  cancelEvent,
 } from "@/lib/programs/program-api";
 
 function stubFetch(handler: () => Response): () => void {
@@ -70,6 +73,63 @@ describe("program-api client", () => {
       });
     } finally {
       restore();
+    }
+  });
+
+  test("rejects malformed member options and Event mutation acknowledgements", async () => {
+    const originalFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls += 1;
+      return jsonResponse(
+        { requestId: "missing-program-fields", data: { unexpected: true } },
+        200,
+        "missing-program-fields"
+      );
+    };
+    try {
+      for (const action of [
+        () => searchMemberOptions("program-1", "member"),
+        () => setEventAvailability("program-1", "event-1", "Inactive"),
+        () => cancelEvent("program-1", "event-1", "reason"),
+      ]) {
+        await assert.rejects(action(), (error: unknown) => {
+          assert.ok(error instanceof RpcError);
+          assert.strictEqual(error.problem.code, "MALFORMED_RESPONSE");
+          assert.strictEqual(error.problem.requestId, "missing-program-fields");
+          return true;
+        });
+      }
+      assert.strictEqual(calls, 3, "mutations are never auto-replayed");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("uses the persisted Event operation key on the wire", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (_input, init) => {
+      assert.strictEqual(
+        new Headers(init?.headers).get("Idempotency-Key"),
+        "event-operation-1"
+      );
+      return jsonResponse(
+        { requestId: "event-operation-1", data: { unexpected: true } },
+        200,
+        "event-operation-1"
+      );
+    };
+    try {
+      await assert.rejects(
+        cancelEvent("program-1", "event-1", null, "event-operation-1"),
+        (error: unknown) => {
+          assert.ok(error instanceof RpcError);
+          assert.strictEqual(error.problem.code, "MALFORMED_RESPONSE");
+          return true;
+        }
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 

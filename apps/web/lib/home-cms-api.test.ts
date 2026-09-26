@@ -156,4 +156,21 @@ describe("home-cms-api client", () => {
       restore();
     }
   });
+
+  test("malformed 4xx Problem Details retains HTTP status and UNAVAILABLE", async () => {
+    const restore = stubFetch(() =>
+      jsonResponse({ unexpected: true }, 409, "req-cms-malformed")
+    );
+    try {
+      await assert.rejects(listHomeAudit(), (error: unknown) => {
+        assert.ok(error instanceof RpcError);
+        assert.strictEqual(error.problem.status, 409);
+        assert.strictEqual(error.problem.code, "UNAVAILABLE");
+        assert.strictEqual(error.problem.requestId, "req-cms-malformed");
+        return true;
+      });
+    } finally {
+      restore();
+    }
+  });
 });
