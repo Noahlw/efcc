@@ -291,7 +291,6 @@ test.beforeAll(async ({ playwright }) => {
         description: "Resilience request acceptance fixture",
         category: "測試",
         behavior_type: "Recurring",
-        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "MemberRequest",
       }
@@ -316,7 +315,6 @@ test.beforeAll(async ({ playwright }) => {
         description: SCANNER_DESCRIPTION,
         category: "測試",
         behavior_type: "Recurring",
-        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "ManagerOnly",
       }

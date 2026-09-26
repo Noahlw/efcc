@@ -177,7 +177,8 @@ async function createProgram(
     description?: string;
     category?: string;
     behavior_type: "Recurring" | "OneOff";
-    lifecycle?: "Draft" | "Active" | "Archived";
+    /** The test helper applies this target state with PATCH after creation. */
+    lifecycle?: "Draft" | "Active";
     discoverability?: "Listed" | "Unlisted";
     enrollment_mode?: "MemberRequest" | "ManagerOnly";
   }
@@ -186,6 +187,8 @@ async function createProgram(
   name: string;
   check_in_token: string | null;
 }> {
+  const requestedLifecycle = body.lifecycle ?? "Draft";
+  const { lifecycle: _requestedLifecycle, ...createFields } = body;
   const res = await worker.fetch(
     programsRequest(`/api/v1/programs/departments/${departmentId}/programs`, {
       method: "POST",
@@ -195,10 +198,9 @@ async function createProgram(
         "Content-Type": "application/json",
       },
       body: {
-        ...body,
+        ...createFields,
         description: body.description ?? "測試目的",
         category: body.category ?? "測試類別",
-        lifecycle: body.lifecycle ?? "Draft",
         discoverability: body.discoverability ?? "Unlisted",
         enrollment_mode: body.enrollment_mode ?? "MemberRequest",
       },
@@ -215,7 +217,6 @@ async function createProgram(
       };
     };
   };
-  const requestedLifecycle = body.lifecycle ?? "Draft";
   const requestedDiscoverability = body.discoverability ?? "Unlisted";
   if (
     requestedLifecycle === "Active" ||
@@ -3080,7 +3081,7 @@ describe("PRG-01: programs", () => {
     const missingBody = await problemOf(missingPurpose);
     assert.strictEqual(
       missingBody.detail,
-      "name, purpose, behavior_type, and lifecycle are required and must be valid."
+      "name, purpose, and behavior_type are required and must be valid."
     );
 
     const created = await request("Weekly discipleship purpose");
@@ -3158,7 +3159,7 @@ describe("PRG-01: programs", () => {
     assert.strictEqual(archivedBody.code, "VALIDATION");
     assert.strictEqual(
       archivedBody.detail,
-      "Programs cannot be created directly in the Archived state."
+      "Programs must be created as Draft; update lifecycle after creation."
     );
 
     await Promise.all(
@@ -12716,5 +12717,50 @@ describe("#659 enrollment request policies", () => {
       testEnv()
     );
     assert.strictEqual(res.status, 422);
+  });
+});
+
+describe("#657 accepted Program creation lifecycle", () => {
+  test("create defaults to Draft and rejects a requested Active lifecycle", async () => {
+    const adminAccess = await accessCookieFor("alice", "alice-secret");
+    const department = await createDepartment(adminAccess, {
+      code: `T657-LIFE-${Date.now()}`,
+      name: "Program creation lifecycle",
+    });
+    const request = (body: Record<string, unknown>) =>
+      worker.fetch(
+        programsRequest(
+          `/api/v1/programs/departments/${department.department_id}/programs`,
+          {
+            method: "POST",
+            headers: {
+              Origin: HOST,
+              Cookie: `${ACCESS_COOKIE_NAME}=${adminAccess}`,
+              "Content-Type": "application/json",
+            },
+            body,
+          }
+        ),
+        testEnv()
+      );
+
+    const active = await request({
+      name: "Requested Active",
+      description: "A program starts as Draft.",
+      behavior_type: "OneOff",
+      lifecycle: "Active",
+    });
+    assert.strictEqual(active.status, 422);
+
+    const created = await request({
+      name: "Default Draft",
+      description: "A new program starts as Draft.",
+      behavior_type: "OneOff",
+    });
+    assert.strictEqual(created.status, 201);
+    const body = (await created.json()) as {
+      data: { program: { lifecycle: string } };
+    };
+    assert.strictEqual(body.data.program.lifecycle, "Draft");
   });
 });

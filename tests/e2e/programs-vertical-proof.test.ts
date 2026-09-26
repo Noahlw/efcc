@@ -266,7 +266,6 @@ test.beforeAll(async ({ playwright }) => {
         description: "Vertical open attendance fixture",
         category: "測試",
         behavior_type: "Recurring",
-        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "ManagerOnly",
       }
@@ -275,6 +274,11 @@ test.beforeAll(async ({ playwright }) => {
     const openProgramId = (
       openProgRes.body.data as { program: { program_id: string } }
     ).program.program_id;
+    const publishedOpenProgram = await adminLogin.api.patch(
+      `/api/v1/programs/${openProgramId}`,
+      { data: { lifecycle: "Active", discoverability: "Listed" } }
+    );
+    expect(publishedOpenProgram.status()).toBe(200);
 
     // 3. Create a MemberRequest program (queue + approval + attendance events)
     const reqProgRes = await postJson(
@@ -285,7 +289,6 @@ test.beforeAll(async ({ playwright }) => {
         description: "Vertical request attendance fixture",
         category: "測試",
         behavior_type: "Recurring",
-        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "MemberRequest",
       }
@@ -298,6 +301,11 @@ test.beforeAll(async ({ playwright }) => {
     ).program;
     const requestProgramId = reqProgData.program_id;
     const checkInToken = reqProgData.check_in_token;
+    const publishedRequestProgram = await adminLogin.api.patch(
+      `/api/v1/programs/${requestProgramId}`,
+      { data: { lifecycle: "Active", discoverability: "Listed" } }
+    );
+    expect(publishedRequestProgram.status()).toBe(200);
     // Pre-enroll member in requestProgramId so attendance tests have an active member
     const enrReq = await postJson(
       memberLogin.api,
@@ -324,7 +332,6 @@ test.beforeAll(async ({ playwright }) => {
         description: "Vertical lifecycle acceptance fixture",
         category: "測試",
         behavior_type: "Recurring",
-        lifecycle: "Active",
         discoverability: "Listed",
         enrollment_mode: "MemberRequest",
       }
@@ -332,6 +339,11 @@ test.beforeAll(async ({ playwright }) => {
     const lifecycleProgramId = (
       lifeProgRes.body.data as { program: { program_id: string } }
     ).program.program_id;
+    const publishedLifecycleProgram = await adminLogin.api.patch(
+      `/api/v1/programs/${lifecycleProgramId}`,
+      { data: { lifecycle: "Active", discoverability: "Listed" } }
+    );
+    expect(publishedLifecycleProgram.status()).toBe(200);
     // 4. Create an active Event with an open check-in window
     const now = Date.now();
     const eventRes = await postJson(

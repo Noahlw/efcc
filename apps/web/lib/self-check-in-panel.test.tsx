@@ -121,7 +121,7 @@ describe(SelfCheckInPanel, () => {
           requestId: "rid-own-attendance",
           data: {
             event: EVENT,
-            state: null,
+            state: "Not Yet",
             attendance: null,
             disposition: null,
           },
@@ -515,7 +515,11 @@ describe(SelfCheckInPanel, () => {
         selfCalls += 1;
         return HttpResponse.json({
           requestId: "rid-self",
-          data: { outcome: "success", attendance_id: "att-1" },
+          data: {
+            outcome: "success",
+            attendance_id: "att-1",
+            checked_in_at: "2026-08-13T11:35:00.000Z",
+          },
         });
       })
     );
@@ -558,7 +562,11 @@ describe(SelfCheckInPanel, () => {
         selfCalls += 1;
         return HttpResponse.json({
           requestId: "rid-self",
-          data: { outcome: "success", attendance_id: "att-1" },
+          data: {
+            outcome: "success",
+            attendance_id: "att-1",
+            checked_in_at: "2026-08-13T11:35:00.000Z",
+          },
         });
       })
     );
@@ -895,7 +903,7 @@ describe(SelfCheckInPanel, () => {
       http.post("/api/v1/attendance/self", () =>
         HttpResponse.json({
           requestId: "rid-dup",
-          data: { outcome: "duplicate", attendance_id: "att-1" },
+          data: { outcome: "duplicate" },
         })
       )
     );
@@ -1022,7 +1030,11 @@ describe(SelfCheckInPanel, () => {
     releaseRetry(
       HttpResponse.json({
         requestId: "rid-pending-retry",
-        data: { outcome: "success", attendance_id: "att-pending" },
+        data: {
+          outcome: "success",
+          attendance_id: "att-pending",
+          checked_in_at: "2026-08-13T11:35:00.000Z",
+        },
       })
     );
     await expect(
@@ -1051,7 +1063,11 @@ describe(SelfCheckInPanel, () => {
             )
           : HttpResponse.json({
               requestId: "rid-retry",
-              data: { outcome: "success", attendance_id: "att-1" },
+              data: {
+                outcome: "success",
+                attendance_id: "att-1",
+                checked_in_at: "2026-08-13T11:35:00.000Z",
+              },
             });
       })
     );
@@ -1173,7 +1189,7 @@ describe(SelfCheckInPanel, () => {
           requestId: "rid-own-attendance-reconciled",
           data: {
             event: EVENT,
-            state: "Active",
+            state: "Present",
             attendance: {
               attendance_id: "att-reconciled",
               event_id: EVENT.event_id,
@@ -1292,7 +1308,11 @@ describe(SelfCheckInPanel, () => {
         attempts += 1;
         return HttpResponse.json({
           requestId: "rid-online",
-          data: { outcome: "success", attendance_id: "att-1" },
+          data: {
+            outcome: "success",
+            attendance_id: "att-1",
+            checked_in_at: "2026-08-13T11:35:00.000Z",
+          },
         });
       })
     );

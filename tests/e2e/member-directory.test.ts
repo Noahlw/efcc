@@ -151,14 +151,20 @@ async function createProgram(
         description: "087-04 member directory E2E fixture",
         category: "測試",
         behavior_type: "OneOff",
-        lifecycle: "Active",
         discoverability: "Unlisted",
         enrollment_mode: "ManagerOnly",
       },
     }
   );
   expect(created.status).toBe(201);
-  return (created.body.data?.program as { program_id: string }).program_id;
+  const programId = (created.body.data?.program as { program_id: string })
+    .program_id;
+  const activated = await api(page, `/api/v1/programs/${programId}`, {
+    method: "PATCH",
+    body: { lifecycle: "Active", discoverability: "Unlisted" },
+  });
+  expect(activated.status).toBe(200);
+  return programId;
 }
 
 async function enroll(

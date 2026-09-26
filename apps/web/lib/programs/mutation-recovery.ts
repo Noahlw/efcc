@@ -380,7 +380,8 @@ function isProgramCreateMutationRecovery(
       typeof value.input.description === "string") &&
     (value.input.behavior_type === "Recurring" ||
       value.input.behavior_type === "OneOff") &&
-    (value.input.lifecycle === "Draft" ||
+    (value.input.lifecycle === undefined ||
+      value.input.lifecycle === "Draft" ||
       value.input.lifecycle === "Active" ||
       value.input.lifecycle === "Archived") &&
     (value.input.discoverability === undefined ||

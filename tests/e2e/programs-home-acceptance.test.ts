@@ -338,7 +338,6 @@ test.beforeAll(async () => {
           description: LONG_COPY,
           category: "PUI-05",
           behavior_type: "Recurring",
-          lifecycle: "Active",
           discoverability: "Listed",
           enrollment_mode: "MemberRequest",
         },

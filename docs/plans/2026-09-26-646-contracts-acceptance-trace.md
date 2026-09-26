@@ -365,6 +365,48 @@ clean SHA (#662).
   boundaries clean, static export builds, participant browser file
   12/12 vs local Worker/disposable+demo D1.
 
+## #660/#661 record — Attendance contracts + guest proof-bound recovery
+
+- `packages/contracts` `src/attendance.ts`: method/state/outcome
+  enums; guest-name cap, HK/intl phone normalization (exact port),
+  guest idempotency rule, resolve mutual-exclusion parser, self/
+  guest/assisted/void/correction body shapes, excuse category：
+  details rule; all 14 response projections (resolve + no-events,
+  check-in success/duplicate union, reconcile, roster, materialize,
+  excused ×2, own view, members, manageable, void ×2, correction).
+  Guest identity stays redacted (duplicate reveals no id — existing
+  shape preserved); guest writes keep member_user_id null.
+  The duplicate response schema is STRICT (rejects any echoed id),
+  enforcing the identity-oracle rule at the contract layer; panel,
+  storybook, and worker-test duplicate mocks corrected to the
+  id-free wire shape.
+- Worker: response gates on all 14 routes via existing 503
+  `contractUnavailable` fallback; request branches keep
+  orchestration with shared predicates and byte-identical messages
+  (resolve/query, self/assisted shapes, guest key + input, excuse
+  categories, void/correction trims, search term).
+- Browser: all 14 call sites wired with response schemas.
+  Deliberately NO client-side request pre-validation: it changed
+  the user-visible error copy (E2E L caught it), so the Worker
+  remains the enforcement point with exact messages.
+- Owner decision ADR-0059 (found proving #661): program creation
+  always starts Draft; activation is PATCH-only; Draft check runs
+  post-authorization (403 preserved). Fixtures/helpers updated to
+  create-then-publish; recovery validator accepts missing create
+  lifecycle.
+- TDD: request-policy locks (resolve/self/guest/assisted/void/
+  correction/excuse 422s), client malformed tests (incl. no
+  auto-replay: exactly one fetch on malformed ack).
+- Proof: contracts 66, workerd attendance 68, clients 10,
+  typechecks/Knip/boundaries clean, static export builds, guest
+  happy-path (A2) + duplicate (B) browser journeys pass vs local
+  Worker/disposable+demo D1.
+- Known unrelated pre-existing failures (preserved, not fixed):
+  attendance-d1 viewport-geometry, C, D6, E, F, I2, D8 fail on
+  fixture-timing/layout grounds in untouched paths (event already
+  started → empty expected roster; icon/text mismatches); zero
+  contract-gate firings across all runs; worker suites green.
+
 ## Proof plan per slice
 
 Worker/D1 contract tests (valid + invalid request/response,

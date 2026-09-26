@@ -6,7 +6,9 @@ import { RpcError } from "@/lib/api";
 import {
   getManagementAccess,
   getManagementDirectory,
+  guestCheckIn,
   listParticipantCatalog,
+  reconcileGuestCheckIn,
 } from "@/lib/programs/program-api";
 
 function stubFetch(handler: () => Response): () => void {
@@ -82,6 +84,84 @@ describe("program-api client", () => {
         assert.strictEqual(error.problem.requestId, "r-p-3");
         return true;
       });
+    } finally {
+      restore();
+    }
+  });
+
+  test("guest check-in rejects malformed acknowledgement once, preserving requestId", async () => {
+    const originalFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls += 1;
+      return jsonResponse(
+        { requestId: "guest-malformed", data: { outcome: "success" } },
+        201,
+        "guest-malformed"
+      );
+    };
+    try {
+      await assert.rejects(
+        guestCheckIn(
+          {
+            event_id: "event-1",
+            method: "guest_manual_code",
+            name: "訪客",
+            phone: "91234567",
+            entry: "ATT1234",
+          },
+          "guest-key-1"
+        ),
+        (error: unknown) => {
+          assert.ok(error instanceof RpcError);
+          assert.strictEqual(error.problem.code, "MALFORMED_RESPONSE");
+          assert.strictEqual(error.problem.requestId, "guest-malformed");
+          return true;
+        }
+      );
+      assert.strictEqual(
+        calls,
+        1,
+        "malformed acknowledgement is never auto-replayed"
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("guest reconciliation rejects malformed outcomes with requestId", async () => {
+    const restore = stubFetch(() =>
+      jsonResponse(
+        {
+          requestId: "guest-reconcile-malformed",
+          data: { outcome: "success" },
+        },
+        200,
+        "guest-reconcile-malformed"
+      )
+    );
+    try {
+      await assert.rejects(
+        reconcileGuestCheckIn(
+          {
+            event_id: "event-1",
+            method: "guest_manual_code",
+            name: "訪客",
+            phone: "91234567",
+            entry: "ATT1234",
+          },
+          "guest-key-1"
+        ),
+        (error: unknown) => {
+          assert.ok(error instanceof RpcError);
+          assert.strictEqual(error.problem.code, "MALFORMED_RESPONSE");
+          assert.strictEqual(
+            error.problem.requestId,
+            "guest-reconcile-malformed"
+          );
+          return true;
+        }
+      );
     } finally {
       restore();
     }

@@ -107,7 +107,11 @@ describe("Assisted Scanner panel", () => {
       http.post("/api/v1/attendance/events/event-1/check-in", () =>
         HttpResponse.json({
           requestId: "rid-checkin",
-          data: { outcome: "success", attendance_id: "attendance-1" },
+          data: {
+            outcome: "success",
+            attendance_id: "attendance-1",
+            checked_in_at: "2026-08-13T11:35:00.000Z",
+          },
         })
       )
     );

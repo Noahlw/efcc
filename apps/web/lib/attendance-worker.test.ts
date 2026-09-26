@@ -4530,3 +4530,170 @@ describe("attendance Worker routes", () => {
     assert.ok(disposition?.recorded_at);
   });
 });
+
+describe("#660/#661 attendance request policies", () => {
+  let adminCookie = "";
+  let memberCookie = "";
+
+  beforeAll(async () => {
+    adminCookie = await accessCookieFor("att-admin", "att-admin-password");
+    memberCookie = await accessCookieFor("att-member", "att-member-password");
+  });
+
+  function authed(
+    path: string,
+    init: RequestInit,
+    cookie: string
+  ): Promise<Response> {
+    return worker.fetch(
+      request(path, {
+        ...init,
+        headers: {
+          ...(init.headers ?? {}),
+          Cookie: `${ACCESS_COOKIE_NAME}=${cookie}`,
+        },
+      }),
+      testEnv()
+    );
+  }
+
+  test("resolve rejects ambiguous and empty lookups", async () => {
+    const ambiguous = await worker.fetch(
+      request("/api/v1/attendance/resolve?program_token=t&event=e"),
+      testEnv()
+    );
+    assert.strictEqual(ambiguous.status, 422);
+    const empty = await worker.fetch(
+      request("/api/v1/attendance/resolve"),
+      testEnv()
+    );
+    assert.strictEqual(empty.status, 422);
+  });
+
+  test("self check-in rejects bad method and missing credential", async () => {
+    for (const body of [
+      { event_id: "x", method: "leader_qr_scan", entry: "ATT1234" },
+      { event_id: "x" },
+      { method: "self_qr_scan", entry: "ATT1234" },
+    ]) {
+      const res = await authed(
+        "/api/v1/attendance/self",
+        { method: "POST", body: JSON.stringify(body) },
+        memberCookie
+      );
+      assert.strictEqual(res.status, 422);
+    }
+  });
+
+  test("guest check-in rejects long names, bad phones, and long keys", async () => {
+    const badName = await worker.fetch(
+      request("/api/v1/attendance/guest", {
+        method: "POST",
+        body: JSON.stringify({
+          event_id: "x",
+          name: "n".repeat(81),
+          phone: "91234567",
+          entry: "ATT1234",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(badName.status, 422);
+    const badPhone = await worker.fetch(
+      request("/api/v1/attendance/guest", {
+        method: "POST",
+        body: JSON.stringify({
+          event_id: "x",
+          name: "訪客",
+          phone: "123",
+          entry: "ATT1234",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(badPhone.status, 422);
+    const longKey = await worker.fetch(
+      request("/api/v1/attendance/guest", {
+        method: "POST",
+        headers: { "Idempotency-Key": "k".repeat(201) },
+        body: JSON.stringify({
+          event_id: "x",
+          name: "訪客",
+          phone: "91234567",
+          entry: "ATT1234",
+        }),
+      }),
+      testEnv()
+    );
+    assert.strictEqual(longKey.status, 422);
+  });
+
+  test("assisted check-in rejects bad method and missing member", async () => {
+    for (const body of [
+      { member_user_id: "u", method: "self_qr_scan" },
+      { method: "leader_qr_scan" },
+    ]) {
+      const res = await authed(
+        `/api/v1/attendance/events/${EVENT}/check-in`,
+        { method: "POST", body: JSON.stringify(body) },
+        adminCookie
+      );
+      assert.strictEqual(res.status, 422);
+    }
+  });
+
+  test("void rejects a missing reason", async () => {
+    const res = await authed(
+      "/api/v1/attendance/unknown/void",
+      { method: "POST", body: JSON.stringify({}) },
+      adminCookie
+    );
+    assert.strictEqual(res.status, 422);
+  });
+
+  test("guest correction rejects bad phone and long names", async () => {
+    const badPhone = await authed(
+      "/api/v1/attendance/unknown/guest-correction",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ name: "n", phone: "123", reason: "r" }),
+      },
+      adminCookie
+    );
+    assert.strictEqual(badPhone.status, 422);
+    const longName = await authed(
+      "/api/v1/attendance/unknown/guest-correction",
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: "n".repeat(81),
+          phone: "91234567",
+          reason: "r",
+        }),
+      },
+      adminCookie
+    );
+    assert.strictEqual(longName.status, 422);
+  });
+
+  test("excused rejects unknown categories and long reasons", async () => {
+    const badCategory = await authed(
+      `/api/v1/attendance/events/${EVENT}/excused`,
+      {
+        method: "POST",
+        body: JSON.stringify({ enrollment_id: "e", reason: "亂寫原因" }),
+      },
+      adminCookie
+    );
+    assert.strictEqual(badCategory.status, 422);
+    const longReason = await authed(
+      `/api/v1/attendance/events/${EVENT}/excused`,
+      {
+        method: "POST",
+        body: JSON.stringify({ enrollment_id: "e", reason: "x".repeat(501) }),
+      },
+      adminCookie
+    );
+    assert.strictEqual(longReason.status, 422);
+  });
+});

@@ -219,7 +219,6 @@ async function createProgram(
           description: `Disposable navigation parity fixture ${name}.`,
           category: "T05",
           behavior_type: behaviorType,
-          lifecycle: "Active",
           discoverability,
           enrollment_mode: enrollmentMode,
         },

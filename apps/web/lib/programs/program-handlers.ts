@@ -1332,7 +1332,6 @@ export async function handleCreateProgram(
     "name",
     "description",
     "behavior_type",
-    "lifecycle",
   ]);
   if (
     !fields ||
@@ -1343,11 +1342,10 @@ export async function handleCreateProgram(
       422,
       "VALIDATION",
       "Validation failed",
-      "name, purpose, behavior_type, and lifecycle are required and must be valid.",
+      "name, purpose, and behavior_type are required and must be valid.",
       requestId
     );
   }
-
   const { workspace } = await getModule(env);
   try {
     const row = await workspace.createProgram(
@@ -1359,7 +1357,6 @@ export async function handleCreateProgram(
         category:
           typeof fields.category === "string" ? fields.category : undefined,
         behavior_type: fields.behavior_type as "Recurring" | "OneOff",
-        lifecycle: fields.lifecycle as "Draft" | "Active" | "Archived",
         discoverability: (fields.discoverability ?? "Listed") as
           | "Listed"
           | "Unlisted",
@@ -1369,6 +1366,7 @@ export async function handleCreateProgram(
         display_order:
           typeof fields.display_order === "number" ? fields.display_order : 0,
       },
+      body.lifecycle,
       correlationId
     );
     const createdProgramData = { program: row };

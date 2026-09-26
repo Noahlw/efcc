@@ -9,6 +9,14 @@
 import {
   AccountDirectoryMemberSchema,
   AccountDirectoryViewSchema,
+  AttendanceMembersSchema,
+  AttendanceResultSchema,
+  AttendanceResolveResponseSchema,
+  ManageableEventsSchema,
+  MaterializeResponseSchema,
+  OwnAttendanceResponseSchema,
+  ReconcileResponseSchema,
+  RosterResponseSchema,
   ApprovalRunActionResponseSchema,
   ApprovalRunResponseSchema,
   ApprovalRunStartResponseSchema,
@@ -664,7 +672,6 @@ export interface ProgramInput {
   description?: string;
   behavior_type: Program["behavior_type"];
   discoverability?: Program["discoverability"];
-  lifecycle: Program["lifecycle"];
   enrollment_mode: Program["enrollment_mode"];
   category?: string;
   display_order?: number;
@@ -674,6 +681,7 @@ export type ProgramPatch = Omit<
   Partial<ProgramInput>,
   "description" | "category"
 > & {
+  lifecycle?: Program["lifecycle"];
   description?: string | null;
   category?: string | null;
   check_in_opens_at_minutes_before_start?: number;
@@ -1664,7 +1672,14 @@ export function resolveAttendance(input: {
   if (input.event) {
     search.set("event", input.event);
   }
-  return programsFetch(`/api/v1/attendance/resolve?${search}`, "GET");
+  return programsFetch(
+    `/api/v1/attendance/resolve?${search}`,
+    "GET",
+    undefined,
+    {
+      schema: AttendanceResolveResponseSchema,
+    }
+  );
 }
 
 /** POST /api/v1/attendance/self */
@@ -1680,6 +1695,7 @@ export function selfCheckIn(
 ): Promise<AttendanceResult> {
   return programsFetch("/api/v1/attendance/self", "POST", input, {
     idempotencyKey,
+    schema: AttendanceResultSchema,
   });
 }
 
@@ -1698,6 +1714,7 @@ export function guestCheckIn(
 ): Promise<AttendanceResult> {
   return programsFetch("/api/v1/attendance/guest", "POST", input, {
     idempotencyKey,
+    schema: AttendanceResultSchema,
   });
 }
 
@@ -1716,6 +1733,7 @@ export function reconcileGuestCheckIn(
 ): Promise<{ outcome: "found" | "not_found" }> {
   return programsFetch("/api/v1/attendance/guest/reconcile", "POST", input, {
     idempotencyKey: idempotencyKey ?? null,
+    schema: ReconcileResponseSchema,
   });
 }
 
@@ -1723,14 +1741,18 @@ export function reconcileGuestCheckIn(
 export function listManageableEvents(): Promise<{
   events: AttendanceEventSummaryType[];
 }> {
-  return programsFetch("/api/v1/attendance/events", "GET");
+  return programsFetch("/api/v1/attendance/events", "GET", undefined, {
+    schema: ManageableEventsSchema,
+  });
 }
 
 /** GET /api/v1/attendance/scanner-events — eligible Assisted context */
 export function listScannerEvents(): Promise<{
   events: AttendanceEventSummaryType[];
 }> {
-  return programsFetch("/api/v1/attendance/scanner-events", "GET");
+  return programsFetch("/api/v1/attendance/scanner-events", "GET", undefined, {
+    schema: ManageableEventsSchema,
+  });
 }
 
 /** GET /api/v1/attendance/events/:eventId/members */
@@ -1740,7 +1762,9 @@ export function searchAttendanceMembers(
 ): Promise<{ members: AttendanceMemberType[] }> {
   return programsFetch(
     `/api/v1/attendance/events/${encodeURIComponent(eventId)}/members?q=${encodeURIComponent(query)}`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: AttendanceMembersSchema }
   );
 }
 
@@ -1753,7 +1777,10 @@ export function assistedCheckIn(
   return programsFetch(
     `/api/v1/attendance/events/${encodeURIComponent(eventId)}/check-in`,
     "POST",
-    { member_user_id, method }
+    { member_user_id, method },
+    {
+      schema: AttendanceResultSchema,
+    }
   );
 }
 
@@ -1763,7 +1790,9 @@ export function listAttendanceRoster(
 ): Promise<AttendanceRosterResponseType> {
   return programsFetch(
     `/api/v1/attendance/events/${encodeURIComponent(eventId)}/roster`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: RosterResponseSchema }
   );
 }
 
@@ -1773,7 +1802,9 @@ export function materializeAttendanceSnapshot(
 ): Promise<AttendanceMaterializeResponseType> {
   return programsFetch(
     `/api/v1/attendance/events/${encodeURIComponent(eventId)}/materialize`,
-    "POST"
+    "POST",
+    undefined,
+    { schema: MaterializeResponseSchema }
   );
 }
 
@@ -1786,7 +1817,10 @@ export function recordExcusedAttendance(
   return programsFetch(
     `/api/v1/attendance/events/${encodeURIComponent(eventId)}/excused`,
     "POST",
-    { enrollment_id: enrollmentId, reason }
+    { enrollment_id: enrollmentId, reason },
+    {
+      schema: AttendanceResultSchema,
+    }
   );
 }
 
@@ -1796,7 +1830,9 @@ export function getOwnAttendance(
 ): Promise<AttendanceParticipantViewType> {
   return programsFetch(
     `/api/v1/attendance/events/${encodeURIComponent(eventId)}/me`,
-    "GET"
+    "GET",
+    undefined,
+    { schema: OwnAttendanceResponseSchema }
   );
 }
 
@@ -1808,7 +1844,10 @@ export function voidAttendance(
   return programsFetch(
     `/api/v1/attendance/${encodeURIComponent(attendanceId)}/void`,
     "POST",
-    { reason }
+    { reason },
+    {
+      schema: AttendanceResultSchema,
+    }
   );
 }
 
@@ -1820,6 +1859,9 @@ export function correctGuestAttendance(
   return programsFetch(
     `/api/v1/attendance/${encodeURIComponent(attendanceId)}/guest-correction`,
     "PATCH",
-    input
+    input,
+    {
+      schema: AttendanceResultSchema,
+    }
   );
 }
