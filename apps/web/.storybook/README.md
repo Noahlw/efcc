@@ -32,11 +32,11 @@ Startup prints the actual Storybook URL and the direct Management Hub Story URL.
 The canonical workshop commands are run from the repository root with Node `22.18.0` and pnpm `11.7.0`:
 
 ```sh
-fnm exec --using 22.18.0 pnpm --dir web storybook
-fnm exec --using 22.18.0 pnpm --dir web test:t07:foundation
-fnm exec --using 22.18.0 pnpm --dir web test:storybook
-fnm exec --using 22.18.0 pnpm --dir web storybook:build
-fnm exec --using 22.18.0 pnpm --dir web storybook:verify-index
+fnm exec --using 22.18.0 pnpm --dir apps/web storybook
+fnm exec --using 22.18.0 pnpm --dir apps/web test:t07:foundation
+fnm exec --using 22.18.0 pnpm --dir apps/web test:storybook
+fnm exec --using 22.18.0 pnpm --dir apps/web storybook:build
+fnm exec --using 22.18.0 pnpm --dir apps/web storybook:verify-index
 ```
 
 `storybook:verify-index` must run after `storybook:build`; it checks the actual generated `storybook-static/index.json`, all discovered Story IDs, all primary baseline PSNs, and the independent Screen Catalog obligations. The `auth-sign-in` Story covers current username/password sign-in; the retired credential-upgrade flow is not in the catalog. The registrations fallback is a directly reviewable Management/Identity redirect boundary.

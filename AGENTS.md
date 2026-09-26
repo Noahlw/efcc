@@ -33,7 +33,7 @@ Web behavior changes require an acceptance trace before implementation; mechanic
 ## Protect data and external boundaries
 
 - Use only local or inventory-approved disposable development/test D1 targets for reset and seed operations.
-- Verify Worker account, route, D1 ID, environment, rate-limit namespace, and compatibility date before any remote Wrangler action. A placeholder in `web/wrangler.jsonc` is not identity evidence.
+- Verify Worker account, route, D1 ID, environment, rate-limit namespace, and compatibility date before any remote Wrangler action. A placeholder in `apps/web/wrangler.jsonc` is not identity evidence.
 - Never reset production or an unknown target. Never commit credentials, cookies, access tokens, storage state, or `.dev.vars` values.
 - Keep Apps Script, Google Sheets, the old RPC bridge, the external scanner opener, and public `/prototype` route retired. Keep the current Worker scanner and ZXing fallback.
 - Auth provider/library replacement is deferred to [#639](https://github.com/Noahlw/efcc/issues/639); do not fold it into unrelated cleanup.

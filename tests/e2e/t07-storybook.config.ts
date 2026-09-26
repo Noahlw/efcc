@@ -78,7 +78,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `fnm exec --using 22.18.0 pnpm --dir web storybook --ci --port ${port}`,
+    command: `fnm exec --using 22.18.0 pnpm --dir apps/web storybook --ci --port ${port}`,
     cwd: repositoryRoot,
     url: `${baseURL}/iframe.html?id=t07-1-management-hub--default&viewMode=story`,
     reuseExistingServer: true,

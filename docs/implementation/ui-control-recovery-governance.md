@@ -13,8 +13,8 @@ This document is current law for UI ownership, styling, delivery, evidence, revi
 1. **Domain authority:** active domain ADRs/specs and [`CONTEXT.md`](../../CONTEXT.md) own domain language, permissions, server authority, mutations, workflow outcomes, and data invariants. UI visibility never overrides them.
 2. **Human visual authority:** [`DESIGN.md`](../../DESIGN.md) and accepted design ADRs own Civic Minimal visual intent, product language, hierarchy, density, and balance.
 3. **UI governance:** this document owns UI ownership layers, styling policy, contract-change control, waiver policy, review boundaries, and rescue scope discipline.
-4. **Global runtime authority:** [`web/app/globals.css`](../../web/app/globals.css) owns runtime tokens and only approved document, shell/platform, reduced-motion, safe-area, and irreducible print rules.
-5. **Primitive authority:** [`web/components/ui/`](../../web/components/ui/) owns local shadcn/Radix accessible mechanics and stable semantic APIs.
+4. **Global runtime authority:** [`apps/web/app/globals.css`](../../apps/web/app/globals.css) owns runtime tokens and only approved document, shell/platform, reduced-motion, safe-area, and irreducible print rules.
+5. **Primitive authority:** [`apps/web/components/ui/`](../../apps/web/components/ui/) owns local shadcn/Radix accessible mechanics and stable semantic APIs.
 6. **Pattern authority:** approved EFCC patterns own repeated product geometry, composition, and state presentation without owning domain fetching, permission decisions, or mutations.
 7. **Route authority:** routes own domain content, route state, domain-specific arrangement, and calls to domain adapters.
 8. **Testing authority:** [`TESTING.md`](../../TESTING.md) and accepted testing ADRs own test-layer boundaries, seam selection, isolation, local/CI routing, failure evidence, and promotion composition.

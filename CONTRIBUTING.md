@@ -92,7 +92,7 @@ Every change should state the candidate revision, commands run, results, and kno
 - real device or assistive-technology review;
 - Cloudflare configuration and deployment/promotion evidence.
 
-Routine development does not deploy. When deployment work is explicitly authorized, verify the target identity first and use a disposable development/acceptance resource. Never treat the stale `efcc-prototype-129` name or placeholder IDs in `web/wrangler.jsonc` as a valid target.
+Routine development does not deploy. When deployment work is explicitly authorized, verify the target identity first and use a disposable development/acceptance resource. Never treat the stale `efcc-prototype-129` name or placeholder IDs in `apps/web/wrangler.jsonc` as a valid target.
 
 ## Documentation routing
 

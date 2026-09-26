@@ -79,7 +79,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `STORYBOOK_PORT=${port} fnm exec --using 22.18.0 pnpm --dir web storybook --ci --port ${port}`,
+    command: `STORYBOOK_PORT=${port} fnm exec --using 22.18.0 pnpm --dir apps/web storybook --ci --port ${port}`,
     cwd: repositoryRoot,
     url: `${baseURL}/iframe.html?id=t07-3-programs--participant-directory&viewMode=story`,
     reuseExistingServer: true,

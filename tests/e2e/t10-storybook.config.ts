@@ -58,7 +58,7 @@ export default defineConfig({
     },
   })),
   webServer: {
-    command: `STORYBOOK_PORT=${port} pnpm --dir web storybook --ci --port ${port}`,
+    command: `STORYBOOK_PORT=${port} pnpm --dir apps/web storybook --ci --port ${port}`,
     cwd: repositoryRoot,
     url: `${baseURL}/iframe.html?id=t10-composition--page-frame&viewMode=story`,
     reuseExistingServer: true,

@@ -72,13 +72,13 @@ For a local Worker session, `pnpm dev:local` builds the static export, applies l
 
 | Path | Purpose |
 | --- | --- |
-| [`web/app/`](apps/web/app/) | Next.js routes and route composition |
-| [`web/lib/auth/`](apps/web/lib/auth/) | Authentication/session handlers and account lifecycle |
-| [`web/lib/identity/`](apps/web/lib/identity/) | Editable role definitions, assignments, grants, hierarchy, and audit contracts |
-| [`web/lib/programs/`](apps/web/lib/programs/) | Programs, departments, events, enrollment, and related projections |
-| [`web/lib/attendance.ts`](apps/web/lib/attendance.ts) | Attendance and check-in domain handlers |
+| [`apps/web/app/`](apps/web/app/) | Next.js routes and route composition |
+| [`apps/web/lib/auth/`](apps/web/lib/auth/) | Authentication/session handlers and account lifecycle |
+| [`apps/web/lib/identity/`](apps/web/lib/identity/) | Editable role definitions, assignments, grants, hierarchy, and audit contracts |
+| [`apps/web/lib/programs/`](apps/web/lib/programs/) | Programs, departments, events, enrollment, and related projections |
+| [`apps/web/lib/attendance.ts`](apps/web/lib/attendance.ts) | Attendance and check-in domain handlers |
 | [`apps/web/worker.ts`](apps/web/worker.ts) | Worker entrypoint and API routing |
-| [`web/migrations/`](apps/web/migrations/) | Wrangler D1 schema ledger |
+| [`apps/web/migrations/`](apps/web/migrations/) | Wrangler D1 schema ledger |
 | [`tests/e2e/`](tests/e2e/) | Local Worker/D1 and static-export Playwright journeys |
 | [`scripts/`](scripts/) | Local verification, promotion, governance, and report runners |
 | [`docs/adr/`](docs/adr/) | Durable architecture decisions |
