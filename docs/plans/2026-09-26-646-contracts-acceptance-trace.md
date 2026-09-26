@@ -407,6 +407,22 @@ clean SHA (#662).
   started → empty expected roster; icon/text mismatches); zero
   contract-gate firings across all runs; worker suites green.
 
+## #662 record — full-matrix qualification + PUI-05 fixture repair
+
+- Root cause (not a contract regression): Explore prefers unenrolled
+  programs, and 8cb5f3d0 removed the global demo seed enrollment, so
+  E2E_DEMO_成人查經 outranked the enrolled PUI-05 fixture program and
+  case 64 could never see its long copy. Fixture now enrolls the
+  member in every other Listed + MemberRequest program: the enrolled
+  tie breaks on display_order, where the fixture program (0) sorts
+  first. No product behavior changed; featured-event pick unchanged
+  (fixture event at +30min beats weekly demo events).
+- Proof: `pnpm verify:programs` functional-passed at the final SHA
+  (browser + home + responsive + feed).
+- Known unrelated pre-existing failures (preserved, not fixed):
+  full `pnpm verify` halts at governance full/release (259
+  violations, 0 on added lines).
+
 ## Proof plan per slice
 
 Worker/D1 contract tests (valid + invalid request/response,
