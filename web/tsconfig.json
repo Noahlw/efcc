@@ -26,6 +26,8 @@
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
+    ".storybook/**/*.test.ts",
+    ".storybook/**/*.test.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts"
@@ -46,7 +48,6 @@
     "lib/identity/account-access-history.test.ts",
     "lib/identity/account-access-handlers.test.ts",
     "lib/identity/normalized-authority.test.ts",
-    "lib/permission-editor-panel.test.tsx",
     "lib/attendance.ts",
     "lib/attendance-worker.test.ts",
     "lib/programs/capabilities.ts",

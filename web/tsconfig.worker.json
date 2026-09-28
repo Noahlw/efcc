@@ -14,7 +14,6 @@
     "moduleResolution": "bundler",
     "isolatedModules": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./*"]
     }
@@ -23,6 +22,7 @@
     "worker-globals.d.ts",
     "worker.ts",
     "worker.test.ts",
+    "worker.auth.test.ts",
     "lib/attendance.ts",
     "lib/attendance-worker.test.ts",
     "lib/home-handlers.ts",
