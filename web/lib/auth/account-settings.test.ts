@@ -37,7 +37,7 @@ import * as credentials from "./credentials";
 import { hashCredential, verifyCredential } from "./credentials";
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from "./cookies";
 import * as registrations from "./registrations";
-import { signAccessToken, issueSession } from "./sessions";
+import { issueSession } from "./sessions";
 import { applyMigrations, testDb } from "./test-bootstrap";
 import { completeCredentialUpgrade } from "./upgrade";
 import worker from "../../worker";
@@ -78,14 +78,6 @@ function authRequest(
           ? init.body
           : JSON.stringify(init.body),
   });
-}
-
-/** Sign an access token for an arbitrary uid (used for the suspended fixture). */
-async function accessTokenFor(
-  uid: string,
-  sid = "sess-fixture"
-): Promise<string> {
-  return signAccessToken(SECRET, { sid, uid, iat: Date.now() });
 }
 
 async function sessionFor(userId: string): Promise<{
@@ -222,6 +214,13 @@ beforeAll(async () => {
     userId: "U-PWREP",
     legacyPin: "3333",
     newCredential: "paul-secret",
+  });
+  // U004 stays Suspended but must be upgraded so the suspended-surface test
+  // can mint a live session while Active, then re-suspend it.
+  await completeCredentialUpgrade(testDb(), {
+    userId: "U004",
+    legacyPin: "1111",
+    newCredential: "dana-secret",
   });
 });
 
@@ -462,7 +461,7 @@ describe("UI-04: POST /api/v1/auth/username", () => {
     expect(res.headers.getSetCookie()).toHaveLength(0);
   });
 
-  test("username retry after a successful change revokes nothing but clears cookies (replay)", async () => {
+  test("a revoked access token cannot replay a completed username change", async () => {
     const { access, refresh } = await sessionFor("U-REPLAY");
 
     const first = await worker.fetch(
@@ -480,10 +479,8 @@ describe("UI-04: POST /api/v1/auth/username", () => {
     assertCookiesCleared(first);
     await expect(activeSessionCount("U-REPLAY")).resolves.toBe(0);
 
-    // Same access token (still valid until expiry), same submitted value:
-    // the retry is a no-op, but every session was already revoked by the
-    // first request — the response must tell the client to leave the
-    // signed-out surface and clear auth cookies.
+    // The session was revoked by the successful change, so the next protected
+    // request must fail before the username no-op path can run.
     const retry = await worker.fetch(
       authRequest("/api/v1/auth/username", {
         headers: cookieHeader(access, refresh),
@@ -491,12 +488,8 @@ describe("UI-04: POST /api/v1/auth/username", () => {
       }),
       testEnv()
     );
-    expect(retry.status).toBe(200);
-    const retryBody = (await retry.json()) as {
-      data: { username: string; sessionRevoked: boolean };
-    };
-    expect(retryBody.data.sessionRevoked).toBe(true);
-    assertCookiesCleared(retry);
+    expect(retry.status).toBe(401);
+    expect((await problemOf(retry)).code).toBe("AUTH_REQUIRED");
 
     // Still exactly one username_changed audit row — the replay wrote nothing.
     const events = await eventsFor("U-REPLAY");
@@ -542,12 +535,29 @@ describe("UI-04: POST /api/v1/auth/username", () => {
     expect(noCookie.status).toBe(401);
     expect((await problemOf(noCookie)).code).toBe("AUTH_REQUIRED");
 
+    await testDb()
+      .prepare(
+        "UPDATE accounts SET account_status = 'Active' WHERE user_id = ?"
+      )
+      .bind("U004")
+      .run();
+    const suspendedSession = await issueSession(testDb(), {
+      userId: "U004",
+      accessTokenSecret: SECRET,
+    });
+    await testDb()
+      .prepare(
+        "UPDATE accounts SET account_status = 'Suspended' WHERE user_id = ?"
+      )
+      .bind("U004")
+      .run();
+
     const suspended = await worker.fetch(
       authRequest("/api/v1/auth/username", {
         headers: {
           Origin: HOST,
           "Content-Type": "application/json",
-          Cookie: `${ACCESS_COOKIE_NAME}=${await accessTokenFor("U004")}`,
+          Cookie: `${ACCESS_COOKIE_NAME}=${suspendedSession.accessToken}`,
         },
         body: { username: "newdana" },
       }),
@@ -728,7 +738,7 @@ describe("UI-04: POST /api/v1/auth/password", () => {
     ).resolves.toBe(false);
   });
 
-  test("password retry with the same body is a value-idempotent replay: no duplicate audit row", async () => {
+  test("a revoked access token cannot replay a completed password change", async () => {
     const { access, refresh } = await sessionFor("U-PWREP");
 
     const first = await worker.fetch(
@@ -743,9 +753,8 @@ describe("UI-04: POST /api/v1/auth/password", () => {
     );
     expect(first.status).toBe(200);
 
-    // Replay of the identical request: the stored hash is now the new
-    // credential, so the current-password check would fail — the replay
-    // authority (newPassword verifies against the stored hash) returns ok.
+    // The successful change revoked the session, so this protected request
+    // is denied before credential validation can run again.
     const retry = await worker.fetch(
       authRequest("/api/v1/auth/password", {
         headers: cookieHeader(access, refresh),
@@ -756,11 +765,8 @@ describe("UI-04: POST /api/v1/auth/password", () => {
       }),
       testEnv()
     );
-    expect(retry.status).toBe(200);
-    const body = (await assertCorrelated(retry)) as {
-      data: { sessionRevoked: boolean };
-    };
-    expect(body.data.sessionRevoked).toBe(true);
+    expect(retry.status).toBe(401);
+    expect((await problemOf(retry)).code).toBe("AUTH_REQUIRED");
 
     // One password_changed row from the FIRST request; the retry added none.
     const events = await eventsFor("U-PWREP");

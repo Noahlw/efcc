@@ -1,7 +1,5 @@
-import { findAccountByUserId } from "../auth/accounts";
 import type { AccountRow } from "../auth/accounts";
-import { ACCESS_COOKIE_NAME } from "../auth/cookies";
-import { verifyAccessToken } from "../auth/sessions";
+import { resolveRequestSession } from "../auth/sessions";
 /**
  * EFCC Programs domain — Worker route handlers for `/api/v1/programs/*`.
  *
@@ -373,31 +371,17 @@ function jsonResponse(
   );
 }
 
-function readCookie(headers: Headers, name: string): string | null {
-  const raw = headers.get("Cookie");
-  if (!raw) {
-    return null;
-  }
-  for (const pair of raw.split(";")) {
-    const eq = pair.indexOf("=");
-    if (eq === -1) {
-      continue;
-    }
-    const k = pair.slice(0, eq).trim();
-    if (k === name) {
-      return pair.slice(eq + 1).trim();
-    }
-  }
-  return null;
-}
-
 async function requireActor(
   request: Request,
   env: ProgramEnv,
   requestId: string
 ): Promise<{ account: AccountRow } | Response> {
-  const access = readCookie(request.headers, ACCESS_COOKIE_NAME);
-  if (!access) {
+  const resolved = await resolveRequestSession(
+    request,
+    env.DB,
+    env.EFCC_ACCESS_TOKEN_SECRET
+  );
+  if (resolved.status === "missing") {
     return problem(
       401,
       "AUTH_REQUIRED",
@@ -406,8 +390,7 @@ async function requireActor(
       requestId
     );
   }
-  const claims = await verifyAccessToken(env.EFCC_ACCESS_TOKEN_SECRET, access);
-  if (!claims) {
+  if (resolved.status === "invalid") {
     return problem(
       401,
       "AUTH_REQUIRED",
@@ -416,8 +399,7 @@ async function requireActor(
       requestId
     );
   }
-  const account = await findAccountByUserId(env.DB, claims.uid);
-  if (!account) {
+  if (resolved.status === "unknown_account") {
     return problem(
       401,
       "AUTH_REQUIRED",
@@ -426,6 +408,7 @@ async function requireActor(
       requestId
     );
   }
+  const { account } = resolved;
   if (account.account_status !== "Active") {
     return problem(
       403,

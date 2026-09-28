@@ -33,10 +33,8 @@
  * value is never the authority.
  */
 /* oxlint-disable eslint/complexity -- create/reorder handlers validate every body field sequentially and map the typed failures 1:1; the linear guard chain is intentional (same convention as role-hierarchy.ts). */
-import { findAccountByUserId } from "../auth/accounts";
 import type { AccountRow } from "../auth/accounts";
-import { ACCESS_COOKIE_NAME } from "../auth/cookies";
-import { verifyAccessToken } from "../auth/sessions";
+import { resolveRequestSession } from "../auth/sessions";
 import {
   RoleIdempotencyConflictError,
   RoleRevisionConflictError,
@@ -151,24 +149,6 @@ export function roleSuccess(
   );
 }
 
-function readCookie(headers: Headers, name: string): string | null {
-  const raw = headers.get("Cookie");
-  if (!raw) {
-    return null;
-  }
-  for (const pair of raw.split(";")) {
-    const eq = pair.indexOf("=");
-    if (eq === -1) {
-      continue;
-    }
-    const key = pair.slice(0, eq).trim();
-    if (key === name) {
-      return pair.slice(eq + 1).trim();
-    }
-  }
-  return null;
-}
-
 /**
  * Resolve the cookie-only actor (same contract as the auth/programs
  * surfaces). Returns a Problem Details Response on any auth failure.
@@ -178,8 +158,12 @@ export async function requireActor(
   env: RoleEnv,
   requestId: string
 ): Promise<{ account: AccountRow } | Response> {
-  const access = readCookie(request.headers, ACCESS_COOKIE_NAME);
-  if (!access) {
+  const resolved = await resolveRequestSession(
+    request,
+    env.DB,
+    env.EFCC_ACCESS_TOKEN_SECRET
+  );
+  if (resolved.status === "missing") {
     return roleProblem(
       401,
       "AUTH_REQUIRED",
@@ -188,8 +172,7 @@ export async function requireActor(
       requestId
     );
   }
-  const claims = await verifyAccessToken(env.EFCC_ACCESS_TOKEN_SECRET, access);
-  if (!claims) {
+  if (resolved.status === "invalid") {
     return roleProblem(
       401,
       "AUTH_REQUIRED",
@@ -198,8 +181,7 @@ export async function requireActor(
       requestId
     );
   }
-  const account = await findAccountByUserId(env.DB, claims.uid);
-  if (!account) {
+  if (resolved.status === "unknown_account") {
     return roleProblem(
       401,
       "AUTH_REQUIRED",
@@ -208,6 +190,7 @@ export async function requireActor(
       requestId
     );
   }
+  const { account } = resolved;
   if (account.account_status !== "Active") {
     return roleProblem(
       403,
