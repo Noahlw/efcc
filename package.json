@@ -57,17 +57,22 @@
     "test:t10:composition": "playwright test --config=tests/e2e/t10-storybook.config.ts",
     "test:t11:storybook": "playwright test --config=tests/e2e/t11-storybook.config.ts",
     "check": "ultracite check",
-    "fix": "ultracite fix"
+    "fix": "ultracite fix",
+    "knip": "STORYBOOK_PORT=6006 PROGRAMS_CANDIDATE_SHA=0000000000000000000000000000000000000000 PROGRAMS_VISUAL_ARTIFACT_DIR=/tmp/efcc-knip knip",
+    "knip:production": "STORYBOOK_PORT=6006 PROGRAMS_CANDIDATE_SHA=0000000000000000000000000000000000000000 PROGRAMS_VISUAL_ARTIFACT_DIR=/tmp/efcc-knip knip --production",
+    "check:boundaries": "dependency-cruiser --validate .dependency-cruiser.cjs --ignore-known .dependency-cruiser-known-violations.json --output-type err web"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@types/node": "^26.1.2",
+    "dependency-cruiser": "18.4.0",
     "husky": "^9.1.7",
+    "knip": "6.38.0",
     "lint-staged": "^17.3.0",
     "oxfmt": "0.61.0",
     "oxlint": "1.76.0",
     "tsx": "^4.23.5",
-    "typescript": "^7.0.2",
+    "typescript": "^5.9.3",
     "ultracite": "7.10.0",
     "vitest": "4.1.10"
   },

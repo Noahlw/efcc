@@ -37,20 +37,16 @@ pnpm run verify
 
   Each worktree is a fresh checkout on its branch, so re-run `pnpm run bootstrap` there before working.
 
-## The two install boundaries and lockfiles
+## Workspace and lockfile
 
-The repository has two independent pnpm install boundaries with separate lockfiles and separate `node_modules`:
+One pnpm workspace (`web/` member), one frozen lockfile:
 
 | Workspace | Lockfile | What it installs | Work here with |
 | --- | --- | --- | --- |
-| Root | `pnpm-lock.yaml` | GAS/prototype tooling, TypeScript, Playwright, husky | `pnpm <script>` |
-| `web/` | `web/pnpm-lock.yaml` | Next.js, Cloudflare Wrangler/D1, Vitest, jsdom | `pnpm --dir web <script>` |
+| Root + `web/` | `pnpm-lock.yaml` | Root tooling plus Next.js, Cloudflare Wrangler/D1, Vitest, jsdom | `pnpm <script>` or `pnpm --filter web <script>` |
 
-- Install everything fresh: `pnpm run bootstrap`.
-- Install only the root tree: `pnpm install --frozen-lockfile`.
-- Install only the web tree: `pnpm --dir web install --frozen-lockfile`.
-- When you change a dependency in one tree, update that tree's lockfile and commit it. The two lockfiles change independently.
-- Keep lockfiles in sync with their manifests — CI installs with `--frozen-lockfile` and fails if they drift.
+- Install everything fresh: `pnpm run bootstrap` (single `pnpm install --frozen-lockfile`).
+- Keep the lockfile in sync with manifests — CI installs with `--frozen-lockfile` and fails if they drift.
 
 ## Verification
 
@@ -61,11 +57,11 @@ The only automatic workflow is **Fast CI** (`.github/workflows/fast-ci.yml`): it
 All other deterministic, credential-free checks run locally before commits through the pre-commit hook and `pnpm verify:precommit`:
 
 1. Root typecheck (`pnpm typecheck`)
-2. `web/` typecheck (`pnpm --dir web typecheck`)
+2. `web/` typecheck (`pnpm --filter web typecheck`)
 3. Root GAS/prototype tests (`pnpm test`)
 4. Identity tests (`pnpm verify:identity`)
 5. `web/` workerd tests (`pnpm test:workerd` — includes all normalized Worker files; T04 / #509 restored the four previously excluded files)
-6. `web/` component tests (`pnpm --dir web test:components`)
+6. `web/` component tests (`pnpm --filter web test:components`)
 
 `pnpm run verify` additionally runs the browser shell/geometry Playwright suites (`pnpm test:shell-responsive`, `pnpm test:shell-geometry`, `pnpm test:role-hierarchy-geometry`). None of these deploy anything or require secrets. Prefer `pnpm run verify` before opening a PR; `pnpm run verify:precommit` is the faster non-browser gate the hook runs.
 
@@ -76,8 +72,8 @@ All other deterministic, credential-free checks run locally before commits throu
 Run only the relevant suite when iterating locally:
 
 - **Prototype/scanner code:** `pnpm test:prototype`
-- **Worker/auth/programs/attendance and client contract (`web/`):** `pnpm --dir web test`
-- **Web components (`web/`):** `pnpm --dir web test:components`
+- **Worker/auth/programs/attendance and client contract (`web/`):** `pnpm --filter web test`
+- **Web components (`web/`):** `pnpm --filter web test:components`
 - **Responsive/accessibility shell:** `pnpm test:shell-responsive`
 - **Static/lint checks (optional, not part of the CI gate):** `pnpm check`
 
