@@ -117,7 +117,7 @@ The hook is auto-installed by `pnpm run bootstrap` (via the root `prepare` scrip
 Apps Script / Google Sheets is **retired**. `src/gas/`, `tests/gas/`, the clasp configuration, and the Worker's transitional `/api/v1/rpc` proxy were removed once every capability had a Worker/D1 replacement and no live caller remained. Do not reintroduce Apps Script or Sheets deployment paths; the platform is Cloudflare Worker + D1.
 
 - Agents never modify the production Google Sheet; the operator performs sheet changes manually.
-- The legacy deployment and its `/exec` Playwright suite are deleted; deterministic coverage lives in `web/` (workerd) plus the `tests/prototype/` retirement guard. The abandoned external scanner origin (`prototype/scanner/`) was retired in #682; its historical rationale stays in ADR-0015 and the research notes.
+- The legacy deployment and its `/exec` Playwright suite are deleted; deterministic coverage lives in `web/` (workerd) plus the `tests/prototype/` retirement guard. The abandoned external scanner origin (`prototype/scanner/`) was retired in #682; its historical rationale stays in ADR-0015 and the research notes. The Google Sheets Users/PIN import and forced credential-upgrade paths stay live in #683 (preservation guard); their historical rationale stays in ADR-0020/ADR-0002 and Spec 077.
 
 When changing `web/`, read [`web/AGENTS.md`](web/AGENTS.md) first. This repository pins a breaking Next.js version; the relevant version-specific guide under `web/node_modules/next/dist/docs/` is required reading before editing framework code.
 

@@ -71,7 +71,7 @@ You are joining after the D1 foundation (PRs #166/#167) merged to `main`. The pl
 | [`web/lib/programs/`](web/lib/programs/) | D1 Programs domain: workspace, departments, events, enrollment |
 | [`web/lib/attendance.ts`](web/lib/attendance.ts) | D1 Attendance domain handlers |
 | [`web/migrations/`](web/migrations/) | D1 schema and migrations |
-| [`tests/prototype/`](tests/prototype/) | External-scanner retirement guard (no live behavior) |
+| [`tests/prototype/`](tests/prototype/) | External-scanner retirement guard + account import/upgrade preservation guard (no live behavior) |
 | [`tests/e2e/`](tests/e2e/) | Playwright acceptance and deployment test configuration |
 | [`docs/specs/`](docs/specs/) | Behavioral specifications and acceptance traces |
 | [`docs/adr/`](docs/adr/) | Durable architecture decisions |
