@@ -1,3 +1,17 @@
+packages:
+  - web
+
 allowBuilds:
   esbuild: true
-  msw: true
+  msw: false
+  sharp: true
+  workerd: true
+  unrs-resolver: false
+
+# PR1 proven versions (ctx7 + #644 lock): Vite 8 for @vitejs/plugin-react 6
+# (drops Vite <=7) and vitest 4.1 module-runner (introduced Vite 6, needs
+# vite/module-runner export absent in Vite 5). Storybook react-vite peers
+# vite ^7 || ^8. Pin to 8.2.0 / 4.1.10 as in #644's working aggregate.
+overrides:
+  vite: 8.2.0
+  vitest: 4.1.10

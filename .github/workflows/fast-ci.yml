@@ -44,17 +44,12 @@ jobs:
         with:
           node-version: "22.18.0"
           cache: pnpm
-          cache-dependency-path: |
-            pnpm-lock.yaml
-            web/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
-      - name: Install root dependencies
+      - name: Install dependencies (single workspace lockfile)
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
         run: pnpm install --frozen-lockfile
-
-      - name: Install web dependencies
-        run: pnpm --dir web install --frozen-lockfile
 
       - name: Test Storybook affected-scope resolver
         run: pnpm test:storybook:scope
@@ -67,7 +62,7 @@ jobs:
 
       - name: Storybook/catalog integrity (frontend-affected)
         if: steps.storybook-scope.outputs.run == 'true'
-        run: pnpm --dir web test:t07:foundation
+        run: pnpm --filter web test:t07:foundation
 
       - name: Typecheck (root + web)
         run: pnpm verify:fast
