@@ -71,7 +71,7 @@ You are joining after the D1 foundation (PRs #166/#167) merged to `main`. The pl
 | [`web/lib/programs/`](web/lib/programs/) | D1 Programs domain: workspace, departments, events, enrollment |
 | [`web/lib/attendance.ts`](web/lib/attendance.ts) | D1 Attendance domain handlers |
 | [`web/migrations/`](web/migrations/) | D1 schema and migrations |
-| [`tests/prototype/`](tests/prototype/) | Standalone scanner/prototype tests |
+| [`tests/prototype/`](tests/prototype/) | External-scanner retirement guard (no live behavior) |
 | [`tests/e2e/`](tests/e2e/) | Playwright acceptance and deployment test configuration |
 | [`docs/specs/`](docs/specs/) | Behavioral specifications and acceptance traces |
 | [`docs/adr/`](docs/adr/) | Durable architecture decisions |
@@ -102,7 +102,7 @@ Requirements: Git, Node.js 22, pnpm 11.7.0 (pinned in `packageManager`), and Chr
 pnpm run verify
 ```
 
-`pnpm run verify` runs the full local gate: root and web typechecks, prototype/Worker/component checks, Home and Feed acceptance, and the shell/geometry Playwright suites. It requires no deployment credentials.
+`pnpm run verify` runs the full local gate: root and web typechecks, the prototype retirement guard, Worker/component checks, Home and Feed acceptance, and the shell/geometry Playwright suites. It requires no deployment credentials.
 
 ### Lockfile and workspace
 
@@ -132,7 +132,7 @@ Use the relevant Wrangler configuration under `web/` and deploy only to the isol
 
 - **Worker/auth unit and integration:** `pnpm --filter web test`
 - **Web component behavior:** `pnpm --filter web test:components`
-- **Prototype tests:** `pnpm test:prototype`
+- **Prototype retirement guard:** `pnpm test:prototype`
 - **Root and E2E type checks:** `pnpm typecheck`
 - **Static/lint checks:** `pnpm check`
 - **Responsive shell:** `pnpm test:shell-responsive`

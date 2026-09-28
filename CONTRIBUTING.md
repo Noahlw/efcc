@@ -58,7 +58,7 @@ All other deterministic, credential-free checks run locally before commits throu
 
 1. Root typecheck (`pnpm typecheck`)
 2. `web/` typecheck (`pnpm --filter web typecheck`)
-3. Root GAS/prototype tests (`pnpm test`)
+3. Root prototype retirement guard (`pnpm test` — the abandoned external scanner is retired; the suite locks its absence and the retained in-app owners)
 4. Identity tests (`pnpm verify:identity`)
 5. `web/` workerd tests (`pnpm test:workerd` — includes all normalized Worker files; T04 / #509 restored the four previously excluded files)
 6. `web/` component tests (`pnpm --filter web test:components`)
@@ -71,7 +71,7 @@ All other deterministic, credential-free checks run locally before commits throu
 
 Run only the relevant suite when iterating locally:
 
-- **Prototype/scanner code:** `pnpm test:prototype`
+- **Prototype retirement guard:** `pnpm test:prototype` (locks the #682 external-scanner retirement, not live behavior)
 - **Worker/auth/programs/attendance and client contract (`web/`):** `pnpm --filter web test`
 - **Web components (`web/`):** `pnpm --filter web test:components`
 - **Responsive/accessibility shell:** `pnpm test:shell-responsive`
@@ -108,7 +108,7 @@ The repository uses [husky](https://typicode.github.io/husky/) with a pre-commit
 1. **Node version guard** — fails fast with `EFCC pre-commit requires Node >=22.18.0; run fnm use` when the runtime is too old (the checked-in TypeScript Oxfmt config cannot load on older Node).
 2. `ultracite doctor` — proves the installed Ultracite/Oxlint/Oxfmt configuration (6 passed, 0 warnings, 0 failed).
 3. `lint-staged` — formats staged JS/TS/JSON/Markdown files via the Ultracite-owned Oxfmt backend (`oxfmt --write --no-error-on-unmatched-pattern`).
-4. `verify:precommit` — the full non-browser gate (root/web typechecks, prototype, identity, workerd, components).
+4. `verify:precommit` — the full non-browser gate (root/web typechecks, prototype retirement guard, identity, workerd, components).
 
 The hook is auto-installed by `pnpm run bootstrap` (via the root `prepare` script). If it fails, fix the reported formatting or type errors and re-stage; the commit is blocked until it passes. The full repository-wide Ultracite lint (`pnpm check`) is intentionally not part of the hook — its backlog is tracked on #498.
 
@@ -117,7 +117,7 @@ The hook is auto-installed by `pnpm run bootstrap` (via the root `prepare` scrip
 Apps Script / Google Sheets is **retired**. `src/gas/`, `tests/gas/`, the clasp configuration, and the Worker's transitional `/api/v1/rpc` proxy were removed once every capability had a Worker/D1 replacement and no live caller remained. Do not reintroduce Apps Script or Sheets deployment paths; the platform is Cloudflare Worker + D1.
 
 - Agents never modify the production Google Sheet; the operator performs sheet changes manually.
-- The legacy deployment and its `/exec` Playwright suite are deleted; deterministic coverage lives in `web/` (workerd) and `tests/prototype/`.
+- The legacy deployment and its `/exec` Playwright suite are deleted; deterministic coverage lives in `web/` (workerd) plus the `tests/prototype/` retirement guard. The abandoned external scanner origin (`prototype/scanner/`) was retired in #682; its historical rationale stays in ADR-0015 and the research notes.
 
 When changing `web/`, read [`web/AGENTS.md`](web/AGENTS.md) first. This repository pins a breaking Next.js version; the relevant version-specific guide under `web/node_modules/next/dist/docs/` is required reading before editing framework code.
 

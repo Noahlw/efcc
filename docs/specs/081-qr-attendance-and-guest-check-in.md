@@ -122,5 +122,5 @@ The signed-out login surface exposes a secondary Guest Check-In action. A Progra
 ## Further Notes
 
 - The historical attendance draft is explicitly stale and must not be used as implementation authority.
-- The prototype under `prototype/scanner/` demonstrates the three attendance modes and the Civic Minimal responsive direction; production behavior must use the Worker/D1 ownership boundary and deployed acceptance gate.
+- The abandoned external scanner origin under `prototype/scanner/` was retired in #682 after the in-app `/scanner` (`web/app/scanner/page.tsx`, `ScannerBoundary`, `useQrCamera` with BarcodeDetector native + ZXing ponyfill fallback) and the Worker/D1 Attendance boundary (`/api/v1/attendance*`) proved the same accepted check-in outcomes. Production behavior uses that ownership boundary and the local acceptance gate; the external `window.open` + `postMessage` bridge, vendored decoders, and mock backend have no live caller. Historical rationale stays in ADR-0015 and the research notes.
 - Rate-limit thresholds and the exact canonical representation for non-Hong-Kong international phone numbers remain implementation parameters, but must preserve the duplicate-key contract.
