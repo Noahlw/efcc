@@ -29,6 +29,7 @@ describe("T08 presentation subject contract", () => {
         { subject: "control" }
       > => declaration.subject === "control"
     );
+    expect(controlDeclarations).toHaveLength(7);
     expect(
       controlDeclarations.map(({ controlId, psn }) => [controlId, psn])
     ).toStrictEqual([

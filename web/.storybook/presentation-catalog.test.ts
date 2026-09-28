@@ -128,6 +128,7 @@ describe("T07 Screen Catalog foundation", () => {
         { subject: "screen" }
       > => declaration.subject === "screen"
     );
+    expect(programScreens).toHaveLength(10);
     expect(
       programScreens.map(({ screenId, intent }) => [screenId, intent])
     ).toStrictEqual([

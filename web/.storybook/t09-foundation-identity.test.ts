@@ -24,6 +24,7 @@ describe("T09 additive foundation presentation identity", () => {
         { subject: "foundation" }
       > => declaration.subject === "foundation"
     );
+    expect(foundationDeclarations).toHaveLength(14);
     expect(
       foundationDeclarations.map(({ foundationId, psn }) => [
         foundationId,
