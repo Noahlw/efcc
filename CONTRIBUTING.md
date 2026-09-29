@@ -52,7 +52,7 @@ One pnpm workspace (`web/` member), one frozen lockfile:
 
 ### Fast CI — the single automatic gate
 
-The only automatic workflow is **Fast CI** (`.github/workflows/fast-ci.yml`): it runs the affected-scope regression, runs the cheap Storybook/catalog foundation check for frontend-capable or uncertain changes, then runs `pnpm verify:fast` and the affected governance ratchet. The live `main` ruleset currently blocks deletion and force-pushes but does not require a status check; repository administrators own any policy change.
+The only automatic workflow is **Fast CI** (`.github/workflows/fast-ci.yml`): it runs the affected-scope regression, runs the cheap Storybook/catalog foundation check for frontend-capable or uncertain changes, then runs `pnpm verify:fast` and the affected governance ratchet. The live [main ruleset](https://api.github.com/repos/Noahlw/efcc/rulesets/20586715) (checked 2026-09-29) blocks deletion and force-pushes but does not require a status check; repository administrators own any policy change.
 
 All other deterministic, credential-free checks run locally before commits through the pre-commit hook and `pnpm verify:precommit`:
 

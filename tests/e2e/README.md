@@ -16,9 +16,10 @@ Each Playwright config has a positive `testMatch`; suites must not cross loaders
 | `shell-geometry.config.ts` | `pnpm test:shell-geometry` | Pinned Chromium shell geometry at 320/390/600/799/800/1024/1440 CSS px (TK-09): critical anchors, no overflow/obstruction, numeric CSS-pixel evidence only (TK-12). |
 | `role-hierarchy-geometry.config.ts` | `pnpm test:role-hierarchy-geometry` | #478 H-20 pinned hierarchy/list/detail/rename geometry at 320/390/600/799/800/1024/1440 CSS px; numeric CSS-pixel evidence only (no screenshots). |
 | `programs-participant-acceptance.config.ts` | `pnpm test:programs:browser` | T05.4/T05.5 critical participant and management Browser Acceptance at one representative `phone-390` viewport, zero retries, and unique disposable fixtures. |
+| `programs-home-acceptance.config.ts` | `pnpm test:programs:home` / `pnpm test:programs:feed` | Home PUI-05 cases 64–68 (5) and member-feed `programs-d1` cases 18–24 (7), selected separately with distinct reports at `phone-390`. Both run once in root `pnpm verify`. |
 | `programs-responsive-matrix.config.ts` | `pnpm test:programs:responsive` | T05.6 deterministic participant/management responsive proof at exactly 320, 390, and 1280 widths; the canonical runner owns an official Harness, no broad domain replay, and zero retries. |
 
-`pnpm test:programs:browser` and `pnpm test:programs:responsive` start the official Wrangler `createTestHarness()` with `web/wrangler.jsonc`, seed disposable accounts through its D1 binding, run their focused slices, and close the Harness. Direct config invocation remains available for a manually supplied diagnostic target.
+`pnpm test:programs:browser`, `pnpm test:programs:home`, `pnpm test:programs:feed`, and `pnpm test:programs:responsive` start the official Wrangler `createTestHarness()` with `web/wrangler.jsonc`, seed disposable accounts through its D1 binding, run their focused slices, and close the Harness. Direct config invocation remains available for a manually supplied diagnostic target.
 
 The identity 900px seam is covered by the `desktop-900` project in `s4-management-hardening.config.ts`; the focused static identity report is W7-only by design.
 
@@ -47,7 +48,6 @@ pnpm dev:local
 
 # terminal 2
 pnpm db:seed:local       # E2E_ accounts + disposable identity foundation
-pnpm db:seed:disposable  # role-only rerun; --local and E2E_ rows only
 pnpm db:seed:demo        # E2E_DEMO_ department, programs, and generated events
 pnpm exec playwright test -c tests/e2e/programs-d1.config.ts
 ```
