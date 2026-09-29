@@ -447,7 +447,8 @@ export const PermissionEditorPanel = () => {
     announce(label);
   };
 
-  const goToRoleList = () => {
+  const goToRoleList = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
     detailRoleRef.current = null;
     idempotencyKeyRef.current = null;
     setSelectedRoleId(null);
