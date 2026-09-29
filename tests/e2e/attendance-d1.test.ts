@@ -96,6 +96,7 @@ const COPY = {
   guestName: "姓名",
   guestPhone: "電話",
   guestSubmit: "確認簽到",
+  guestReconcile: "確認簽到狀態",
   guestResultTitle: "訪客簽到完成",
   guestDone: "完成",
   guestValidation: "請輸入聚會代碼、姓名及電話。",
@@ -833,6 +834,51 @@ test.describe("ATT-04 QR attendance proof", () => {
       await expect(
         page.locator("[aria-labelledby='guest-result-title']")
       ).toBeVisible();
+    } finally {
+      await api.dispose();
+    }
+  });
+
+  test("B2 guest acknowledgement loss reconciles the committed check-in", async ({
+    page,
+    playwright,
+  }) => {
+    const name = `E2E訪客 ${fresh("B2")}`;
+    const phone = freshPhone();
+    let committedStatus: number | null = null;
+    await page.route("**/api/v1/attendance/guest", async (route) => {
+      const committed = await route.fetch();
+      committedStatus = committed.status();
+      await route.abort("failed");
+    });
+
+    await guestPanelCheckIn(
+      page,
+      fixtures.eventA.manual_check_in_code,
+      name,
+      phone
+    );
+    const reconcile = page.getByRole("button", { name: COPY.guestReconcile });
+    await expect(reconcile).toBeVisible();
+    expect(committedStatus).toBe(201);
+    await reconcile.click();
+    await expect(
+      page.getByRole("heading", { name: COPY.guestResultTitle })
+    ).toBeVisible();
+
+    const api = await playwright.request.newContext({ baseURL: TARGET_URL });
+    try {
+      const duplicate = await guestCheckIn(
+        api,
+        fixtures.eventA.event_id,
+        fixtures.eventA.manual_check_in_code,
+        name,
+        phone
+      );
+      expect(duplicate.status).toBe(200);
+      expect((duplicate.body.data as { outcome: string }).outcome).toBe(
+        "duplicate"
+      );
     } finally {
       await api.dispose();
     }
