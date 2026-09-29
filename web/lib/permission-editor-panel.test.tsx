@@ -269,7 +269,9 @@ describe("PermissionEditorPanel", () => {
     expect(
       await screen.findByRole("list", { name: "身份組列表" })
     ).toBeInTheDocument();
-    expect(window.location.search).toBe("?module=permissions");
+    await waitFor(() =>
+      expect(window.location.search).toBe("?module=permissions")
+    );
   });
 
   test("keeps locked rows visible and exposes controlled switch semantics", async () => {
