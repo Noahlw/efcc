@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "dev:local": "next build && pnpm db:migrate:local && wrangler dev",
+    "dev:local": "next build && pnpm db:migrate:local && wrangler dev --port ${EFCC_WORKER_PORT:-8787}",
     "db:migrate:local": "wrangler d1 migrations apply efcc-identity --local",
     "build": "next build",
     "start": "next start",
@@ -65,7 +65,7 @@
     "playwright": "1.62.1",
     "storybook": "10.6.0",
     "typescript": "^5",
-    "vitest": "^4.1.10",
+    "vitest": "4.1.10",
     "wrangler": "4.131.2"
   },
   "msw": {

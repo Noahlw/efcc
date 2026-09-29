@@ -16,15 +16,16 @@ Each Playwright config has a positive `testMatch`; suites must not cross loaders
 | `shell-geometry.config.ts` | `pnpm test:shell-geometry` | Pinned Chromium shell geometry at 320/390/600/799/800/1024/1440 CSS px (TK-09): critical anchors, no overflow/obstruction, numeric CSS-pixel evidence only (TK-12). |
 | `role-hierarchy-geometry.config.ts` | `pnpm test:role-hierarchy-geometry` | #478 H-20 pinned hierarchy/list/detail/rename geometry at 320/390/600/799/800/1024/1440 CSS px; numeric CSS-pixel evidence only (no screenshots). |
 | `programs-participant-acceptance.config.ts` | `pnpm test:programs:browser` | T05.4/T05.5 critical participant and management Browser Acceptance at one representative `phone-390` viewport, zero retries, and unique disposable fixtures. |
+| `programs-home-acceptance.config.ts` | `pnpm test:programs:home` / `pnpm test:programs:feed` | Home PUI-05 cases 64–68 (5) and member-feed `programs-d1` cases 18–24 (7), selected separately with distinct reports at `phone-390`. Both run once in root `pnpm verify`. |
 | `programs-responsive-matrix.config.ts` | `pnpm test:programs:responsive` | T05.6 deterministic participant/management responsive proof at exactly 320, 390, and 1280 widths; the canonical runner owns an official Harness, no broad domain replay, and zero retries. |
 
-`pnpm test:programs:browser` and `pnpm test:programs:responsive` start the official Wrangler `createTestHarness()` with `web/wrangler.jsonc`, seed disposable accounts through its D1 binding, run their focused slices, and close the Harness. Direct config invocation remains available for a manually supplied diagnostic target.
+`pnpm test:programs:browser`, `pnpm test:programs:home`, `pnpm test:programs:feed`, and `pnpm test:programs:responsive` start the official Wrangler `createTestHarness()` with `web/wrangler.jsonc`, seed disposable accounts through its D1 binding, run their focused slices, and close the Harness. Direct config invocation remains available for a manually supplied diagnostic target.
 
 The identity 900px seam is covered by the `desktop-900` project in `s4-management-hardening.config.ts`; the focused static identity report is W7-only by design.
 
 `pnpm test:shell-responsive` builds the Next static export and serves it through `tests/e2e/serve-static.ts` on port `4173`. It runs the mobile and desktop projects without a Worker, D1, Google session, or network target.
 
-`pnpm test:shell-geometry` is the pinned-width companion (TK-09): the same static-shell harness at 320, 390, 600, 799, 800, 1024, and 1440 CSS px. Both 799 and 800 are exercised so the 800px shell breakpoint is verified on each side. Evidence is numeric CSS pixels only — no screenshots, image snapshots, or pixel diffs (TK-12). Both suites run locally via `pnpm verify`; they are not part of the automatic CI gate (Fast CI is typecheck-only).
+`pnpm test:shell-geometry` is the pinned-width companion (TK-09): the same static-shell harness at 320, 390, 600, 799, 800, 1024, and 1440 CSS px. Both 799 and 800 are exercised so the 800px shell breakpoint is verified on each side. Evidence is numeric CSS pixels only — no screenshots, image snapshots, or pixel diffs (TK-12). Both suites run locally via `pnpm verify`, alongside Home/Feed acceptance; they are not part of the automatic Fast CI gate.
 
 `pnpm test:role-hierarchy-geometry` builds the static export and runs the real category expand, detail, and rename controls at each pinned width. It asserts non-vacuous hierarchy anchors, 44px controls, no horizontal overflow, and phone dock clearance; the command is included in `pnpm verify` and is a local browser check, not part of the automatic CI gate.
 
@@ -47,7 +48,6 @@ pnpm dev:local
 
 # terminal 2
 pnpm db:seed:local       # E2E_ accounts + disposable identity foundation
-pnpm db:seed:disposable  # role-only rerun; --local and E2E_ rows only
 pnpm db:seed:demo        # E2E_DEMO_ department, programs, and generated events
 pnpm exec playwright test -c tests/e2e/programs-d1.config.ts
 ```

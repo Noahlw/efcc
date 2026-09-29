@@ -8,6 +8,9 @@
 
 import { defineConfig } from "@playwright/test";
 
+const staticPort = Number(process.env.EFCC_STATIC_PORT ?? 4173);
+const staticUrl = `http://127.0.0.1:${staticPort}`;
+
 export default defineConfig({
   testDir: ".",
   testMatch: /(?:responsive|shell-nav|account-settings|home)\.test\.ts$/u,
@@ -19,9 +22,9 @@ export default defineConfig({
     ["list"],
     ["json", { outputFile: "test-results/phase-f/responsive/results.json" }],
   ],
-  metadata: { phaseFTargetUrl: "http://127.0.0.1:4173" },
+  metadata: { phaseFTargetUrl: staticUrl },
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL: staticUrl,
     trace: "off",
     screenshot: "off",
     video: "off",
@@ -41,9 +44,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "pnpm --dir ../../web build && pnpm exec tsx serve-static.ts",
-    url: "http://127.0.0.1:4173",
-    reuseExistingServer: !process.env.CI,
+    command: `pnpm --dir ../../web build && PORT=${staticPort} pnpm exec tsx serve-static.ts`,
+    url: staticUrl,
+    reuseExistingServer: false,
     timeout: 240_000,
   },
 });

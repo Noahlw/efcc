@@ -27,6 +27,11 @@ async function expectWithinViewport(
   locator: Locator,
   label: string
 ) {
+  await locator.evaluate(async (element) => {
+    await Promise.allSettled(
+      element.getAnimations().map((animation) => animation.finished)
+    );
+  });
   const box = await rect(locator);
   const viewport = page.viewportSize();
   expect(viewport).not.toBeNull();

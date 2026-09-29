@@ -19,6 +19,9 @@
  *     immediately) and sets a fresh access cookie.
  *   - logout: clears both cookies (Max-Age=0) and revokes the refresh
  *     session server-side.
+ *   - protected requests verify the access signature and live D1 session;
+ *     session revocation denies the next request without affecting another
+ *     device, and all-session revocation denies every device.
  *   - registrations/:id/approve and /:id/reject: `{ requestId, data:
  *     { accountStatus } }`, Idempotency-Key required, Admin/Staff-only,
  *     idempotent replay, and conflict/404 handling.
@@ -34,6 +37,12 @@ import { beforeAll, describe, test } from "vitest";
 import { importLegacyUsers } from "./lib/auth/accounts";
 import { ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } from "./lib/auth/cookies";
 import { handleLogout } from "./lib/auth/handlers";
+import {
+  issueSession,
+  revokeAllUserSessions,
+  revokeSession,
+  signAccessToken,
+} from "./lib/auth/sessions";
 import { applyMigrations, testDb } from "./lib/auth/test-bootstrap";
 import { completeCredentialUpgrade } from "./lib/auth/upgrade";
 import { CAPABILITY_CATALOG } from "./lib/identity/capability-catalog";
@@ -235,6 +244,15 @@ async function accessCookieFor(
   assert.strictEqual(res.status, 200, "login must succeed for fixture");
   return cookieValueFrom(readAuthCookiesFromResponse(res).access);
 }
+function meWithAccessToken(accessToken: string): Promise<Response> {
+  return worker.fetch(
+    authRequest("/api/v1/auth/me", {
+      method: "GET",
+      headers: { Cookie: `${ACCESS_COOKIE_NAME}=${accessToken}` },
+    }),
+    testEnv()
+  );
+}
 async function assignSystemIdentity(
   stableKey: string,
   accountUserId: string
@@ -317,6 +335,8 @@ beforeAll(async () => {
     ["U003", "Carol Wong", "carol", "0000", "Member", "Active"],
     // U005 is a Staff member — the canonical elevated role (ADR-0025).
     ["U005", "Eve Staff", "eve", "9999", "Staff", "Active"],
+    ["U006", "Session Test", "session-test", "4444", "Member", "Active"],
+    ["U007", "Revoke Test", "revoke-test", "5555", "Member", "Active"],
   ]);
   await completeCredentialUpgrade(testDb(), {
     userId: "U001",
@@ -333,8 +353,184 @@ beforeAll(async () => {
     legacyPin: "9999",
     newCredential: "eve-secret",
   });
+  await completeCredentialUpgrade(testDb(), {
+    userId: "U006",
+    legacyPin: "4444",
+    newCredential: "session-secret",
+  });
+  await completeCredentialUpgrade(testDb(), {
+    userId: "U007",
+    legacyPin: "5555",
+    newCredential: "revoke-secret",
+  });
   await assignSystemIdentity("admin", "U001");
   await assignSystemIdentity("staff", "U005");
+});
+
+describe("AUTH-02: protected request session validation", () => {
+  test("requires a valid access signature and a live D1 session", async () => {
+    const session = await issueSession(testDb(), {
+      userId: "U006",
+      accessTokenSecret: SECRET,
+    });
+    const idleExpired = await issueSession(testDb(), {
+      userId: "U006",
+      accessTokenSecret: SECRET,
+      expiresAt: Date.now() - 1,
+    });
+    const now = Date.now();
+    const mismatchedOwner = await signAccessToken(SECRET, {
+      sid: session.sessionId,
+      uid: "U007",
+      iat: now,
+    });
+    const unknownAccount = await signAccessToken(SECRET, {
+      sid: crypto.randomUUID(),
+      uid: "U999",
+      iat: now,
+    });
+    const expiredAccess = await signAccessToken(SECRET, {
+      sid: session.sessionId,
+      uid: "U006",
+      iat: now - 2,
+      exp: now - 1,
+    });
+    try {
+      assert.strictEqual(
+        (await meWithAccessToken(session.accessToken)).status,
+        200
+      );
+      assert.strictEqual(
+        (await meWithAccessToken(`${session.accessToken}x`)).status,
+        401
+      );
+      assert.strictEqual(
+        (await meWithAccessToken(idleExpired.accessToken)).status,
+        401
+      );
+      const denied = await Promise.all(
+        [mismatchedOwner, unknownAccount, expiredAccess].map((token) =>
+          meWithAccessToken(token)
+        )
+      );
+      for (const response of denied) {
+        assert.strictEqual(response.status, 401);
+      }
+    } finally {
+      await revokeAllUserSessions(testDb(), "U006");
+    }
+  });
+
+  test("a revoked device is denied on the next request while another stays valid", async () => {
+    const phone = await issueSession(testDb(), {
+      userId: "U006",
+      accessTokenSecret: SECRET,
+      deviceFingerprint: "phone",
+    });
+    const tablet = await issueSession(testDb(), {
+      userId: "U006",
+      accessTokenSecret: SECRET,
+      deviceFingerprint: "tablet",
+    });
+    try {
+      assert.strictEqual(
+        (await meWithAccessToken(phone.accessToken)).status,
+        200
+      );
+      assert.strictEqual(
+        (await meWithAccessToken(tablet.accessToken)).status,
+        200
+      );
+      await revokeSession(testDb(), phone.sessionId);
+      assert.strictEqual(
+        (await meWithAccessToken(phone.accessToken)).status,
+        401
+      );
+      assert.strictEqual(
+        (await meWithAccessToken(tablet.accessToken)).status,
+        200
+      );
+    } finally {
+      await revokeAllUserSessions(testDb(), "U006");
+    }
+  });
+
+  test("all-session revocation denies both devices on their next request", async () => {
+    const phone = await issueSession(testDb(), {
+      userId: "U007",
+      accessTokenSecret: SECRET,
+      deviceFingerprint: "phone",
+    });
+    const tablet = await issueSession(testDb(), {
+      userId: "U007",
+      accessTokenSecret: SECRET,
+      deviceFingerprint: "tablet",
+    });
+    try {
+      assert.strictEqual(
+        (await meWithAccessToken(phone.accessToken)).status,
+        200
+      );
+      assert.strictEqual(
+        (await meWithAccessToken(tablet.accessToken)).status,
+        200
+      );
+      await revokeAllUserSessions(testDb(), "U007");
+      assert.strictEqual(
+        (await meWithAccessToken(phone.accessToken)).status,
+        401
+      );
+      assert.strictEqual(
+        (await meWithAccessToken(tablet.accessToken)).status,
+        401
+      );
+    } finally {
+      await revokeAllUserSessions(testDb(), "U007");
+    }
+  });
+
+  test("D1 session lookup failure returns a correlated 503 on direct and optional-auth routes", async () => {
+    const session = await issueSession(testDb(), {
+      userId: "U001",
+      accessTokenSecret: SECRET,
+    });
+    const unavailableDb = {
+      prepare: () => {
+        throw new Error("D1 unavailable");
+      },
+    } as unknown as D1Database;
+    const cases = [
+      ["/api/v1/auth/me", "UNAVAILABLE"],
+      ["/api/v1/programs/hub", "UNAVAILABLE"],
+      ["/api/v1/home", "HOME_UNAVAILABLE"],
+      ["/api/v1/home/content", "HOME_UNAVAILABLE"],
+      ["/api/v1/identity/roles", "UNAVAILABLE"],
+      ["/api/v1/attendance/events", "UNAVAILABLE"],
+      ["/api/v1/attendance/resolve?event=unknown", "UNAVAILABLE"],
+    ] as const;
+
+    try {
+      await Promise.all(
+        cases.map(async ([path, expectedCode]) => {
+          const response = await worker.fetch(
+            authRequest(path, {
+              method: "GET",
+              headers: {
+                Cookie: `${ACCESS_COOKIE_NAME}=${session.accessToken}`,
+              },
+            }),
+            testEnv({ DB: unavailableDb })
+          );
+          assert.strictEqual(response.status, 503, path);
+          const body = await problemOf(response);
+          assert.strictEqual(body.code, expectedCode, path);
+          assert.ok(!JSON.stringify(body).includes("D1 unavailable"));
+        })
+      );
+    } finally {
+      await revokeSession(testDb(), session.sessionId);
+    }
+  });
 });
 
 describe("AUTH-06: auth surface has no CORS / OPTIONS", () => {

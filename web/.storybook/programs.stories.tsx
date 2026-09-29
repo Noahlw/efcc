@@ -57,7 +57,7 @@ const routeParameters = (
       supersedes: [],
     },
     programsScenario: scenarioName,
-    msw: scenario.handlers,
+    msw: [...scenario.handlers],
     nextjs: {
       appDirectory: true,
       navigation: { pathname: scenario.pathname, query },

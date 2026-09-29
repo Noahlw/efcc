@@ -19,6 +19,7 @@ import {
   createScreenCatalog,
   isPresentationGapReference,
   validateScreenCatalog,
+  type PresentationDeclaration,
 } from "./presentation-catalog";
 import {
   ManagementDirectory,
@@ -119,11 +120,17 @@ describe("T07 Screen Catalog foundation", () => {
 
   test("catalogs every T07.3 Programs composition with truthful intent", () => {
     expect(PROGRAMS_PRESENTATION_DECLARATIONS).toHaveLength(10);
+    const programScreens = PROGRAMS_PRESENTATION_DECLARATIONS.filter(
+      (
+        declaration
+      ): declaration is Extract<
+        PresentationDeclaration,
+        { subject: "screen" }
+      > => declaration.subject === "screen"
+    );
+    expect(programScreens).toHaveLength(10);
     expect(
-      PROGRAMS_PRESENTATION_DECLARATIONS.map(({ screenId, intent }) => [
-        screenId,
-        intent,
-      ])
+      programScreens.map(({ screenId, intent }) => [screenId, intent])
     ).toStrictEqual([
       ["programs-participant-directory", null],
       ["programs-participant-program-detail", "program=t07-3-program"],

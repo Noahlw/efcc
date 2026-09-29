@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, test } from "vitest";
 import worker from "../../worker";
 import type { Env } from "../../worker";
 import { ACCESS_COOKIE_NAME } from "../auth/cookies";
-import { signAccessToken } from "../auth/sessions";
+import { issueSession } from "../auth/sessions";
 import { applyMigrations, testDb } from "../auth/test-bootstrap";
 import { seedDisposableIdentity } from "./index";
 
@@ -41,11 +41,11 @@ function request(
 }
 
 async function cookieFor(userId: string): Promise<string> {
-  return signAccessToken(SECRET, {
-    sid: `account-access-${userId}`,
-    uid: userId,
-    iat: Date.now(),
+  const session = await issueSession(testDb(), {
+    userId,
+    accessTokenSecret: SECRET,
   });
+  return session.accessToken;
 }
 
 async function revision(): Promise<number> {

@@ -10,6 +10,5 @@ export default defineConfig({
     "docs/**",
     "index.html",
     "程式碼.js",
-    "prototype/scanner/vendor/**",
   ],
 });

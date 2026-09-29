@@ -71,7 +71,7 @@ You are joining after the D1 foundation (PRs #166/#167) merged to `main`. The pl
 | [`web/lib/programs/`](web/lib/programs/) | D1 Programs domain: workspace, departments, events, enrollment |
 | [`web/lib/attendance.ts`](web/lib/attendance.ts) | D1 Attendance domain handlers |
 | [`web/migrations/`](web/migrations/) | D1 schema and migrations |
-| [`tests/prototype/`](tests/prototype/) | Standalone scanner/prototype tests |
+| [`tests/prototype/`](tests/prototype/) | External-scanner retirement guard + account import/upgrade preservation guard (no live behavior) |
 | [`tests/e2e/`](tests/e2e/) | Playwright acceptance and deployment test configuration |
 | [`docs/specs/`](docs/specs/) | Behavioral specifications and acceptance traces |
 | [`docs/adr/`](docs/adr/) | Durable architecture decisions |
@@ -94,7 +94,7 @@ pnpm run bootstrap
 
 Requirements: Git, Node.js 22, pnpm 11.7.0 (pinned in `packageManager`), and Chromium for Playwright.
 
-`pnpm run bootstrap` is the single fresh-clone dependency command. It installs the root dependencies (TypeScript, Playwright, prototype tooling) and then the `web/` dependencies (Next.js, Cloudflare Wrangler/D1, Vitest) using the frozen root and `web/` lockfiles, and installs the Playwright Chromium browser through the root install lifecycle.
+`pnpm run bootstrap` is the single fresh-clone dependency command. It installs the unified pnpm workspace (root + `web/`) from the frozen root `pnpm-lock.yaml`, and installs the Playwright Chromium browser through the root install lifecycle.
 
 ### Verify the repository
 
@@ -102,18 +102,17 @@ Requirements: Git, Node.js 22, pnpm 11.7.0 (pinned in `packageManager`), and Chr
 pnpm run verify
 ```
 
-`pnpm run verify` runs the deterministic CI gate locally in the same order as the Precheck workflow: root typecheck, root prototype tests, `web/` typecheck, `web/` workerd tests, `web/` component tests, then the responsive-shell Playwright suite. It requires no deployment credentials.
+`pnpm run verify` runs the full local gate: root and web typechecks, the prototype retirement guard, Worker/component checks, Home and Feed acceptance, and the shell/geometry Playwright suites. It requires no deployment credentials.
 
-### Lockfiles and the two install boundaries
+### Lockfile and workspace
 
-The repository has two independent pnpm install boundaries, each with its own lockfile:
+One pnpm workspace (`pnpm-workspace.yaml` lists `web/`), one frozen lockfile:
 
 | Workspace | Lockfile | Contents |
 | --- | --- | --- |
-| Root | `pnpm-lock.yaml` | GAS/prototype tooling, TypeScript, Playwright, husky |
-| `web/` | `web/pnpm-lock.yaml` | Next.js, Cloudflare Wrangler/D1, Vitest, jsdom |
+| Root + `web/` | `pnpm-lock.yaml` | Root tooling plus Next.js, Cloudflare Wrangler/D1, Vitest, jsdom |
 
-`pnpm run bootstrap` installs both. Work inside `web/` with `pnpm --dir web <script>`; the root and `web/` trees have separate dependency installations and do not share a `node_modules`.
+`pnpm run bootstrap` installs the workspace. Reach the app via `pnpm --filter web <script>` (e.g. `pnpm build` runs the web build); `web/` stays in place, no `apps/` move.
 
 ### Build and run the web Worker locally
 
@@ -131,9 +130,9 @@ Use the relevant Wrangler configuration under `web/` and deploy only to the isol
 
 ## Verification layers
 
-- **Worker/auth unit and integration:** `pnpm --dir web test`
-- **Web component behavior:** `pnpm --dir web test:components`
-- **Prototype tests:** `pnpm test:prototype`
+- **Worker/auth unit and integration:** `pnpm --filter web test`
+- **Web component behavior:** `pnpm --filter web test:components`
+- **Prototype retirement guard:** `pnpm test:prototype`
 - **Root and E2E type checks:** `pnpm typecheck`
 - **Static/lint checks:** `pnpm check`
 - **Responsive shell:** `pnpm test:shell-responsive`

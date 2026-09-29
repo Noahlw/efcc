@@ -134,7 +134,7 @@ describe(AttendancePanel, () => {
         name: COPY.attendance.guestResultTitle,
       });
       expect(resultHeading).toBeVisible();
-      expect(resultHeading).toHaveFocus();
+      await waitFor(() => expect(resultHeading).toHaveFocus());
     });
 
     test("missing guest fields are announced and focus the first missing field", async () => {

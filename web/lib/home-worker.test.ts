@@ -8,6 +8,7 @@ import worker from "../worker";
 import type { Env } from "../worker";
 import { importLegacyUsers } from "./auth/accounts";
 import { ACCESS_COOKIE_NAME } from "./auth/cookies";
+import { issueSession } from "./auth/sessions";
 import { applyMigrations, testDb } from "./auth/test-bootstrap";
 import { completeCredentialUpgrade } from "./auth/upgrade";
 
@@ -126,6 +127,11 @@ describe("GET /api/v1/home Worker route", () => {
       userId: "HOME-MEMBER-2",
       legacyPin: "5678",
       newCredential: "home-member-password",
+    });
+    await completeCredentialUpgrade(testDb(), {
+      userId: "HOME-INACTIVE",
+      legacyPin: "9999",
+      newCredential: "home-inactive-password",
     });
 
     adminCookie = await accessCookieFor("home-admin", "home-admin-password");
@@ -503,22 +509,27 @@ describe("GET /api/v1/home Worker route", () => {
   });
 
   test("rejects inactive/suspended account with 403 Problem Details", async () => {
-    const inactiveCookie = await accessCookieFor(
-      "home-inactive",
-      "home-admin-password"
-    ).catch(async () => {
-      // Inactive account cannot log in or if token forged:
-      const { signAccessToken } = await import("./auth/sessions");
-      return signAccessToken(SECRET, {
-        sid: "inactive-sid",
-        uid: "HOME-INACTIVE",
-        iat: Date.now(),
-      });
+    await testDb()
+      .prepare(
+        "UPDATE accounts SET account_status = 'Active' WHERE user_id = ?"
+      )
+      .bind("HOME-INACTIVE")
+      .run();
+    const session = await issueSession(testDb(), {
+      userId: "HOME-INACTIVE",
+      accessTokenSecret: SECRET,
     });
+    await testDb()
+      .prepare(
+        "UPDATE accounts SET account_status = 'Suspended' WHERE user_id = ?"
+      )
+      .bind("HOME-INACTIVE")
+      .run();
+
     const response = await worker.fetch(
       request("/api/v1/home", {
         method: "GET",
-        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${inactiveCookie}` },
+        headers: { Cookie: `${ACCESS_COOKIE_NAME}=${session.accessToken}` },
       }),
       testEnv()
     );

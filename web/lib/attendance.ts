@@ -1,7 +1,6 @@
 import { findAccountByUserId } from "./auth/accounts";
 import type { AccountRow } from "./auth/accounts";
-import { ACCESS_COOKIE_NAME } from "./auth/cookies";
-import { verifyAccessToken } from "./auth/sessions";
+import { resolveRequestSession } from "./auth/sessions";
 import {
   loadActorRoles,
   resolveActorCapabilities,
@@ -604,37 +603,30 @@ async function guestProofExists(
   return row !== null;
 }
 
-function cookie(request: Request): string | null {
-  const value = request.headers.get("Cookie");
-  if (!value) {
-    return null;
-  }
-  const part = value
-    .split(";")
-    .map((item) => item.trim())
-    .find((item) => item.startsWith(`${ACCESS_COOKIE_NAME}=`));
-  return part?.slice(ACCESS_COOKIE_NAME.length + 1) ?? null;
-}
-
 async function actor(
   request: Request,
   env: AttendanceEnv,
   id: string,
   required: boolean
 ): Promise<AccountRow | null | Response> {
-  const access = cookie(request);
-  if (!access) {
+  const resolved = await resolveRequestSession(
+    request,
+    env.DB,
+    env.EFCC_ACCESS_TOKEN_SECRET
+  );
+  if (resolved.status === "unavailable") {
+    return problem(503, "UNAVAILABLE", "系統暫時無法處理請求。", id);
+  }
+  if (resolved.status === "missing" || resolved.status === "invalid") {
     return required ? problem(401, "AUTH_REQUIRED", "登入要求", id) : null;
   }
-  const claims = await verifyAccessToken(env.EFCC_ACCESS_TOKEN_SECRET, access);
-  if (!claims) {
-    return required ? problem(401, "AUTH_REQUIRED", "登入要求", id) : null;
-  }
-  const account = await findAccountByUserId(env.DB, claims.uid);
-  if (!account || account.account_status !== "Active") {
+  if (
+    resolved.status === "unknown_account" ||
+    resolved.account.account_status !== "Active"
+  ) {
     return required ? problem(403, "FORBIDDEN", "帳戶不可用", id) : null;
   }
-  return account;
+  return resolved.account;
 }
 
 /**
@@ -1549,10 +1541,10 @@ export async function handleResolve(
   const value = token ?? code ?? entry ?? "";
   if (eventId) {
     const currentActor = await actor(request, env, id, false);
-    const memberUserId =
-      currentActor && !(currentActor instanceof Response)
-        ? currentActor.user_id
-        : null;
+    if (currentActor instanceof Response) {
+      return currentActor;
+    }
+    const memberUserId = currentActor?.user_id ?? null;
     const { events, latest } = await resolveByEventId(env.DB, eventId);
     if (events.length === 0) {
       return resolveNoEvents(env.DB, latest, memberUserId, id);
@@ -1563,10 +1555,10 @@ export async function handleResolve(
     return problem(422, "VALIDATION", "請提供課程 QR 或聚會代碼。", id);
   }
   const currentActor = await actor(request, env, id, false);
-  const memberUserId =
-    currentActor && !(currentActor instanceof Response)
-      ? currentActor.user_id
-      : null;
+  if (currentActor instanceof Response) {
+    return currentActor;
+  }
+  const memberUserId = currentActor?.user_id ?? null;
 
   const { events, latest } = await resolveLookup(env.DB, token, code, value);
   if (events.length === 0) {

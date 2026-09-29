@@ -7,7 +7,7 @@ import { defineConfig } from "vitest/config";
 
 import { parseStorybookPort } from "./scripts/storybook-port.mjs";
 
-const dirname = process.cwd();
+const dirname = import.meta.dirname;
 const storybookLauncher = path.join(dirname, "scripts/storybook-worktree.mjs");
 const storybookPort = parseStorybookPort(
   process.env.STORYBOOK_PORT ??

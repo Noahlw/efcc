@@ -12,13 +12,12 @@ import { parseStorybookPort } from "./storybook-port.mjs";
 const scriptDirectory = import.meta.dirname;
 const webRoot = path.resolve(scriptDirectory, "..");
 const repositoryRoot = path.resolve(webRoot, "..");
-const defaultPort = 6006;
 const storyId = "t07-1-management-hub--default";
 const markerDirectory = path.join(os.tmpdir(), "efcc-storybook-worktrees");
-const markerName = `${createHash("sha256")
-  .update(repositoryRoot)
-  .digest("hex")
-  .slice(0, 16)}.json`;
+const worktreeHash = createHash("sha256").update(repositoryRoot).digest("hex");
+const defaultPort =
+  20_000 + (Number.parseInt(worktreeHash.slice(0, 8), 16) % 40_000);
+const markerName = `${worktreeHash.slice(0, 16)}.json`;
 const markerPath = path.join(markerDirectory, markerName);
 
 function parseArgs(args) {
@@ -102,7 +101,7 @@ async function isPortAvailable(port) {
   const server = net.createServer();
 
   try {
-    server.listen(port, "127.0.0.1");
+    server.listen(port);
     await once(server, "listening");
     await closeServer(server);
     return true;
@@ -116,7 +115,7 @@ async function selectEphemeralPort() {
   const server = net.createServer();
 
   try {
-    server.listen(0, "127.0.0.1");
+    server.listen(0);
     await once(server, "listening");
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : null;

@@ -20,9 +20,8 @@
  *     it with session expiry). It does NOT feed the legacy-PIN escalation
  *     ladder (lockout.ts is scoped to the 10,000-key legacy space).
  *   * Both changes revoke ALL refresh sessions for the account inside the
- *     batch (the `completeCredentialUpgrade` precedent), because the login
- *     identifier / credential changed. Outstanding short-lived access tokens
- *     follow the existing bounded-revocation contract (≤ ~15 min).
+ *     batch because the login identifier / credential changed. Protected
+ *     requests reject those access tokens on their next D1 session check.
  *   * Every change is audited in `account_events` with NO credential material:
  *     username_changed rows carry old/new normalized usernames; password_changed
  *     rows carry NULL username columns. `correlation_id` = request's requestId.

@@ -1,8 +1,12 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type { StorybookConfig } from "@storybook/nextjs-vite";
 
-const { dirname } = import.meta;
+// import.meta.dirname is unavailable under some config loaders (e.g. Knip);
+// fall back to the module URL so static analysis can load this file.
+const dirname =
+  import.meta.dirname ?? path.dirname(fileURLToPath(import.meta.url));
 const webRoot = path.resolve(dirname, "..");
 
 const config: StorybookConfig = {
