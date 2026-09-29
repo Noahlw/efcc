@@ -462,6 +462,49 @@ describe("AUTH-02: protected request session validation", () => {
       await revokeAllUserSessions(testDb(), "U007");
     }
   });
+
+  test("D1 session lookup failure returns a correlated 503 on direct and optional-auth routes", async () => {
+    const session = await issueSession(testDb(), {
+      userId: "U001",
+      accessTokenSecret: SECRET,
+    });
+    const unavailableDb = {
+      prepare: () => {
+        throw new Error("D1 unavailable");
+      },
+    } as unknown as D1Database;
+    const cases = [
+      ["/api/v1/auth/me", "UNAVAILABLE"],
+      ["/api/v1/programs/hub", "UNAVAILABLE"],
+      ["/api/v1/home", "HOME_UNAVAILABLE"],
+      ["/api/v1/home/content", "HOME_UNAVAILABLE"],
+      ["/api/v1/identity/roles", "UNAVAILABLE"],
+      ["/api/v1/attendance/events", "UNAVAILABLE"],
+      ["/api/v1/attendance/resolve?event=unknown", "UNAVAILABLE"],
+    ] as const;
+
+    try {
+      await Promise.all(
+        cases.map(async ([path, expectedCode]) => {
+          const response = await worker.fetch(
+            authRequest(path, {
+              method: "GET",
+              headers: {
+                Cookie: `${ACCESS_COOKIE_NAME}=${session.accessToken}`,
+              },
+            }),
+            testEnv({ DB: unavailableDb })
+          );
+          assert.strictEqual(response.status, 503, path);
+          const body = await problemOf(response);
+          assert.strictEqual(body.code, expectedCode, path);
+          assert.ok(!JSON.stringify(body).includes("D1 unavailable"));
+        })
+      );
+    } finally {
+      await revokeSession(testDb(), session.sessionId);
+    }
+  });
 });
 
 describe("AUTH-06: auth surface has no CORS / OPTIONS", () => {

@@ -80,7 +80,10 @@ const RETAINED_LEGACY_FILES = [
 // Marker per file proving the entrypoint is still wired (not a dead shell).
 const RETAINED_WIRING = [
   ["web/lib/auth/accounts.ts", "export async function importLegacyUsers"],
-  ["web/lib/auth/upgrade.ts", "export async function completeCredentialUpgrade"],
+  [
+    "web/lib/auth/upgrade.ts",
+    "export async function completeCredentialUpgrade",
+  ],
   ["web/lib/auth/upgrade.ts", "export async function verifyLegacyPinForLogin"],
   ["web/lib/auth/lockout.ts", "export async function adminUnlockLegacyUpgrade"],
   ["web/lib/auth/lockout.ts", "class LegacyUpgradeLockedError"],
@@ -108,15 +111,30 @@ const RETAINED_WIRING = [
 // Current D1 owners proving the accepted replacement journeys (adapted #664
 // parity references; `@efcc/contracts` stays out of the tree).
 const RETAINED_CURRENT_OWNERS = [
-  ["web/lib/auth/registrations.ts", "export async function createRegistrationRequest"],
-  ["web/lib/auth/registrations.ts", "export async function approveRegistration"],
+  [
+    "web/lib/auth/registrations.ts",
+    "export async function createRegistrationRequest",
+  ],
+  [
+    "web/lib/auth/registrations.ts",
+    "export async function approveRegistration",
+  ],
   ["web/lib/auth/registrations.ts", "export async function rejectRegistration"],
   ["web/lib/auth/registrations.ts", "REGISTRATION_APPROVE"],
   ["web/lib/auth/registrations.test.ts", "registrations"],
-  ["web/lib/identity/account-access.ts", "export async function loadAccountAccess"],
-  ["web/lib/identity/account-access-handlers.ts", "handleMutateAccountAssignments"],
+  [
+    "web/lib/identity/account-access.ts",
+    "export async function loadAccountAccess",
+  ],
+  [
+    "web/lib/identity/account-access-handlers.ts",
+    "handleMutateAccountAssignments",
+  ],
   ["web/lib/identity/role-hierarchy.test.ts", "Staff"],
-  ["web/lib/identity/permission-editor-handlers.ts", "handleUpdateRoleDefinitionGrants"],
+  [
+    "web/lib/identity/permission-editor-handlers.ts",
+    "handleUpdateRoleDefinitionGrants",
+  ],
   ["web/worker.ts", "/api/v1/auth/register"],
   ["web/worker.ts", "/api/v1/auth/login"],
   ["web/worker.ts", "/api/v1/auth/refresh"],
@@ -134,13 +152,26 @@ const SHEETS_MUTATION_MARKERS = [
   "spreadsheets.values.batchUpdate",
 ];
 
+function shippedSourceFiles(directory) {
+  return readdirSync(path(directory), { withFileTypes: true }).flatMap(
+    (entry) => {
+      const file = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        return shippedSourceFiles(file);
+      }
+      return /\.[cm]?[jt]sx?$/u.test(entry.name) &&
+        !/\.(?:test|stories|d)\.[jt]sx?$/u.test(entry.name)
+        ? [file]
+        : [];
+    }
+  );
+}
+
 const SHEETS_SCAN_FILES = [
-  ...readdirSync(path("web", "lib", "auth"))
-    .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
-    .map((f) => join("web", "lib", "auth", f)),
   join("web", "worker.ts"),
-  join("web", "lib", "api.ts"),
-  join("web", "app", "page.tsx"),
+  ...["app", "components", "lib"].flatMap((directory) =>
+    shippedSourceFiles(join("web", directory))
+  ),
 ];
 
 describe("account import/upgrade preservation (#683)", () => {

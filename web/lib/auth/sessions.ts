@@ -75,6 +75,7 @@ export type RequestSessionResolution =
   | { status: "missing" }
   | { status: "invalid" }
   | { status: "unknown_account" }
+  | { status: "unavailable" }
   | { status: "authenticated"; claims: AccessTokenClaims; account: AccountRow };
 
 function b64urlEncode(bytes: Uint8Array): string {
@@ -185,18 +186,23 @@ export async function resolveRequestSession(
   const claims = await verifyAccessToken(secret, accessToken, now);
   if (!claims) return { status: "invalid" };
 
-  const row = await db
-    .prepare(
-      `SELECT s.revoked_at AS session_revoked_at,
+  let row: RequestSessionRow | null;
+  try {
+    row = await db
+      .prepare(
+        `SELECT s.revoked_at AS session_revoked_at,
               s.expires_at AS session_expires_at,
               a.*
          FROM sessions s
          LEFT JOIN accounts a ON a.user_id = s.user_id
         WHERE s.session_id = ? AND s.user_id = ?
         LIMIT 1`
-    )
-    .bind(claims.sid, claims.uid)
-    .first<RequestSessionRow>();
+      )
+      .bind(claims.sid, claims.uid)
+      .first<RequestSessionRow>();
+  } catch {
+    return { status: "unavailable" };
+  }
   if (!row) return { status: "invalid" };
 
   const {

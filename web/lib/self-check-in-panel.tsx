@@ -195,7 +195,9 @@ export const SelfCheckInPanel = ({
     } else if (flow.view === "outcome") {
       outcomeHeadingRef.current?.focus();
     } else if (flow.selected) {
-      confirmationHeadingRef.current?.focus({ preventScroll: true });
+      if (!retryAvailable) {
+        confirmationHeadingRef.current?.focus({ preventScroll: true });
+      }
     } else if ((!isPhone || manualOpen || hasDeepLink) && !flow.busy) {
       inputRef.current?.focus();
     } else if (
@@ -223,6 +225,7 @@ export const SelfCheckInPanel = ({
     hasDeepLink,
     isPhone,
     manualOpen,
+    retryAvailable,
     scanStopped,
     showChooser,
   ]);

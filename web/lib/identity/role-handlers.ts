@@ -163,6 +163,15 @@ export async function requireActor(
     env.DB,
     env.EFCC_ACCESS_TOKEN_SECRET
   );
+  if (resolved.status === "unavailable") {
+    return roleProblem(
+      503,
+      "UNAVAILABLE",
+      "Service unavailable",
+      "Session lookup unavailable.",
+      requestId
+    );
+  }
   if (resolved.status === "missing") {
     return roleProblem(
       401,

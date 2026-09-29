@@ -614,6 +614,9 @@ async function actor(
     env.DB,
     env.EFCC_ACCESS_TOKEN_SECRET
   );
+  if (resolved.status === "unavailable") {
+    return problem(503, "UNAVAILABLE", "系統暫時無法處理請求。", id);
+  }
   if (resolved.status === "missing" || resolved.status === "invalid") {
     return required ? problem(401, "AUTH_REQUIRED", "登入要求", id) : null;
   }
@@ -1538,10 +1541,10 @@ export async function handleResolve(
   const value = token ?? code ?? entry ?? "";
   if (eventId) {
     const currentActor = await actor(request, env, id, false);
-    const memberUserId =
-      currentActor && !(currentActor instanceof Response)
-        ? currentActor.user_id
-        : null;
+    if (currentActor instanceof Response) {
+      return currentActor;
+    }
+    const memberUserId = currentActor?.user_id ?? null;
     const { events, latest } = await resolveByEventId(env.DB, eventId);
     if (events.length === 0) {
       return resolveNoEvents(env.DB, latest, memberUserId, id);
@@ -1552,10 +1555,10 @@ export async function handleResolve(
     return problem(422, "VALIDATION", "請提供課程 QR 或聚會代碼。", id);
   }
   const currentActor = await actor(request, env, id, false);
-  const memberUserId =
-    currentActor && !(currentActor instanceof Response)
-      ? currentActor.user_id
-      : null;
+  if (currentActor instanceof Response) {
+    return currentActor;
+  }
+  const memberUserId = currentActor?.user_id ?? null;
 
   const { events, latest } = await resolveLookup(env.DB, token, code, value);
   if (events.length === 0) {

@@ -97,6 +97,15 @@ async function requireActor(
     env.DB,
     env.EFCC_ACCESS_TOKEN_SECRET
   );
+  if (resolved.status === "unavailable") {
+    return problem(
+      503,
+      "HOME_UNAVAILABLE",
+      "Service unavailable",
+      "Home is temporarily unavailable.",
+      requestId
+    );
+  }
   if (resolved.status === "missing") {
     return problem(
       401,

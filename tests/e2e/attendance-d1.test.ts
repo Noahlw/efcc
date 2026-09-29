@@ -109,7 +109,7 @@ const COPY = {
   successTitle: "簽到完成",
   duplicateTitle: "已完成簽到",
   duplicateBody: "你已在此聚會簽到，無需重複。",
-  backHome: "返回首頁",
+  returnToEvent: "返回聚會詳情",
   scanAgain: "再次簽到",
   submitFailure: "未能完成簽到，請重試一次。",
   offlineSubmit: "未能提交簽到。請重新連線後再次確認；系統不會自動重試。",
@@ -120,7 +120,6 @@ const COPY = {
   eventCancelled: "此聚會已取消，不能簽到。",
   loginForMember: "登入後以成員身份簽到",
   camera: "使用相機掃描 QR",
-  noEvents: "目前沒有可簽到的聚會，請稍後再試或輸入聚會手動代碼。",
   cameraLiveHint: "將二維碼放入框內掃描",
   stopScan: "停止掃描",
   invalidEntryCode: "找不到此代碼對應的聚會，請確認後重試。",
@@ -130,8 +129,11 @@ const COPY = {
   memberSearch: "搜尋已報名成員",
   search: "搜尋",
   checkInMember: "替成員簽到",
+  addAndCheckIn: "新增並簽到",
+  assistedCheckIn: "替成員簽到",
   roster: "簽到名單",
   rosterTitle: "簽到名單",
+  rosterAdditionalTitle: "訪客／額外記錄",
   rosterStatusActive: "開放簽到",
   checkedInCount: (count: number, total: number) => `已簽到 ${count}/${total}`,
   statusActive: "有效",
@@ -144,7 +146,7 @@ const COPY = {
   voidSuccess: "簽到已作廢",
   correctGuest: "修正訪客資料",
   guestCorrection: "修正訪客資料",
-  correctionReason: "姓名或電話",
+  correctionReason: "修正原因",
   correctionLead: "輸入訪客的正確姓名或電話。",
   saveCorrection: "儲存修正",
   correctionSaved: "訪客資料已修正",
@@ -493,14 +495,23 @@ test.beforeAll(async ({ playwright }) => {
         description: "S3 attendance acceptance fixture",
         category: "測試",
         behavior_type: "Recurring",
-        lifecycle: "Active",
-        discoverability: "Listed",
+        lifecycle: "Draft",
+        discoverability: "Unlisted",
         enrollment_mode: "MemberRequest",
       }
     );
     expect(program.status).toBe(201);
     const programId = (program.body.data as { program: { program_id: string } })
       .program.program_id;
+    const activated = await patchJson(
+      admin.api,
+      `/api/v1/programs/${programId}`,
+      {
+        lifecycle: "Active",
+        discoverability: "Listed",
+      }
+    );
+    expect(activated.status, JSON.stringify(activated.body)).toBe(200);
     const checkInToken = required(
       "program check-in token",
       (program.body.data as { program: { check_in_token: string | null } })
@@ -571,8 +582,8 @@ test.beforeAll(async ({ playwright }) => {
         name: `E2E 未報名課程 ${fresh("P")}`,
         description: "S3 unenrolled acceptance fixture",
         behavior_type: "Recurring",
-        lifecycle: "Active",
-        discoverability: "Listed",
+        lifecycle: "Draft",
+        discoverability: "Unlisted",
         enrollment_mode: "MemberRequest",
       }
     );
@@ -580,6 +591,15 @@ test.beforeAll(async ({ playwright }) => {
     const unenrolledProgramId = (
       unenrolledProg.body.data as { program: { program_id: string } }
     ).program.program_id;
+    const activatedUnenrolled = await patchJson(
+      admin.api,
+      `/api/v1/programs/${unenrolledProgramId}`,
+      { lifecycle: "Active", discoverability: "Listed" }
+    );
+    expect(
+      activatedUnenrolled.status,
+      JSON.stringify(activatedUnenrolled.body)
+    ).toBe(200);
     const unenrolledCreated = await postJson(
       admin.api,
       `/api/v1/programs/${unenrolledProgramId}/events`,
@@ -646,7 +666,7 @@ test.beforeAll(async ({ playwright }) => {
       `/api/v1/programs/${programId}/enrollment-requests`,
       {}
     );
-    expect(requestResult.status).toBe(201);
+    expect(requestResult.status, JSON.stringify(requestResult.body)).toBe(201);
     const requestId = (
       requestResult.body.data as { request: { request_id: string } }
     ).request.request_id;
@@ -735,6 +755,7 @@ test.describe("ATT-04 QR attendance proof", () => {
     const submitButton = page.getByRole("button", { name: COPY.guestSubmit });
     await expect(submitButton).toBeVisible();
     await expect(submitButton).toBeEnabled();
+    await submitButton.scrollIntoViewIfNeeded();
     const box = await submitButton.boundingBox();
     expect(box).not.toBeNull();
     const viewport = page.viewportSize();
@@ -846,14 +867,21 @@ test.describe("ATT-04 QR attendance proof", () => {
           `/events?eventId=${encodeURIComponent(fixtures.eventA.event_id)}`
         );
         const row = adminPage
-          .getByRole("list", { name: COPY.rosterTitle })
+          .getByRole("list", { name: COPY.rosterAdditionalTitle })
           .getByRole("listitem")
           .filter({ has: adminPage.getByText(name, { exact: true }) });
         await expect(row).toBeVisible();
         await row.getByRole("button", { name: COPY.voidAttendance }).click();
-        await expect(row.getByLabel(COPY.voidReason)).toBeVisible();
-        await row.getByLabel(COPY.voidReason).fill("E2E 重複簽到，作廢重簽");
-        await row.getByRole("button", { name: COPY.voidConfirm }).click();
+        const voidDialog = adminPage.getByRole("dialog", {
+          name: COPY.voidAttendance,
+        });
+        await expect(voidDialog.getByLabel(COPY.voidReason)).toBeVisible();
+        await voidDialog
+          .getByLabel(COPY.voidReason)
+          .fill("E2E 重複簽到，作廢重簽");
+        await voidDialog
+          .getByRole("button", { name: COPY.voidConfirm })
+          .click();
         await expect(row.getByText(COPY.statusVoided)).toBeVisible();
         await expect(
           row.getByRole("button", { name: COPY.voidAttendance })
@@ -946,8 +974,11 @@ test.describe("ATT-04 QR attendance proof", () => {
         page.getByText(COPY.resultTitle, { exact: true })
       ).toBeVisible();
       await expect(
-        page.getByRole("link", { name: COPY.backHome })
-      ).toHaveAttribute("href", "/");
+        page.getByRole("link", { name: COPY.returnToEvent })
+      ).toHaveAttribute(
+        "href",
+        new RegExp(`/programs\\?program=${fixtures.programId}.*&event=`, "u")
+      );
       const scanAgain = page.getByRole("button", { name: COPY.scanAgain });
       await expect(scanAgain).toBeVisible();
 
@@ -1057,7 +1088,13 @@ test.describe("ATT-04 QR attendance proof", () => {
 
       // Unknown 6-digit code: server returns latest: null -> inline error
       await codeInput.fill("999999");
+      const unknownCodeResponse = page.waitForResponse(
+        (response) =>
+          response.request().method() === "GET" &&
+          new URL(response.url()).pathname.endsWith("/resolve")
+      );
       await page.getByRole("button", { name: COPY.continue }).click();
+      expect((await unknownCodeResponse).status()).toBe(200);
       await expect(statusText(page, COPY.invalidEntryCode)).toBeVisible();
       await expect(
         page.locator("main output[data-tone='error']")
@@ -1131,22 +1168,22 @@ test.describe("ATT-04 QR attendance proof", () => {
       await page.getByRole("button", { name: COPY.backToScan }).click();
       await expectSelfScannerEntry(page);
 
-      // 2. Not enrolled outcome with program detail CTA
+      // 2. An active Event resolves, but Self Check-In denies a non-enrolled member.
       await page.goto(
-        `/scanner?manual_code=${fixtures.unenrolledEvent.manual_check_in_code}`
+        `/scanner?manual_code=${fixtures.activeUnenrolledEvent.manual_check_in_code}`
       );
       await expect(
-        page.getByRole("heading", { name: COPY.outcomeNotEnrolledTitle })
+        page.getByRole("heading", { name: COPY.confirmTitle })
       ).toBeVisible();
-      await expect(page.getByText(COPY.outcomeNotEnrolledBody)).toBeVisible();
-      const detailLink = page.getByRole("link", {
-        name: COPY.viewProgramDetail,
-      });
-      await expect(detailLink).toHaveAttribute(
-        "href",
-        `/programs?program=${fixtures.unenrolledProgramId}`
+      const denied = page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          new URL(response.url()).pathname === "/api/v1/attendance/self"
       );
-      await page.getByRole("button", { name: COPY.backToScan }).click();
+      await page.getByRole("button", { name: COPY.confirmSubmit }).click();
+      expect((await denied).status()).toBe(403);
+      await expect(statusText(page, COPY.enrollmentRequired)).toBeVisible();
+      await page.getByRole("button", { name: COPY.notThisEvent }).click();
       await expectSelfScannerEntry(page);
 
       // 3. Window not open outcome
@@ -1490,9 +1527,10 @@ test.describe("ATT-04 QR attendance proof", () => {
       const memberResult = page
         .locator("li")
         .filter({ has: page.getByText("E2E Member", { exact: true }) });
-      await expect(
-        memberResult.getByRole("button", { name: COPY.checkInMember })
-      ).toBeVisible();
+      const memberAction = memberResult.getByRole("button", {
+        name: /(?:新增並簽到|替成員簽到)$/u,
+      });
+      await expect(memberAction).toBeVisible();
       // The panel overwrites its status with the roster count right after a
       // successful assist (checkIn -> loadRoster), so assert the request
       // outcome instead of the transient success flash.
@@ -1501,8 +1539,13 @@ test.describe("ATT-04 QR attendance proof", () => {
           response.request().method() === "POST" &&
           new URL(response.url()).pathname.endsWith("/check-in")
       );
-      await memberResult
-        .getByRole("button", { name: COPY.checkInMember })
+      await memberAction.click();
+      const confirmAssisted = page.getByRole("alertdialog", {
+        name: "確認替成員簽到",
+      });
+      await expect(confirmAssisted).toBeVisible();
+      await confirmAssisted
+        .getByRole("button", { name: COPY.confirmSubmit })
         .click();
       const assistedResponse = await assisted;
       expect(assistedResponse.status()).toBeGreaterThanOrEqual(200);
@@ -1525,15 +1568,14 @@ test.describe("ATT-04 QR attendance proof", () => {
         page
           .locator("li")
           .filter({ has: page.getByText("E2E Member", { exact: true }) })
-          .getByRole("button", { name: COPY.checkInMember })
+          .getByRole("button", { name: COPY.assistedCheckIn })
       ).toBeVisible();
 
-      // Roster now shows the member row in the current semantic list.
-      const memberRow = page
-        .getByRole("list", { name: COPY.rosterTitle })
-        .getByRole("listitem")
-        .filter({ hasText: "E2E Member" });
-      await expect(memberRow).toBeVisible();
+      // The check-in persists in the roster's checked-in view.
+      await page.getByRole("tab", { name: /已簽到 \(\d+\)/u }).click();
+      await expect(
+        page.getByRole("tabpanel", { name: /已簽到 \(\d+\)/u })
+      ).toContainText("E2E Member");
     } finally {
       await adminContext.close();
     }
@@ -1553,10 +1595,9 @@ test.describe("ATT-04 QR attendance proof", () => {
     await page.locator("#guest-name").fill(`E2E訪客 ${fresh("F")}`);
     await page.locator("#guest-phone").fill(freshPhone());
     await page.getByRole("button", { name: COPY.guestSubmit }).click();
-    await expect(statusText(page, COPY.noEvents)).toBeVisible();
-    await expect(page.locator("#attendance-code")).toHaveValue(
-      fixtures.cancelledEvent.manual_check_in_code
-    );
+    await expect(
+      page.getByRole("heading", { name: COPY.outcomeCancelledTitle })
+    ).toBeVisible();
 
     const api = await playwright.request.newContext({ baseURL: TARGET_URL });
     try {
@@ -1708,34 +1749,37 @@ test.describe("ATT-04 QR attendance proof", () => {
       await page.goto(
         `/events?eventId=${encodeURIComponent(fixtures.eventA.event_id)}`
       );
-      const countPattern = /^已簽到 (\d+)\/(\d+)$/u;
-      const initialCountText = await page
-        .getByText(countPattern)
-        .first()
-        .textContent();
-      const initialCountMatch = initialCountText?.match(countPattern);
-      if (!initialCountMatch) {
-        throw new Error(`Missing roster count: ${initialCountText ?? ""}`);
+      const guestCount = page.getByText(/訪客 \d+/u).first();
+      const initialGuestCountText = await guestCount.textContent();
+      const initialGuestCount = Number(
+        initialGuestCountText?.match(/訪客 (\d+)/u)?.[1]
+      );
+      expect(initialGuestCount).toBeGreaterThan(0);
+
+      const checkedInTab = page.getByRole("tab", { name: /已簽到 \(\d+\)/u });
+      if ((await checkedInTab.count()) > 0) {
+        await checkedInTab.click();
       }
-      const expectedCount = `已簽到 ${Number(initialCountMatch[1]) - 1}/${initialCountMatch[2]}`;
 
       const row = page
-        .getByRole("list", { name: COPY.rosterTitle })
+        .getByRole("list", { name: COPY.rosterAdditionalTitle })
         .getByRole("listitem")
         .filter({ has: page.getByText(guestName, { exact: true }) });
       await expect(row).toBeVisible();
       await row.getByRole("button", { name: COPY.correctGuest }).click();
-      const correctionForm = row.locator("form");
-      await correctionForm
+      const correctionDialog = page.getByRole("dialog", {
+        name: COPY.guestCorrection,
+      });
+      await correctionDialog
         .getByRole("textbox", { name: COPY.guestName, exact: true })
         .fill(correctedName);
-      await correctionForm
+      await correctionDialog
         .getByRole("textbox", { name: COPY.guestPhone, exact: true })
         .fill(guestPhone);
-      await correctionForm
+      await correctionDialog
         .getByLabel(COPY.correctionReason)
         .fill("客人提供新電話");
-      await correctionForm
+      await correctionDialog
         .getByRole("button", { name: COPY.saveCorrection })
         .click();
       await expect(
@@ -1743,22 +1787,31 @@ test.describe("ATT-04 QR attendance proof", () => {
       ).toBeVisible();
 
       const correctedRow = page
-        .getByRole("list", { name: COPY.rosterTitle })
+        .getByRole("list", { name: COPY.rosterAdditionalTitle })
         .getByRole("listitem")
         .filter({ has: page.getByText(correctedName, { exact: true }) });
       await expect(correctedRow).toBeVisible();
       await correctedRow
         .getByRole("button", { name: COPY.voidAttendance })
         .click();
-      const voidForm = correctedRow.locator("form");
-      await voidForm.getByLabel(COPY.voidReason).fill("E2E 測試作廢");
-      await voidForm.getByRole("button", { name: COPY.voidConfirm }).click();
+      const voidDialog = page.getByRole("dialog", {
+        name: COPY.voidAttendance,
+      });
+      await voidDialog.getByLabel(COPY.voidReason).fill("E2E 測試作廢");
+      await voidDialog.getByRole("button", { name: COPY.voidConfirm }).click();
       await expect(
         page.getByText(COPY.voidSuccess, { exact: true }).first()
       ).toBeVisible();
-      await expect(
-        page.getByText(expectedCount, { exact: true })
-      ).toBeVisible();
+      await expect
+        .poll(async () => {
+          if ((await guestCount.count()) === 0) {
+            return 0;
+          }
+          return Number(
+            (await guestCount.textContent())?.match(/訪客 (\d+)/u)?.[1]
+          );
+        })
+        .toBe(initialGuestCount - 1);
     } finally {
       await adminContext.close();
       await admin.api.dispose();

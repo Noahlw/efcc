@@ -249,6 +249,15 @@ async function resolveAuthenticatedAccount(
     env.DB,
     env.EFCC_ACCESS_TOKEN_SECRET
   );
+  if (resolved.status === "unavailable") {
+    return problem(
+      503,
+      "UNAVAILABLE",
+      "Service unavailable",
+      undefined,
+      requestId
+    );
+  }
   if (resolved.status === "missing") {
     return problem(
       401,
@@ -278,7 +287,6 @@ async function resolveAuthenticatedAccount(
   }
   return { account: resolved.account };
 }
-
 
 /** Resolve an authenticated caller through the D1 Role-to-Capability policy. */
 async function requireCapability(
@@ -1028,7 +1036,12 @@ export async function handleAdminUnlock(
   env: AuthEnv
 ): Promise<Response> {
   const requestId = crypto.randomUUID();
-  const auth = await requireCapability(request, env, requestId, CAPABILITY.REGISTRATION_APPROVAL_MANAGE);
+  const auth = await requireCapability(
+    request,
+    env,
+    requestId,
+    CAPABILITY.REGISTRATION_APPROVAL_MANAGE
+  );
   if (auth instanceof Response) {
     return auth;
   }

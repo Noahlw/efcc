@@ -1,5 +1,6 @@
 /* oxlint-disable vitest/prefer-importing-vitest-globals */
 import { expect, test } from "@playwright/test";
+import type { APIRequestContext } from "@playwright/test";
 
 import { DEV_ADMIN, DEV_LEGACY } from "./dev-fixtures";
 
@@ -106,6 +107,120 @@ test.beforeAll(() => {
 });
 
 test.describe("D1 cookie-only login gate", () => {
+  test("one-device logout and all-device password revocation persist across requests", async ({
+    playwright,
+    baseURL,
+  }) => {
+    const origin = originFor(baseURL);
+    const first = await playwright.request.newContext({ baseURL: origin });
+    const second = await playwright.request.newContext({ baseURL: origin });
+    const replacement = `E2E-${crypto.randomUUID()}`;
+    let passwordChanged = false;
+
+    async function login(api: APIRequestContext, password: string) {
+      return api.post("/api/v1/auth/login", {
+        headers: { Origin: origin },
+        data: { username: TEST_USERNAME, password },
+      });
+    }
+
+    function cookieHeader(response: {
+      headersArray: () => { name: string; value: string }[];
+    }) {
+      return setCookieHeaders(response)
+        .map((header) => header.split(";", 1)[0])
+        .join("; ");
+    }
+
+    try {
+      const firstLogin = await login(first, TEST_CREDENTIAL!);
+      const secondLogin = await login(second, TEST_CREDENTIAL!);
+      expect(firstLogin.status()).toBe(200);
+      expect(secondLogin.status()).toBe(200);
+      const firstCookie = cookieHeader(firstLogin);
+      const secondCookie = cookieHeader(secondLogin);
+      expect(
+        (
+          await first.get("/api/v1/auth/me", {
+            headers: { Cookie: firstCookie },
+          })
+        ).status()
+      ).toBe(200);
+      expect(
+        (
+          await second.get("/api/v1/auth/me", {
+            headers: { Cookie: secondCookie },
+          })
+        ).status()
+      ).toBe(200);
+
+      expect(
+        (
+          await first.post("/api/v1/auth/logout", {
+            headers: { Origin: origin, Cookie: firstCookie },
+          })
+        ).status()
+      ).toBe(204);
+      expect(
+        (
+          await first.get("/api/v1/auth/me", {
+            headers: { Cookie: firstCookie },
+          })
+        ).status()
+      ).toBe(401);
+      expect(
+        (
+          await second.get("/api/v1/auth/me", {
+            headers: { Cookie: secondCookie },
+          })
+        ).status()
+      ).toBe(200);
+
+      const changed = await second.post("/api/v1/auth/password", {
+        headers: { Origin: origin, Cookie: secondCookie },
+        data: { currentPassword: TEST_CREDENTIAL, newPassword: replacement },
+      });
+      expect(changed.status()).toBe(200);
+      passwordChanged = true;
+      expect(
+        (
+          await second.get("/api/v1/auth/me", {
+            headers: { Cookie: secondCookie },
+          })
+        ).status()
+      ).toBe(401);
+      expect((await login(first, TEST_CREDENTIAL!)).status()).toBe(401);
+      const replacementLogin = await login(second, replacement);
+      expect(replacementLogin.status()).toBe(200);
+      const replacementCookie = cookieHeader(replacementLogin);
+      const restored = await second.post("/api/v1/auth/password", {
+        headers: { Origin: origin, Cookie: replacementCookie },
+        data: {
+          currentPassword: replacement,
+          newPassword: TEST_CREDENTIAL,
+        },
+      });
+      expect(restored.status()).toBe(200);
+      passwordChanged = false;
+    } finally {
+      if (passwordChanged) {
+        const recoveryLogin = await login(second, replacement);
+        if (recoveryLogin.status() === 200) {
+          const restored = await second.post("/api/v1/auth/password", {
+            headers: { Origin: origin, Cookie: cookieHeader(recoveryLogin) },
+            data: {
+              currentPassword: replacement,
+              newPassword: TEST_CREDENTIAL,
+            },
+          });
+          expect(restored.status()).toBe(200);
+        }
+      }
+      await first.dispose();
+      await second.dispose();
+    }
+  });
+
   test("password login and logout use the locked cookie boundary", async ({
     request,
     baseURL,
