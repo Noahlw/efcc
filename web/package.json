@@ -52,7 +52,7 @@
     "@vitejs/plugin-react": "^6.0.5",
     "@vitest/browser": "4.1.10",
     "@vitest/browser-playwright": "4.1.10",
-    "@vitest/expect": "4.1.10",
+    "@vitest/expect": "5.0.2",
     "@vitest/mocker": "4.1.10",
     "@vitest/pretty-format": "4.1.10",
     "@vitest/runner": "4.1.10",
