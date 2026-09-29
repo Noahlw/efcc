@@ -1653,19 +1653,14 @@ test.describe("S4 Management hardening integration gate", () => {
     await expect(
       page.getByRole("heading", { name: "同工", exact: true })
     ).toBeVisible();
-    const backToList = page
-      .locator("a")
-      .filter({ hasText: /返回身份組/ })
-      .first();
-    if (await backToList.count()) {
-      await expect(backToList).toBeVisible();
-      await expect(backToList).toHaveAttribute("href", /module=roles/u);
-    } else {
-      // Fallback: back may be button or not rendered on this width — ensure at least heading is present
-      await expect(
-        page.getByRole("heading", { name: "同工", exact: true })
-      ).toBeVisible();
-    }
+    const backToList = page.getByRole("button", {
+      name: "返回身份組列表",
+    });
+    await expect(backToList).toBeVisible();
+    await backToList.click();
+    await expect(
+      page.locator('button[aria-controls^="role-category-body-"]')
+    ).toHaveCount(3);
     // Permission Editor deep link retains selected identity and safe return
     const permissionLink = page.getByRole("link", { name: "權限" }).first();
     // Permission Editor may be a button that navigates to permissions module
@@ -1697,18 +1692,12 @@ test.describe("S4 Management hardening integration gate", () => {
       await expect(
         page.getByRole("heading", { name: "權限管理 · 同工" }).first()
       ).toBeVisible();
-      await expect(
-        page
-          .locator("a")
-          .filter({ hasText: /返回身份組/ })
-          .first()
-      ).toBeVisible();
+      const permissionBack = page.getByRole("link", {
+        name: "返回身份組列表",
+      });
+      await expect(permissionBack).toBeVisible();
       // Safe return preserves validated management return
-      const backHref = await page
-        .locator("a")
-        .filter({ hasText: /返回身份組/ })
-        .first()
-        .getAttribute("href");
+      const backHref = await permissionBack.getAttribute("href");
       expect(backHref).toMatch(/\/management/);
       // Permission search and switch
       const search = await searchInput(page, "搜尋權限");
