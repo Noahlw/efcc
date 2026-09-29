@@ -448,6 +448,16 @@ export const PermissionEditorPanel = () => {
   };
 
   const goToRoleList = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
     event.preventDefault();
     detailRoleRef.current = null;
     idempotencyKeyRef.current = null;

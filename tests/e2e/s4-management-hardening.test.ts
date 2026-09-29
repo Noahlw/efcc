@@ -644,9 +644,22 @@ test.describe("S4 Management hardening integration gate", () => {
     await permissionSearch.fill("account.directory.read");
     await expect(page.getByText("查看帳戶名錄", { exact: true })).toBeVisible();
 
-    await page
-      .getByRole("link", { exact: true, name: "返回身份組列表" })
-      .click();
+    const backToRoles = page.getByRole("link", {
+      exact: true,
+      name: "返回身份組列表",
+    });
+    const [newTab] = await Promise.all([
+      page.context().waitForEvent("page"),
+      backToRoles.click({ modifiers: ["ControlOrMeta"] }),
+    ]);
+    await newTab.waitForLoadState();
+    expect(new URL(newTab.url()).searchParams.get("module")).toBe(
+      "permissions"
+    );
+    await newTab.close();
+    await expect(detailSurface).toBeVisible();
+
+    await backToRoles.click();
     await expect(
       page.getByRole("heading", {
         exact: true,
