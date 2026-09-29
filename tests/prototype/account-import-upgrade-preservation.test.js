@@ -37,9 +37,9 @@
  *
  * `web/app/prototype/` (redesign gallery with account mocks) is explicitly
  * NOT retired here; its removal needs Storybook/waiver reconciliation and
- * belongs to the #675 integration (same deferral as #682).
+ * remains tracked in #683 after the #675 integration.
  *
- * #675 may retire these paths only with proof (zero `requires_upgrade=1`
+ * #683 may retire these paths only with proof (zero `requires_upgrade=1`
  * rows in every real D1, seed/test migration to direct-SQL fixtures,
  * replacement E2E decision) by updating this guard — never by silent
  * deletion.
@@ -236,11 +236,11 @@ describe("account import/upgrade preservation (#683)", () => {
     }
   });
 
-  test("prototype gallery stays for #675 account-surface retirement (named follow-up)", () => {
+  test("prototype gallery stays for #683 account-surface retirement (named follow-up)", () => {
     assert.equal(
       existsSync(path("web", "app", "prototype", "page.tsx")),
       true,
-      "web/app/prototype/page.tsx stays until #675 retires it after account parity"
+      "web/app/prototype/page.tsx stays until #683 retires it after account parity"
     );
   });
 });

@@ -26,7 +26,7 @@
  *
  * `web/app/prototype/` (redesign gallery with account surfaces) is
  * explicitly NOT retired here; its removal needs #683 account parity and
- * belongs to the #675 integration. Historical ADR/spec rationale
+ * remains tracked there after #675 integration. Historical ADR/spec rationale
  * (ADR-0015, specs 070/072/073/074, research notes) is preserved untouched.
  */
 
@@ -121,7 +121,7 @@ describe("external scanner retirement (#682)", () => {
     assert.equal(
       existsSync(path("web", "app", "prototype", "page.tsx")),
       true,
-      "web/app/prototype/page.tsx stays until #683/#675 retires it after account parity"
+      "web/app/prototype/page.tsx stays until #683 retires it after account parity"
     );
   });
 });
