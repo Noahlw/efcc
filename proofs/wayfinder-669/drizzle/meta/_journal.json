@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1790674004868,
+      "tag": "0000_familiar_matthew_murdock",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790674032030,
+      "tag": "0001_raw-invariants",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790674430433,
+      "tag": "0002_nostalgic_cannonball",
+      "breakpoints": true
+    }
+  ]
+}

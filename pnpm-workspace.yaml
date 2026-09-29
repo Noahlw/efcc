@@ -1,5 +1,6 @@
 packages:
   - web
+  - proofs/wayfinder-669
 
 allowBuilds:
   esbuild: true
@@ -7,6 +8,11 @@ allowBuilds:
   sharp: true
   workerd: true
   unrs-resolver: false
+
+minimumReleaseAgeExclude:
+  - '@cloudflare/vite-plugin@1.62.0'
+  - '@cloudflare/workers-types@5.20260929.1'
+  - wrangler@4.143.0
 
 # PR1 proven versions (ctx7 + #644 lock): Vite 8 for @vitejs/plugin-react 6
 # (drops Vite <=7) and vitest 4.1 module-runner (introduced Vite 6, needs

@@ -1,0 +1,36 @@
+{
+  "name": "@efcc/wayfinder-669",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
+    "db:custom": "drizzle-kit generate --custom --name=raw-invariants --config=drizzle.config.ts",
+    "db:apply": "wrangler d1 migrations apply efcc-proof-669 --local --config=wrangler.d1.jsonc",
+    "db:dev": "wrangler dev --config=wrangler.d1.jsonc --port=8799",
+    "spa:build": "vite build --config=spa/vite.config.ts",
+    "spa:dev": "vite dev --config=spa/vite.config.ts --port=4180",
+    "start:build": "cd start && ../node_modules/.bin/vite build",
+    "start:dev": "cd start && ../node_modules/.bin/vite dev --port=4181"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.104.0",
+    "@tanstack/react-router": "1.170.40",
+    "@tanstack/react-start": "1.168.59",
+    "drizzle-orm": "0.45.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.62.0",
+    "@cloudflare/workers-types": "5.20260929.1",
+    "@tanstack/router-plugin": "1.168.41",
+    "@types/node": "26.1.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.0.5",
+    "drizzle-kit": "0.31.11",
+    "typescript": "5.9.3",
+    "vite": "8.2.0",
+    "wrangler": "4.143.0"
+  }
+}

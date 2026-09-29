@@ -1,0 +1,14 @@
+{
+  "name": "efcc-proof-669-start",
+  "main": "@tanstack/react-start/server-entry",
+  "compatibility_date": "2026-09-29",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "efcc-proof-669-start",
+      "database_id": "00000000-0000-0000-0000-000000000670",
+      "migrations_dir": "../drizzle",
+    },
+  ],
+}

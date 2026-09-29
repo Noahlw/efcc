@@ -1,0 +1,19 @@
+{
+  "name": "efcc-proof-669-spa",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-29",
+  "assets": {
+    "directory": "dist/spa",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "not_found_handling": "single-page-application",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "efcc-proof-669-spa",
+      "database_id": "00000000-0000-0000-0000-000000000671",
+      "migrations_dir": "drizzle",
+    },
+  ],
+}

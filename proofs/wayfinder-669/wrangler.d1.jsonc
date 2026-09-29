@@ -1,0 +1,19 @@
+{
+  "$schema": "../../web/node_modules/wrangler/config-schema.json",
+  "name": "efcc-proof-669-d1",
+  "main": "src/worker.ts",
+  "assets": {
+    "directory": "../../web/out",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+  },
+  "compatibility_date": "2026-09-29",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "efcc-proof-669",
+      "database_id": "00000000-0000-0000-0000-000000000669",
+      "migrations_dir": "drizzle",
+    },
+  ],
+}
