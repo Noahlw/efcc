@@ -45,7 +45,7 @@
     "verify:governance:affected": "tsx scripts/audit-governance.ts --mode=affected",
     "verify:governance:full": "tsx scripts/audit-governance.ts --mode=full",
     "verify:governance:release": "tsx scripts/audit-governance.ts --mode=release",
-    "test:storybook:scope": "vitest run scripts/storybook-affected-scope.test.mjs",
+    "test:storybook:scope": "vitest run scripts/storybook-affected-scope.test.mjs web/scripts/storybook-worktree.test.mjs",
     "verify:storybook:affected": "node scripts/storybook-affected-scope.mjs",
     "verify:precommit": "pnpm verify:fast && pnpm test:storybook:scope && pnpm test && pnpm test:governance && pnpm verify:identity && pnpm test:programs:contract && pnpm test:programs:canary:unit && pnpm test:programs:runners:unit && pnpm test:programs:promotion && pnpm test:workerd && pnpm --filter web test:components && pnpm verify:governance",
     "verify": "pnpm verify:precommit && pnpm test:programs:home && pnpm test:programs:feed && pnpm test:shell-responsive && pnpm test:shell-geometry && pnpm test:role-hierarchy-geometry",

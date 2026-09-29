@@ -102,7 +102,7 @@ async function isPortAvailable(port) {
   const server = net.createServer();
 
   try {
-    server.listen(port, "127.0.0.1");
+    server.listen(port);
     await once(server, "listening");
     await closeServer(server);
     return true;
@@ -116,7 +116,7 @@ async function selectEphemeralPort() {
   const server = net.createServer();
 
   try {
-    server.listen(0, "127.0.0.1");
+    server.listen(0);
     await once(server, "listening");
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : null;
