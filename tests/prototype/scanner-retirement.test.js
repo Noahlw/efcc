@@ -21,9 +21,8 @@
  * - scanner component suites (`scanner-boundary`, `use-qr-camera`,
  *   `assisted-scanner-panel`, `self-check-in-panel`, `attendance-panel`,
  *   `attendance-operator-panel`, `attendance-roster`);
- * - `tests/e2e/attendance-d1.test.ts` ATT-04 browser matrix (residual:
- *   full-matrix re-proof belongs to the #675 integration once the
- *   pre-existing Programs enrollment 403 fixture block is resolved).
+ * - `tests/e2e/attendance-d1.test.ts` ATT-04 browser matrix; #675 records
+ *   its exact-head local Worker/D1 re-proof before scanner retirement approval.
  *
  * `web/app/prototype/` (redesign gallery with account surfaces) is
  * explicitly NOT retired here; its removal needs #683 account parity and
