@@ -31,13 +31,15 @@ The uniqueness check must be atomic and must reject collisions with both existin
 
 ### 2. Session architecture — short-lived access token + refresh session
 
-The Worker issues a **short-lived (~15 min) HMAC-signed access token** on login/refresh and verifies it **statelessly** on ordinary protected requests — **zero D1 reads on the common path**. The D1 `sessions` row (`sessionId`, `userId`, `issuedAt`, `lastSeenAt`, `expiresAt`, `revokedAt`, device/UA fingerprint) is read **only** on token refresh or explicit revocation:
+The Worker issues a **short-lived (~15 min) HMAC-signed access token** on login/refresh. Under [#681](https://github.com/Noahlw/efcc/issues/681), every protected request verifies its signature and reads the matching live D1 session and account. A missing, revoked, expired, or mismatched session is denied on that request; an unavailable session lookup returns a correlated 503. The D1 `sessions` row (`sessionId`, `userId`, `issuedAt`, `lastSeenAt`, `expiresAt`, `revokedAt`, device/UA fingerprint) is also read on refresh or explicit revocation:
 
 - **Idle expiry**: 90 days since last successful refresh (`expiresAt = lastSeenAt + 90d`, touched on each refresh). An idle session requires full re-login; an actively used session never forces re-entry.
 - **Multi-device**: each login creates an independent session row; revoking one device's session does not affect the others. "Remember me" is the default outcome, not an opt-in flag.
-- **Revocation**: logout, a credential change, and an admin suspend each revoke the refresh session. A revoked session's outstanding access token keeps working only until its remaining lifetime (≤ ~15 min, stateless) and can never be silently renewed.
+- **Revocation**: logout, a credential change, and an admin suspend each revoke the refresh session. Its outstanding access token is denied on the next protected request.
 
 The access token binds to both the user and the specific session (`sid`), so a revoked session cannot be masked by a token minted for a different session of the same member.
+
+The stateless-read comment in historical migration `0000_init.sql` describes the original design. The migration remains unchanged so the applied SQL chain stays stable; this section and #681 describe the current request boundary. This ADR remains Proposed pending its own approval gate.
 
 ### 3. Registration — self-service Pending, Teacher/Admin approval
 

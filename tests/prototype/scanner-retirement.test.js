@@ -33,13 +33,12 @@
 
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import nodePath from "node:path";
 
 import { describe, test } from "vitest";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const path = (...parts) => join(repoRoot, ...parts);
+const repoRoot = nodePath.join(import.meta.dirname, "..", "..");
+const path = (...parts) => nodePath.join(repoRoot, ...parts);
 
 // Files removed by the #682 retirement (every entrypoint of the abandoned
 // external origin, including the vendored decoders and mock backend).

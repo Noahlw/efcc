@@ -41,6 +41,7 @@ import {
   issueSession,
   revokeAllUserSessions,
   revokeSession,
+  signAccessToken,
 } from "./lib/auth/sessions";
 import { applyMigrations, testDb } from "./lib/auth/test-bootstrap";
 import { completeCredentialUpgrade } from "./lib/auth/upgrade";
@@ -377,6 +378,23 @@ describe("AUTH-02: protected request session validation", () => {
       accessTokenSecret: SECRET,
       expiresAt: Date.now() - 1,
     });
+    const now = Date.now();
+    const mismatchedOwner = await signAccessToken(SECRET, {
+      sid: session.sessionId,
+      uid: "U007",
+      iat: now,
+    });
+    const unknownAccount = await signAccessToken(SECRET, {
+      sid: crypto.randomUUID(),
+      uid: "U999",
+      iat: now,
+    });
+    const expiredAccess = await signAccessToken(SECRET, {
+      sid: session.sessionId,
+      uid: "U006",
+      iat: now - 2,
+      exp: now - 1,
+    });
     try {
       assert.strictEqual(
         (await meWithAccessToken(session.accessToken)).status,
@@ -390,6 +408,14 @@ describe("AUTH-02: protected request session validation", () => {
         (await meWithAccessToken(idleExpired.accessToken)).status,
         401
       );
+      const denied = await Promise.all(
+        [mismatchedOwner, unknownAccount, expiredAccess].map((token) =>
+          meWithAccessToken(token)
+        )
+      );
+      for (const response of denied) {
+        assert.strictEqual(response.status, 401);
+      }
     } finally {
       await revokeAllUserSessions(testDb(), "U006");
     }

@@ -30,8 +30,10 @@
  * `@efcc/contracts` (deferred to the runtime decision).
  *
  * Sheets-immutable rule: the importer consumes caller-supplied 2D rows and
- * never touches the sheet; no Apps Script/Sheets mutation may ever exist in
- * `web/`.
+ * never touches the sheet; no Apps Script/Sheets mutation may exist in the
+ * shipped Worker/Next runtime (`web/worker.ts`, `web/app`, `web/components`,
+ * `web/lib`). Build/test scripts and historical SQL migrations are not
+ * shipped request handlers.
  *
  * `web/app/prototype/` (redesign gallery with account mocks) is explicitly
  * NOT retired here; its removal needs Storybook/waiver reconciliation and
@@ -45,14 +47,13 @@
 
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import nodePath from "node:path";
 
 import { describe, test } from "vitest";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const path = (...parts) => join(repoRoot, ...parts);
-const read = (rel) => readFileSync(path(rel), "utf8");
+const repoRoot = nodePath.join(import.meta.dirname, "..", "..");
+const path = (...parts) => nodePath.join(repoRoot, ...parts);
+const read = (rel) => readFileSync(path(rel), "utf-8");
 
 // Every live file of the import/upgrade surface. Presence here is the
 // #683 decision: each file still has callers (see table above).
@@ -155,7 +156,7 @@ const SHEETS_MUTATION_MARKERS = [
 function shippedSourceFiles(directory) {
   return readdirSync(path(directory), { withFileTypes: true }).flatMap(
     (entry) => {
-      const file = join(directory, entry.name);
+      const file = nodePath.join(directory, entry.name);
       if (entry.isDirectory()) {
         return shippedSourceFiles(file);
       }
@@ -168,9 +169,9 @@ function shippedSourceFiles(directory) {
 }
 
 const SHEETS_SCAN_FILES = [
-  join("web", "worker.ts"),
+  nodePath.join("web", "worker.ts"),
   ...["app", "components", "lib"].flatMap((directory) =>
-    shippedSourceFiles(join("web", directory))
+    shippedSourceFiles(nodePath.join("web", directory))
   ),
 ];
 
@@ -210,7 +211,7 @@ describe("account import/upgrade preservation (#683)", () => {
 
   test("no Sheets mutation surface and no contracts import in web/", () => {
     for (const file of SHEETS_SCAN_FILES) {
-      const content = readFileSync(path(file), "utf8");
+      const content = readFileSync(path(file), "utf-8");
       for (const marker of SHEETS_MUTATION_MARKERS) {
         assert.equal(
           content.includes(marker),
