@@ -4,9 +4,7 @@
     "from": "web/.storybook/attendance-scanner-guest.stories.tsx",
     "to": "storybook/test",
     "unresolvedTo": "storybook/test",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -17,9 +15,7 @@
     "from": "web/.storybook/controls.stories.tsx",
     "to": "storybook/test",
     "unresolvedTo": "storybook/test",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -30,9 +26,7 @@
     "from": "web/.storybook/management-hub.stories.tsx",
     "to": "storybook/test",
     "unresolvedTo": "storybook/test",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -43,9 +37,7 @@
     "from": "web/.storybook/management-identity.stories.tsx",
     "to": "storybook/test",
     "unresolvedTo": "storybook/test",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -56,9 +48,7 @@
     "from": "web/.storybook/preview.tsx",
     "to": "msw-storybook-addon/csf3",
     "unresolvedTo": "msw-storybook-addon/csf3",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -69,9 +59,7 @@
     "from": "web/.storybook/programs-material-states.stories.tsx",
     "to": "storybook/test",
     "unresolvedTo": "storybook/test",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -82,9 +70,7 @@
     "from": "web/.storybook/programs-presentation-contract.ts",
     "to": "storybook/test",
     "unresolvedTo": "storybook/test",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -95,9 +81,7 @@
     "from": "web/.storybook/public-auth-member-communications.stories.tsx",
     "to": "storybook/test",
     "unresolvedTo": "storybook/test",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -108,9 +92,7 @@
     "from": "web/lib/attendance-worker.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -121,9 +103,7 @@
     "from": "web/lib/auth/account-settings.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -134,9 +114,7 @@
     "from": "web/lib/auth/normalized-authority-c487.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -147,9 +125,7 @@
     "from": "web/lib/auth/registration-batch.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -160,9 +136,7 @@
     "from": "web/lib/auth/registrations.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -173,9 +147,7 @@
     "from": "web/lib/auth/test-bootstrap.ts",
     "to": "cloudflare:test",
     "unresolvedTo": "cloudflare:test",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -186,9 +158,7 @@
     "from": "web/lib/auth/test-bootstrap.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -199,9 +169,7 @@
     "from": "web/lib/home-cms-worker.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -212,9 +180,7 @@
     "from": "web/lib/home-worker.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -225,9 +191,7 @@
     "from": "web/lib/identity/account-access-handlers.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -238,9 +202,7 @@
     "from": "web/lib/identity/d1-schema.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -251,9 +213,7 @@
     "from": "web/lib/identity/normalized-authority.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -264,9 +224,7 @@
     "from": "web/lib/identity/permission-editor-handlers.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -277,9 +235,7 @@
     "from": "web/lib/identity/role-handlers.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -290,9 +246,7 @@
     "from": "web/lib/identity/role-hierarchy.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -303,9 +257,7 @@
     "from": "web/lib/identity/seeds.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -316,9 +268,7 @@
     "from": "web/lib/programs/account-directory.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -329,9 +279,7 @@
     "from": "web/lib/programs/hub-directory.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -342,9 +290,7 @@
     "from": "web/lib/programs/member-directory.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -355,9 +301,7 @@
     "from": "web/lib/programs/notices-worker.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -368,9 +312,7 @@
     "from": "web/lib/programs/programs-250.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -381,9 +323,7 @@
     "from": "web/lib/programs/programs-contract.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -394,9 +334,7 @@
     "from": "web/lib/programs/programs.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -407,9 +345,7 @@
     "from": "web/lib/use-qr-camera.ts",
     "to": "barcode-detector/ponyfill",
     "unresolvedTo": "barcode-detector/ponyfill",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -420,9 +356,7 @@
     "from": "web/vitest.components.config.ts",
     "to": "@vitejs/plugin-react",
     "unresolvedTo": "@vitejs/plugin-react",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -433,9 +367,7 @@
     "from": "web/vitest.storybook.config.ts",
     "to": "@storybook/addon-vitest/vitest-plugin",
     "unresolvedTo": "@storybook/addon-vitest/vitest-plugin",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -446,9 +378,7 @@
     "from": "web/vitest.t07.config.ts",
     "to": "@vitejs/plugin-react",
     "unresolvedTo": "@vitejs/plugin-react",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -459,9 +389,7 @@
     "from": "web/worker.auth.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -472,9 +400,7 @@
     "from": "web/worker.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"
@@ -485,9 +411,7 @@
     "from": "web/lib/auth/accounts.test.ts",
     "to": "cloudflare:workers",
     "unresolvedTo": "cloudflare:workers",
-    "dependencyTypes": [
-      "unknown"
-    ],
+    "dependencyTypes": ["unknown"],
     "rule": {
       "severity": "error",
       "name": "no-unresolved-internal"

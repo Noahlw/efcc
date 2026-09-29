@@ -9,8 +9,11 @@
 // report. Numeric CSS-pixel evidence only — no screenshots (TK-12).
 import { defineConfig } from "@playwright/test";
 
+const staticPort = Number(process.env.EFCC_STATIC_PORT ?? 4173);
+const staticUrl = `http://127.0.0.1:${staticPort}`;
+
 export default defineConfig({
-  metadata: { phaseFTargetUrl: "http://127.0.0.1:4173" },
+  metadata: { phaseFTargetUrl: staticUrl },
   testDir: ".",
   testMatch:
     /(?:role-hierarchy|permission-editor|account-access)-geometry\.test\.ts$/u,
@@ -28,7 +31,7 @@ export default defineConfig({
     ],
   ],
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL: staticUrl,
     trace: "off",
     screenshot: "off",
     video: "off",
@@ -43,9 +46,9 @@ export default defineConfig({
     { name: "w-1440", use: { viewport: { width: 1440, height: 900 } } },
   ],
   webServer: {
-    command: "pnpm --dir ../../web build && pnpm exec tsx serve-static.ts",
-    url: "http://127.0.0.1:4173",
-    reuseExistingServer: !process.env.CI,
+    command: `pnpm --dir ../../web build && PORT=${staticPort} pnpm exec tsx serve-static.ts`,
+    url: staticUrl,
+    reuseExistingServer: false,
     timeout: 240_000,
   },
 });

@@ -86,6 +86,8 @@ The required `READY` evidence is deterministic checks plus the relevant Playwrig
 - Seed the walkthrough dataset with `pnpm db:seed:demo`.
 - Run the suite named by the changed capability under `tests/e2e/`.
 
+For concurrent worktrees, give each local Worker its own port with `EFCC_WORKER_PORT=8788 pnpm dev:local` and point that worktree's browser suite at it with `PROGRAMS_TARGET_URL=http://127.0.0.1:8788`. Static shell suites accept `EFCC_STATIC_PORT=4174`; their Playwright server starts on that port and refuses to reuse an existing server. Each worktree keeps its own local D1 and test output under its checkout.
+
 Cloudflare deployment is optional/manual production-promotion evidence. If an operator runs it, use a fresh reserved `efcc-auth-*`/`efcc-dev-*` host and disposable `E2E_` fixtures; the workflow remains fail-closed. A deployed result never replaces the local gate and a missing manual run does not block repository `READY`.
 
 ## Local environment and secrets

@@ -26,10 +26,7 @@ describe("T09 additive foundation presentation identity", () => {
     );
     expect(foundationDeclarations).toHaveLength(14);
     expect(
-      foundationDeclarations.map(({ foundationId, psn }) => [
-        foundationId,
-        psn,
-      ])
+      foundationDeclarations.map(({ foundationId, psn }) => [foundationId, psn])
     ).toStrictEqual([
       ["surface", "PSN-FOUNDATION-SURFACE"],
       ["surface", "PSN-FOUNDATION-SURFACE-CARD-FOOTER"],

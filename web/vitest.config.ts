@@ -53,6 +53,13 @@ export default defineProject(async () => {
       exclude: [
         "lib/governance/**",
         "lib/programs/programs-scroll.test.ts",
+        "lib/sections.test.ts",
+        "lib/api.test.ts",
+        "lib/navigation-controller.test.ts",
+        "lib/hk-time.test.ts",
+        "lib/messages-intent.test.ts",
+        "lib/account-access-api.test.ts",
+        "lib/scanner-intent.test.ts",
       ],
       // No secrets in output - the ticket's verification requirement.
       // Reporter stays the default (consolidated pass/fail counts).

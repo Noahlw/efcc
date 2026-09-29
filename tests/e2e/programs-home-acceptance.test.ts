@@ -14,7 +14,7 @@ const MEMBER = {
   username: process.env.PROGRAMS_MEMBER_USERNAME ?? DEV_MEMBER.username,
   credential: process.env.PROGRAMS_MEMBER_CREDENTIAL ?? DEV_MEMBER.credential,
 };
-const SEED_FEED_NOTICES = process.env.PROGRAMS_FEED_RESULTS_FILE !== undefined;
+const SEED_FEED_NOTICES = process.env.PROGRAMS_ACCEPTANCE_SUITE === "feed";
 
 const LONG_TITLE = "超長課程名稱：門徒訓練與社區同行計劃";
 const LONG_COPY =
