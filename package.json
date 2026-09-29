@@ -63,17 +63,17 @@
     "check:boundaries": "dependency-cruiser --validate .dependency-cruiser.cjs --ignore-known .dependency-cruiser-known-violations.json --output-type err web"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
-    "@types/node": "^26.1.2",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.3",
     "dependency-cruiser": "18.4.0",
     "husky": "^9.1.7",
     "knip": "6.38.0",
-    "lint-staged": "^17.3.0",
-    "oxfmt": "0.61.0",
-    "oxlint": "1.76.0",
-    "tsx": "^4.23.5",
+    "lint-staged": "^17.6.0",
+    "oxfmt": "0.70.0",
+    "oxlint": "1.85.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
-    "ultracite": "7.10.0",
+    "ultracite": "7.12.0",
     "vitest": "4.1.10"
   },
   "lint-staged": {
