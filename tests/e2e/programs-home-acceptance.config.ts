@@ -2,6 +2,9 @@ import { defineConfig, devices } from "@playwright/test";
 
 const DEFAULT_TARGET_URL = "http://127.0.0.1:8787";
 const targetUrl = process.env.PROGRAMS_TARGET_URL ?? DEFAULT_TARGET_URL;
+const suite =
+  process.env.PROGRAMS_ACCEPTANCE_SUITE === "feed" ? "feed" : "home";
+const prefix = `PROGRAMS_${suite.toUpperCase()}`;
 let target: URL;
 try {
   target = new URL(targetUrl);
@@ -14,13 +17,18 @@ if (
   target.password ||
   !["localhost", "127.0.0.1"].includes(target.hostname)
 ) {
-  throw new Error("Home Browser Acceptance requires a loopback HTTP target");
+  throw new Error(
+    "Home/Feed Browser Acceptance requires a loopback HTTP target"
+  );
 }
 
 export default defineConfig({
   testDir: ".",
   testMatch: ["**/programs-home-acceptance.test.ts"],
-  grep: /PUI-05 case \d{2}:/u,
+  grep:
+    suite === "feed"
+      ? /programs-d1 #(?:1[89]|2[0-4]):/u
+      : /PUI-05 case \d{2}:/u,
   timeout: 60_000,
   retries: 0,
   fullyParallel: false,
@@ -31,14 +39,14 @@ export default defineConfig({
       "json",
       {
         outputFile:
-          process.env.PROGRAMS_HOME_RESULTS_FILE ??
-          "test-results/programs-home-results.json",
+          process.env[`${prefix}_RESULTS_FILE`] ??
+          `test-results/programs-${suite}-results.json`,
       },
     ],
   ],
   outputDir:
-    process.env.PROGRAMS_HOME_OUTPUT_DIR ??
-    "test-results/programs-home-acceptance",
+    process.env[`${prefix}_OUTPUT_DIR`] ??
+    `test-results/programs-${suite}-acceptance`,
   use: {
     baseURL: target.origin,
     trace: "retain-on-failure",

@@ -102,7 +102,7 @@ Requirements: Git, Node.js 22, pnpm 11.7.0 (pinned in `packageManager`), and Chr
 pnpm run verify
 ```
 
-`pnpm run verify` runs the deterministic CI gate locally in the same order as the Precheck workflow: root typecheck, root prototype tests, `web/` typecheck, `web/` workerd tests, `web/` component tests, then the responsive-shell Playwright suite. It requires no deployment credentials.
+`pnpm run verify` runs the full local gate: root and web typechecks, prototype/Worker/component checks, Home and Feed acceptance, and the shell/geometry Playwright suites. It requires no deployment credentials.
 
 ### Lockfile and workspace
 

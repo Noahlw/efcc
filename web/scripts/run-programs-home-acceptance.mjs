@@ -54,10 +54,11 @@ async function runPlaywright(artifactDirectory, reportPath, prepared, suite) {
   const environment = {
     ...process.env,
     PROGRAMS_TARGET_URL: prepared.target.origin,
+    PROGRAMS_ACCEPTANCE_SUITE: suite,
     [`${prefix}_RESULTS_FILE`]: reportPath,
     [`${prefix}_OUTPUT_DIR`]: path.join(artifactDirectory, "browser-output"),
   };
-  const config = `tests/e2e/programs-${suite}-acceptance.config.ts`;
+  const config = "tests/e2e/programs-home-acceptance.config.ts";
   try {
     const result = await execFileAsync(
       "pnpm",
@@ -191,7 +192,7 @@ async function main() {
     schemaVersion: 1,
     runtime: "wrangler-dev-local",
     config: "web/wrangler.jsonc",
-    suite: `tests/e2e/programs-${suite}-acceptance.config.ts`,
+    suite: `tests/e2e/programs-home-acceptance.config.ts`,
     revision: await currentRevision(),
     layer: `${suite}-browser-acceptance`,
     retries: 0,

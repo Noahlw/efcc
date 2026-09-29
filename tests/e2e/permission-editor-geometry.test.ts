@@ -260,7 +260,7 @@ test("Permission Editor detail stays contained across the W7 widths", async ({
     const viewportHeight = window.innerHeight;
     const doc = document.documentElement;
     const content = document.querySelector<HTMLElement>("#shell-content");
-    const main = document.querySelector<HTMLElement>("#shell-content > main");
+    const main = document.querySelector<HTMLElement>("main#shell-content");
     const list = document.querySelector<HTMLElement>(
       '[aria-label="連續權限清單"]'
     );

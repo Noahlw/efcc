@@ -1,6 +1,6 @@
 # Contributing to EFCC
 
-This document is the entry point for a developer working from a fresh clone. It covers the canonical setup, the two install boundaries, local verification, and the safety and deployment rules that keep the repository reproducible.
+This document is the entry point for a developer working from a fresh clone. It covers the canonical setup, local verification, and the safety and deployment rules that keep the repository reproducible.
 
 ## Requirements
 
@@ -20,8 +20,8 @@ pnpm run bootstrap
 pnpm run verify
 ```
 
-- `pnpm run bootstrap` — the single canonical fresh-clone dependency command. Installs the root dependencies and then the `web/` dependencies using their frozen lockfiles, and installs the Playwright Chromium browser through the root install lifecycle. (It is named `bootstrap`, not `setup`, to avoid colliding with pnpm's built-in `pnpm setup`.) Run it once in the clone; run it again after lockfile changes.
-- `pnpm run verify` — the full local gate: pre-commit checks plus the browser shell/geometry suites (see [Verification](#verification)).
+- `pnpm run bootstrap` — the single canonical fresh-clone dependency command. Installs the root and `web/` workspace dependencies using the frozen root lockfile, and installs the Playwright Chromium browser through the root install lifecycle. (It is named `bootstrap`, not `setup`, to avoid colliding with pnpm's built-in `pnpm setup`.) Run it once in the clone; run it again after lockfile changes.
+- `pnpm run verify` — the full local gate: pre-commit checks plus Home/Feed acceptance and the browser shell/geometry suites (see [Verification](#verification)).
 
 ## Branching and worktrees
 
@@ -52,7 +52,7 @@ One pnpm workspace (`web/` member), one frozen lockfile:
 
 ### Fast CI — the single automatic gate
 
-The only automatic workflow is **Fast CI** (`.github/workflows/fast-ci.yml`): it runs the affected-scope regression, runs the cheap Storybook/catalog foundation check for frontend-capable or uncertain changes, and then runs `pnpm verify:fast` — root and `web/` typechecks. It is the single required status check on `main`; backend-only changes may skip the catalog check, while uncertain shared changes fail closed and run it.
+The only automatic workflow is **Fast CI** (`.github/workflows/fast-ci.yml`): it runs the affected-scope regression, runs the cheap Storybook/catalog foundation check for frontend-capable or uncertain changes, then runs `pnpm verify:fast` and the affected governance ratchet. The live `main` ruleset currently blocks deletion and force-pushes but does not require a status check; repository administrators own any policy change.
 
 All other deterministic, credential-free checks run locally before commits through the pre-commit hook and `pnpm verify:precommit`:
 
@@ -63,7 +63,7 @@ All other deterministic, credential-free checks run locally before commits throu
 5. `web/` workerd tests (`pnpm test:workerd` — includes all normalized Worker files; T04 / #509 restored the four previously excluded files)
 6. `web/` component tests (`pnpm --filter web test:components`)
 
-`pnpm run verify` additionally runs the browser shell/geometry Playwright suites (`pnpm test:shell-responsive`, `pnpm test:shell-geometry`, `pnpm test:role-hierarchy-geometry`). None of these deploy anything or require secrets. Prefer `pnpm run verify` before opening a PR; `pnpm run verify:precommit` is the faster non-browser gate the hook runs.
+`pnpm run verify` additionally runs Home/Feed acceptance and the browser shell/geometry Playwright suites (`pnpm test:programs:home`, `pnpm test:programs:feed`, `pnpm test:shell-responsive`, `pnpm test:shell-geometry`, `pnpm test:role-hierarchy-geometry`). None of these deploy anything or require production secrets. Prefer `pnpm run verify` before opening a PR; `pnpm run verify:precommit` is the faster non-browser gate the hook runs.
 
 `pnpm check` (Ultracite repository-wide lint) is **deferred** — the existing syntax backlog is tracked on issue #498 and will be repaired after Phase F; it is not part of Fast CI or the pre-commit gate.
 
@@ -129,7 +129,7 @@ When changing `web/`, read [`web/AGENTS.md`](web/AGENTS.md) first. This reposito
 
 Configure these in GitHub repository settings; committed files cannot enable them:
 
--- Protect `main`: require pull requests, conversation resolution, and the single required status check **Fast CI**; prevent force-pushes and branch deletion. The D1 auth acceptance contract and deployed smoke are manual `workflow_dispatch` jobs and are not required checks.
+- Decide whether to require pull requests, conversation resolution, and **Fast CI** in the `main` ruleset. The current ruleset only blocks force-pushes and branch deletion. The D1 auth acceptance contract and deployed smoke are manual `workflow_dispatch` jobs.
 
 - Grant the next developer access through the appropriate GitHub team or repository role. Never share personal access tokens.
 - Configure `AUTH_TARGET_URL` and the five `AUTH_*` values as Actions inputs only if the optional deployed D1 smoke is needed. The workflow accepts only the reserved `efcc-auth-*.efcc-ggc.workers.dev` namespace, but the operator must still verify that the Worker/D1 target and accounts are disposable before dispatch.
