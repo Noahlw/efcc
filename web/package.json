@@ -54,7 +54,7 @@
     "@vitest/browser-playwright": "4.1.10",
     "@vitest/expect": "4.1.10",
     "@vitest/mocker": "4.1.10",
-    "@vitest/pretty-format": "4.1.10",
+    "@vitest/pretty-format": "5.0.3",
     "@vitest/runner": "4.1.10",
     "@vitest/snapshot": "4.1.10",
     "@vitest/spy": "4.1.10",
